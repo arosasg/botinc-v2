@@ -48,11 +48,12 @@ type Principal struct {
 }
 
 type Service struct {
-	pool         *pgxpool.Pool
-	devCode      string
-	cookieDomain string
-	secure       bool
-	SendCode     func(ctx context.Context, email, code string) error
+	pool          *pgxpool.Pool
+	devCode       string
+	cookieDomain  string
+	secure        bool
+	AllowedEmails map[string]bool
+	SendCode      func(ctx context.Context, email, code string) error
 }
 
 func New(pool *pgxpool.Pool, devCode, cookieDomain string, secure bool) *Service {
@@ -96,6 +97,9 @@ func (s *Service) StartEmail(ctx context.Context, email string) error {
 	email, err := normalizeEmail(email)
 	if err != nil {
 		return err
+	}
+	if len(s.AllowedEmails) > 0 && !s.AllowedEmails[email] {
+		return errors.New("this staging workspace is limited to its test accounts")
 	}
 	var count int
 	if err := s.pool.QueryRow(ctx, `select count(*) from login_codes where email=$1 and created_at > now() - interval '15 minutes'`, email).Scan(&count); err != nil {
@@ -177,6 +181,9 @@ func (s *Service) UpsertOAuthUser(ctx context.Context, email, name, avatar strin
 	email, err := normalizeEmail(email)
 	if err != nil {
 		return User{}, err
+	}
+	if len(s.AllowedEmails) > 0 && !s.AllowedEmails[email] {
+		return User{}, errors.New("this staging workspace is limited to its test accounts")
 	}
 	return s.upsertUser(ctx, email, name, avatar)
 }

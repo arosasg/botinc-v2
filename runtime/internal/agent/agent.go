@@ -48,6 +48,11 @@ func jsonLine(line string) (Event, bool) {
 	}
 	typ, _ := obj["type"].(string)
 	switch typ {
+	case "item.completed":
+		if item, ok := obj["item"].(map[string]any); ok && item["type"] == "agent_message" {
+			return Event{Type: "result", Payload: map[string]any{"result": item["text"]}}, true
+		}
+		return Event{Type: "tool", Payload: obj}, true
 	case "assistant", "text", "message":
 		return Event{Type: "log", Payload: obj}, true
 	case "tool_use", "tool_result":
@@ -91,10 +96,14 @@ var Adapters = map[string]Adapter{
 	"openrouter": {
 		Provider: "openrouter", Binary: "claude",
 		Args: func(prompt, model string) []string {
-			return []string{"-p", prompt, "--output-format", "stream-json", "--verbose", "--permission-mode", "acceptEdits"}
+			args := []string{"-p", prompt, "--output-format", "stream-json", "--verbose", "--permission-mode", "acceptEdits"}
+			if model != "" && model != "auto" {
+				args = append(args, "--model", model)
+			}
+			return args
 		},
 		Env: func(secret string) []string {
-			return []string{"ANTHROPIC_API_KEY=" + secret, "ANTHROPIC_BASE_URL=https://openrouter.ai/api/v1"}
+			return []string{"ANTHROPIC_API_KEY=", "ANTHROPIC_AUTH_TOKEN=" + secret, "ANTHROPIC_BASE_URL=https://openrouter.ai/api"}
 		},
 		Parse: jsonLine,
 	},
@@ -205,6 +214,9 @@ func Run(ctx context.Context, a Adapter, o Options) (map[string]any, error) {
 			return result, fmt.Errorf("the coding CLI ran past its time limit: %w", ctx.Err())
 		}
 		return result, fmt.Errorf("%s exited non-zero: %w", a.Binary, err)
+	}
+	if failed, _ := result["is_error"].(bool); failed {
+		return result, errors.New("the coding CLI reported an error result")
 	}
 	return result, nil
 }

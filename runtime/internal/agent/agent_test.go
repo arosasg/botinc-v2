@@ -186,3 +186,22 @@ wait
 		t.Fatalf("a spawned child kept the runtime alive for %s", elapsed)
 	}
 }
+
+func TestCodexAgentMessageBecomesTheAnswer(t *testing.T) {
+	event, ok := jsonLine(`{"type":"item.completed","item":{"id":"i1","type":"agent_message","text":"The check passed."}}`)
+	if !ok || event.Type != "result" || event.Payload["result"] != "The check passed." {
+		t.Fatalf("Codex answer lost: %#v", event)
+	}
+}
+func TestErrorResultDoesNotReportSuccess(t *testing.T) {
+	fakeCLI(t, "errorresult", `echo '{"type":"result","is_error":true,"result":"authentication failed"}'`)
+	if _, err := Run(t.Context(), adapterFor("errorresult"), Options{Dir: t.TempDir()}); err == nil {
+		t.Fatal("error result accepted")
+	}
+}
+func TestOpenRouterUsesGatewayAuthentication(t *testing.T) {
+	environment := strings.Join(Adapters["openrouter"].Env("test-key"), "\n")
+	if !strings.Contains(environment, "ANTHROPIC_AUTH_TOKEN=test-key") || !strings.Contains(environment, "ANTHROPIC_BASE_URL=https://openrouter.ai/api\n") && strings.HasSuffix(environment, "/v1") {
+		t.Fatal("gateway authentication is wrong")
+	}
+}

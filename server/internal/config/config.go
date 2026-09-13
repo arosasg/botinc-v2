@@ -12,6 +12,7 @@ import (
 )
 
 type Config struct {
+	AllowedEmails  string
 	Env            string // development | test | production
 	Port           int
 	DatabaseURL    string
@@ -78,6 +79,7 @@ func Load() (Config, error) {
 		SMTPHost:       env("SMTP_HOST", ""), SMTPPort: env("SMTP_PORT", "587"), SMTPUsername: env("SMTP_USERNAME", ""), SMTPPassword: env("SMTP_PASSWORD", ""), SMTPFrom: env("SMTP_FROM_EMAIL", "BotInc <hello@botinc.ai>"),
 		ResendAPIKey:        env("RESEND_API_KEY", ""),
 		ResendFromEmail:     env("RESEND_FROM_EMAIL", "BotInc <hello@botinc.ai>"),
+		AllowedEmails:       env("BOTINC_ALLOWED_EMAILS", ""),
 		DevLoginCode:        first("", "BOTINC_DEV_VERIFICATION_CODE", "MULTICA_DEV_VERIFICATION_CODE"),
 		GoogleClientID:      env("GOOGLE_CLIENT_ID", ""),
 		GoogleClientSecret:  env("GOOGLE_CLIENT_SECRET", ""),
