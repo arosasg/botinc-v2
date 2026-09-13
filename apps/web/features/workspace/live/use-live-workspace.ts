@@ -20,14 +20,14 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
  useEffect(()=>{statusRef.current=onStatus},[onStatus]);
  useEffect(() => {
   const baseURL=apiBaseURL(); if(!logic||!baseURL){statusRef.current?.("off");return;}
-  let alive=true; const abort=new AbortController(); let disconnect:(()=>void)|undefined; let restore:(()=>void)|undefined; let timer:ReturnType<typeof setTimeout>|undefined;
+  let hydrated=false;let alive=true; const abort=new AbortController(); let disconnect:(()=>void)|undefined; let restore:(()=>void)|undefined; let timer:ReturnType<typeof setTimeout>|undefined;
   const report=(s:LiveStatus,detail?:string)=>{if(alive)statusRef.current?.(s,detail)};
   report("connecting");
-  const fail=(err:unknown)=>{if(!alive)return;const text=err instanceof Error?err.message:String(err);logic.setState({error:text});report("error",text)};
+  const fail=(err:unknown)=>{if(!alive)return;const text=err instanceof Error?err.message:String(err);logic.setState({error:text});if(!hydrated)report("error",text)};
   const api=new Client({baseURL,onUnauthenticated:()=>report("signed-out")});
   void (async()=>{
    const me=(await api.me(abort.signal)).user;
-   const {workspaces}=await api.workspaces(abort.signal);const first=workspaces[0];if(!first)throw new Error("This account has no workspace");
+   const {workspaces}=await api.workspaces(abort.signal);const selected=new URLSearchParams(window.location.search).get("workspace");const first=workspaces.find(w=>w.slug===selected)||workspaces[0];if(!first)throw new Error("This account has no workspace");
    const ws=api.workspace(first.slug);const people:PeopleIndex=new Map();const member=me.name.trim()||me.email.split("@")[0]||"You";
    let refreshing=false,again=false;
    const hydrate=async()=>{
@@ -41,7 +41,7 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
      const previous=String(logic.state.member??"");const patch:Vals={};
      // Empty defaults replace every persona-keyed fixture before changing the key.
      for(const k of ["connections","agentPrefs","funding","memoryByMember","skillGrants","modelAccounts","preferencesBy10","fallbackPolicies10"]){patch[k]={[member]:{}};}
-     patch.member=member;patch.signed=true;patch.workspaceName=overview.workspace.name;
+     patch.liveWorkspaces=workspaces;patch.workspace16=overview.workspace.name;patch.member=member;patch.signed=true;patch.workspaceName=overview.workspace.name;
      patch.issues=issues.issues.map(i=>mapIssue(i,people));
      const oldChats=logic.state.chats?.[previous]||[];
      patch.chats={[member]:chats.conversations.map(c=>{
@@ -69,7 +69,7 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
      patch.workflows14=workflows.workflows.map(w=>({id:w.id,name:w.name,meta:w.description,icon:"git-branch",state:w.active_version_id?"Active":"Draft",tone:w.active_version_id?"ok14":""}));
      patch.profileByMember15={[member]:{...(logic.state.profileByMember15?.[previous]||{}),name:me.name||member,email:me.email}};
      patch.sec19={...(logic.state.sec19||{}),twoStep:false,sms:false,codes:[],codesLeft:0,codesWhen:"Never",sessions:sessions.sessions.map(d=>({id:d.id,name:d.current?"Current browser":"Browser session",short:"browser",icon:"monitor",meta:d.user_agent,where:d.location||"",ip:d.ip,when:new Date(d.last_seen_at).toLocaleString(),current:d.current})),keys:keys.keys.map(k=>({id:k.id,name:k.name,prefix:k.prefix,scope:k.scopes.includes("write")?"Full access":"Read only",created:new Date(k.created_at).toLocaleDateString(),used:k.last_used_at?new Date(k.last_used_at).toLocaleString():"Never"}))};
-     logic.setState(patch);if(previous!==member)logic.newChat();report("live");
+     logic.setState(patch);if(previous!==member){logic.newChat();const conversation=new URLSearchParams(window.location.search).get("conversation");if(conversation&&chats.conversations.some(c=>c.id===conversation)){logic.setState({activeChat:conversation,view:"chat"});again=true}}hydrated=true;report("live");
     }finally{refreshing=false;if(again&&alive){again=false;void hydrate().catch(fail)}}
    };
    restore=installActions(logic,ws,api,me,people,hydrate,fail);
@@ -97,6 +97,11 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
  bind("send",send);
  // The prototype has several generations of composer handlers. All route here.
  for(const name of ["sendComposer10","sendComposer11","sendThreadMessage9"])bind(name,send);
+ bind("workspaceMenu16",(event:Event)=>logic.openMenu14(null,event,[...(logic.state.liveWorkspaces||[]).map((w:Vals)=>({label:w.name,hint:w.role,on:w.slug===ws.slug,run:()=>window.location.assign("/w?workspace="+encodeURIComponent(w.slug))})),{label:"New workspace",run:()=>logic.newWorkspace16()}],"Workspaces"));
+ bind("createWorkspace16",write(async()=>{const name=String(logic.state.nwName16||"").trim();if(!name)throw new Error("Enter a workspace name");const created=await api.request<{slug:string}>("POST","/api/workspaces",{name});window.location.assign("/w?workspace="+encodeURIComponent(created.slug))}));
+ bind("commitRename16",write(async()=>{const s=logic.state;const title=String(s.renameDraft16||"").trim();if(!title)throw new Error("Enter a name");if(uuid(s.renameId16))await ws.updateConversation(s.renameId16,{title});else await api.request("PATCH",`/api/w/${ws.slug}/issues/${s.renameId16}`,{title});logic.setState({renameId16:null})}));
+ bind("archiveRow16",(id:string)=>write(async()=>{if(!uuid(id))throw new Error("Open the issue to change its status");await ws.updateConversation(id,{archived:true});if(logic.state.activeChat===id)logic.newChat()})());
+ bind("shareRow16",(row:Vals)=>write(async()=>{if(!uuid(row.id))throw new Error("Open the issue to share its record");await ws.updateConversation(row.id,{shared:true});const url=new URL("/w",window.location.origin);url.searchParams.set("workspace",ws.slug);url.searchParams.set("conversation",row.id);await navigator.clipboard.writeText(url.toString());logic.toast("Workspace link copied")})());
  bind("pluginConnected10",(name:string)=>(logic.state.livePlugins||[]).some((p:Vals)=>p.kind===name.toLowerCase()&&p.status==="connected"));
  bind("connect",(name:string)=>logic.showPlugin10(name));
  bind("finishChat",()=>{});bind("skillFixture16",()=>[]);
@@ -117,7 +122,7 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
  const render=logic.renderVals;
  bind("renderVals",()=>{
   const v=render.call(logic);const s=logic.state;
-  v.previewCard15=false;
+  v.workspaceName= s.workspace16||"BotInc";v.previewCard15=false;
   v.liveGitHub=s.plugin10==="GitHub";v.livePluginSecret=s.livePluginSecret||"";v.liveRepoName=s.liveRepoName||"";
   v.editLivePluginSecret=(e:Event)=>logic.setState({livePluginSecret:(e.target as HTMLInputElement).value});
   v.editLiveRepoName=(e:Event)=>logic.setState({liveRepoName:(e.target as HTMLInputElement).value});

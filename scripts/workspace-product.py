@@ -19,3 +19,7 @@ if 'v.liveGitHub' not in s:
           <button className="button primary" onClick={v.pluginConnect10}>''')
 s=s.replace('Connection preview only. No account authorization is sent.','Connections are verified with the provider before they are saved.')
 p.write_text(s)
+
+p=Path("apps/web/features/workspace/views/shell-sidebar.tsx")
+s=p.read_text().replace('<span>BotInc</span>', '<span>{interp(v.workspaceName || "BotInc")}</span>')
+p.write_text(s)

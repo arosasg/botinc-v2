@@ -101,8 +101,16 @@ func (s *Service) StartEmail(ctx context.Context, email string) error {
 	if len(s.AllowedEmails) > 0 && !s.AllowedEmails[email] {
 		return errors.New("this staging workspace is limited to its test accounts")
 	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `select pg_advisory_xact_lock(hashtextextended($1,0))`, "email-code:"+email); err != nil {
+		return err
+	}
 	var count int
-	if err := s.pool.QueryRow(ctx, `select count(*) from login_codes where email=$1 and created_at > now() - interval '15 minutes'`, email).Scan(&count); err != nil {
+	if err := tx.QueryRow(ctx, `select count(*) from login_codes where email=$1 and created_at > now() - interval '15 minutes'`, email).Scan(&count); err != nil {
 		return err
 	}
 	if count >= 5 {
@@ -112,7 +120,13 @@ func (s *Service) StartEmail(ctx context.Context, email string) error {
 	if code == "" {
 		code = randomDigits(6)
 	}
-	if _, err := s.pool.Exec(ctx, `insert into login_codes (email, code_hash, expires_at) values ($1,$2,$3)`, email, hash(email+":"+code), time.Now().Add(codeTTL)); err != nil {
+	if _, err := tx.Exec(ctx, `update login_codes set consumed_at=now() where email=$1 and consumed_at is null`, email); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `insert into login_codes (email, code_hash, expires_at) values ($1,$2,$3)`, email, hash(email+":"+code), time.Now().Add(codeTTL)); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
 	if s.devCode != "" {

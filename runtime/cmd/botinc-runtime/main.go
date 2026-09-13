@@ -166,6 +166,24 @@ func runBuild(ctx context.Context, c *protocol.Client, spec protocol.Spec, a age
 		return nil, err
 	}
 	defer checkout.Cleanup()
+	baseHead, err := checkout.Head(ctx)
+	if err != nil {
+		return nil, err
+	}
+	// Preserve completed step commits on this run's branch before long work.
+	checkpoint := func() error {
+		if _, err := checkout.Commit(ctx, commitMessage(spec)); err != nil {
+			return err
+		}
+		head, err := checkout.Head(ctx)
+		if err != nil {
+			return err
+		}
+		if head == baseHead {
+			return nil
+		}
+		return checkout.Push(ctx)
+	}
 
 	var graph workflow.Graph
 	if len(spec.Graph) > 0 {
@@ -186,6 +204,7 @@ func runBuild(ctx context.Context, c *protocol.Client, spec protocol.Spec, a age
 	var cost int
 	stepCosts := map[string]int{}
 	previousOutput := ""
+	reviewedHead := ""
 	err = workflow.Execute(ctx, graph, func(node workflow.Node, attempt int) (workflow.Result, error) {
 		step := protocol.Step{Key: node.Key, Name: node.Name, Kind: node.Kind, Model: node.Model}
 		if node.Kind == "approval" {
@@ -193,6 +212,9 @@ func runBuild(ctx context.Context, c *protocol.Client, spec protocol.Spec, a age
 			return workflow.Result{Stop: true}, err
 		}
 		if node.Kind == "question" {
+			if err := checkpoint(); err != nil {
+				return workflow.Result{}, err
+			}
 			if err := c.Step(ctx, protocol.StepUpdate{Key: node.Key, Status: "waiting", Output: map[string]any{"question": node.Prompt}}); err != nil {
 				return workflow.Result{}, err
 			}
@@ -224,7 +246,16 @@ func runBuild(ctx context.Context, c *protocol.Client, spec protocol.Spec, a age
 		if err := c.Step(ctx, protocol.StepUpdate{Key: node.Key, Status: "running", Model: model}); err != nil {
 			return workflow.Result{}, err
 		}
-		prompt := buildPrompt(spec, step) + "\n\nWorkflow instructions:\n" + node.Prompt + "\n\nPrevious step result:\n" + previousOutput
+		prompt := buildPrompt(spec, step) + "\n\nWorkflow instructions:\n" + node.Prompt
+		if node.Key != "review" {
+			prompt += "\n\nPrevious step result:\n" + previousOutput
+		}
+		if node.Key == "review" {
+			if err := checkpoint(); err != nil {
+				return workflow.Result{}, err
+			}
+		}
+
 		if node.Kind == "condition" || node.Kind == "repeat" {
 			choices := []string{}
 			for _, e := range graph.Edges {
@@ -241,12 +272,27 @@ func runBuild(ctx context.Context, c *protocol.Client, spec protocol.Spec, a age
 		cost += resultCost(out)
 		stepCosts[node.Key] += resultCost(out)
 		previousOutput = resultText(out)
+		if runErr == nil && node.Key == "review" {
+			dirty, err := checkout.Dirty(ctx)
+			if err != nil {
+				runErr = err
+			} else if dirty {
+				runErr = errors.New("reviewer changed files; a fresh review is required")
+			} else if !strings.HasSuffix(strings.TrimSpace(previousOutput), "REVIEW_APPROVED") {
+				runErr = errors.New("review did not approve the change")
+			} else {
+				reviewedHead, runErr = checkout.Head(ctx)
+			}
+		}
 		status := "done"
 		if runErr != nil {
 			status = "stuck"
 		}
-		if err := c.Step(ctx, protocol.StepUpdate{Key: node.Key, Status: status, CostCents: stepCosts[node.Key], Output: map[string]any{"result": previousOutput, "attempt": attempt}}); err != nil {
+		if err := c.Step(ctx, protocol.StepUpdate{Key: node.Key, Status: status, CostCents: stepCosts[node.Key], Output: map[string]any{"result": previousOutput, "attempt": attempt, "reviewed_head": reviewedHead, "review_approved": node.Key == "review" && runErr == nil}}); err != nil {
 			return workflow.Result{}, err
+		}
+		if runErr == nil && node.Kind == "task" && node.Key != "review" && node.Key != "verify" {
+			runErr = checkpoint()
 		}
 		return workflow.Result{Choice: strings.TrimSpace(previousOutput)}, runErr
 	})
@@ -258,7 +304,14 @@ func runBuild(ctx context.Context, c *protocol.Client, spec protocol.Spec, a age
 	if err != nil {
 		return nil, err
 	}
-	if !committed {
+	headBeforePush, headErr := checkout.Head(ctx)
+	if headErr != nil {
+		return nil, headErr
+	}
+	if reviewedHead != "" && headBeforePush != reviewedHead {
+		return partial(checkout, ctx), errors.New("the change advanced after review; another review is required")
+	}
+	if !committed && headBeforePush == baseHead {
 		// An honest empty result beats an empty pull request.
 		return map[string]any{"changed": false, "cost_cents": cost}, errors.New("the run finished without changing any files")
 	}
@@ -273,7 +326,7 @@ func runBuild(ctx context.Context, c *protocol.Client, spec protocol.Spec, a age
 	}
 	_ = c.Emit(ctx, "notice", map[string]any{"text": "Opened " + pr.URL})
 	return map[string]any{
-		"changed": true, "branch": branch, "head": head, "diffstat": diffstat, "cost_cents": cost,
+		"changed": true, "repository": target.FullName, "branch": branch, "head": head, "diffstat": diffstat, "cost_cents": cost, "reviewed_head": reviewedHead,
 		"pull_request": map[string]any{"url": pr.URL, "number": pr.Number},
 	}, nil
 }
@@ -342,9 +395,9 @@ func buildPrompt(spec protocol.Spec, step protocol.Step) string {
 	case "plan":
 		b.WriteString("\n\nFor this step, read enough of the code to be sure of the cause, then state the plan. Do not edit files yet.")
 	case "review":
-		b.WriteString("\n\nFor this step, read the change you just made as an independent reviewer would and fix what is wrong.")
+		b.WriteString("\n\nYou are a separate reviewer invocation. Inspect the actual diff against the default branch and the issue requirements. Do not edit files. End with exactly REVIEW_APPROVED only if the final change is correct, otherwise end with REVIEW_CHANGES and explain the findings.")
 	case "verify":
-		b.WriteString("\n\nFor this step, run the tests and report exactly what passed and what failed. Do not claim a pass you did not see.")
+		b.WriteString("\n\nFor this step, run the tests and report exactly what passed and what failed. Do not edit source files or claim a pass you did not see.")
 	}
 	return b.String()
 }

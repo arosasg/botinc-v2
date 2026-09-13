@@ -432,15 +432,50 @@ func (s *Server) runtimeMessage(w http.ResponseWriter, r *http.Request) {
 	if in.Role == "" {
 		in.Role = "operator"
 	}
+	if in.Role != "operator" {
+		httpx.Error(w, 400, "runtime messages must use the operator role")
+		return
+	}
 	if len(in.Meta) == 0 {
 		in.Meta = json.RawMessage(`{}`)
 	}
-	var m Message
-	if err := s.pool.QueryRow(r.Context(), `insert into messages (conversation_id, seq, role, body, meta, run_id) values ($1,(select coalesce(max(seq),0)+1 from messages where conversation_id=$1),$2,$3,$4,$5) returning `+msgCols, *rn.ConversationID, in.Role, in.Body, in.Meta, rn.ID).Scan(m.scan()...); err != nil {
+	tx, err := s.pool.Begin(r.Context())
+	if err != nil {
 		s.fail(w, err)
 		return
 	}
-	_, _ = s.pool.Exec(r.Context(), `update conversations set updated_at=now() where id=$1`, *rn.ConversationID)
+	defer tx.Rollback(r.Context())
+	var locked uuid.UUID
+	if err := tx.QueryRow(r.Context(), `select id from conversations where id=$1 for update`, *rn.ConversationID).Scan(&locked); err != nil {
+		s.fail(w, err)
+		return
+	}
+	var m Message
+	previous := tx.QueryRow(r.Context(), `select `+msgCols+` from messages where run_id=$1 and role='operator' limit 1`, rn.ID).Scan(m.scan()...)
+	if previous == nil {
+		if m.Body != in.Body {
+			httpx.Error(w, 409, "this run already posted a different answer")
+			return
+		}
+		httpx.JSON(w, 201, m)
+		return
+	}
+	if !errors.Is(previous, pgx.ErrNoRows) {
+		s.fail(w, previous)
+		return
+	}
+	if err := tx.QueryRow(r.Context(), `insert into messages (conversation_id, seq, role, body, meta, run_id) values ($1,(select coalesce(max(seq),0)+1 from messages where conversation_id=$1),$2,$3,$4,$5) returning `+msgCols, *rn.ConversationID, in.Role, in.Body, in.Meta, rn.ID).Scan(m.scan()...); err != nil {
+		s.fail(w, err)
+		return
+	}
+	if _, err := tx.Exec(r.Context(), `update conversations set updated_at=now() where id=$1`, *rn.ConversationID); err != nil {
+		s.fail(w, err)
+		return
+	}
+	if err := tx.Commit(r.Context()); err != nil {
+		s.fail(w, err)
+		return
+	}
 	s.hub.Publish(rn.WorkspaceID, "message.created", m)
 	httpx.JSON(w, 201, m)
 }

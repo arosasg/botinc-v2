@@ -95,21 +95,35 @@ func hashToken(t string) string {
 
 // Create records the run and dispatches it asynchronously.
 func (s *Service) Create(ctx context.Context, p CreateParams) (Run, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return Run{}, err
+	}
+	defer tx.Rollback(ctx)
+	r, err := s.CreateInTx(ctx, tx, p)
+	if err != nil {
+		return Run{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Run{}, err
+	}
+	s.Dispatch(ctx, r)
+	return r, nil
+}
+
+// CreateInTx lets a conversation atomically record its message, queue and run.
+// The caller must commit before Dispatch; failed transactions never launch work.
+func (s *Service) CreateInTx(ctx context.Context, tx pgx.Tx, p CreateParams) (Run, error) {
 	if p.Model == "" {
 		p.Model = "auto"
 	}
 	if p.TaskLimitCents == 0 {
 		p.TaskLimitCents = 200
 	}
-	accountID, funding, err := s.route(ctx, p.WorkspaceID, p.Model)
+	accountID, funding, err := s.route(ctx, tx, p.WorkspaceID, p.Model)
 	if err != nil {
 		return Run{}, err
 	}
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return Run{}, err
-	}
-	defer tx.Rollback(ctx)
 	// Serialize reservations against the workspace ledger. Outstanding runs hold
 	// their unspent budget so simultaneous chats cannot spend the same credit.
 	var locked uuid.UUID
@@ -147,12 +161,12 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (Run, error) {
 			return Run{}, err
 		}
 	}
-	if err := tx.Commit(ctx); err != nil {
-		return Run{}, err
-	}
+
+	return r, nil
+}
+func (s *Service) Dispatch(ctx context.Context, r Run) {
 	s.hub.Publish(r.WorkspaceID, "run.created", r)
 	go s.dispatch(context.WithoutCancel(ctx), r)
-	return r, nil
 }
 
 func defaultSteps(purpose string) []StepSpec {
@@ -166,9 +180,14 @@ func defaultSteps(purpose string) []StepSpec {
 
 // route picks the model account with the most capacity left among connected
 // subscription accounts for the requested provider; falls back per policy.
-func (s *Service) route(ctx context.Context, ws uuid.UUID, model string) (*uuid.UUID, string, error) {
+type queryer interface {
+	Query(context.Context, string, ...any) (pgx.Rows, error)
+	QueryRow(context.Context, string, ...any) pgx.Row
+}
+
+func (s *Service) route(ctx context.Context, db queryer, ws uuid.UUID, model string) (*uuid.UUID, string, error) {
 	provider := providerFor(model)
-	rows, err := s.pool.Query(ctx, `select id, kind, quota from model_accounts where workspace_id=$1 and status='connected' and ($2='' or provider=$2) order by created_at`, ws, provider)
+	rows, err := db.Query(ctx, `select id, kind, quota from model_accounts where workspace_id=$1 and status='connected' and ($2='' or provider=$2) order by created_at`, ws, provider)
 	if err != nil {
 		return nil, "", err
 	}
@@ -199,7 +218,7 @@ func (s *Service) route(ctx context.Context, ws uuid.UUID, model string) (*uuid.
 	}
 	if best == nil {
 		var fallback string
-		_ = s.pool.QueryRow(ctx, `select fallback from routing_policies where workspace_id=$1`, ws).Scan(&fallback)
+		_ = db.QueryRow(ctx, `select fallback from routing_policies where workspace_id=$1`, ws).Scan(&fallback)
 		if fallback == "" {
 			fallback = "credits"
 		}

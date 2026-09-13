@@ -48,3 +48,32 @@ func TestEmailCodeConcurrentAttemptLimit(t *testing.T) {
 		t.Fatalf("attempts=%d", attempts)
 	}
 }
+
+func TestEmailStartConcurrentRateLimit(t *testing.T) {
+	h := newHarness(t)
+	email := uniqueEmail(t)
+	var wg sync.WaitGroup
+	results := make(chan error, 15)
+	for range 15 {
+		wg.Add(1)
+		go func() { defer wg.Done(); results <- h.server.auth.StartEmail(t.Context(), email) }()
+	}
+	wg.Wait()
+	close(results)
+	accepted := 0
+	for err := range results {
+		if err == nil {
+			accepted++
+		}
+	}
+	if accepted != 5 {
+		t.Fatalf("accepted %d requests, want 5", accepted)
+	}
+	var valid int
+	if err := testPool.QueryRow(t.Context(), `select count(*) from login_codes where email=$1 and consumed_at is null`, email).Scan(&valid); err != nil {
+		t.Fatal(err)
+	}
+	if valid != 1 {
+		t.Fatalf("%d codes valid after resending", valid)
+	}
+}
