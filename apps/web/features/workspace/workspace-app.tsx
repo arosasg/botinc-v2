@@ -3,11 +3,11 @@
 /* Mounts the Workspace v19 logic under the DC host and renders the generated
    views. Browser only: the logic touches window, document and localStorage. */
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { DCLogic, useDCLogic, type LogicClass } from "@/lib/dc/logic";
 import { WorkspaceView } from "./views/workspace-view";
 import { useStickToLatest } from "./use-stick-to-latest";
-import { useLiveWorkspace } from "./live/use-live-workspace";
+import { useLiveWorkspace, type LiveStatus } from "./live/use-live-workspace";
 
 const ROOT_PROPS = { modelLabel11: "Auto", projectLabel10: "Product", thinkingLabel: "High" };
 
@@ -17,7 +17,11 @@ function Mounted({ Logic }: { Logic: LogicClass }) {
   /* Swaps the design's fixtures for real rows when an API is configured, and
      does nothing when one is not - which is what keeps the pixel proof
      reproducible and the design demo self-contained. */
-  useLiveWorkspace(logic as Parameters<typeof useLiveWorkspace>[0]);
+  const [status,setStatus]=useState<LiveStatus>("connecting");
+  const [detail,setDetail]=useState("");
+  const report=useCallback((status:LiveStatus,detail?:string)=>{setStatus(status);setDetail(detail||"");},[]);
+  useLiveWorkspace(logic as Parameters<typeof useLiveWorkspace>[0],report);
+  if(status!=="live"&&status!=="off") return <main className="sc-host" role="status"><p>{status==="connecting"?"Loading your workspace…":status==="signed-out"?"Sign in to open your workspace.":detail||"The workspace could not be loaded."}</p><a href="/">{status==="signed-out"?"Sign in":"Return home"}</a></main>;
   /* The design publishes its semantic tokens on the runtime's host element
      (`#dc-root, .sc-host`), including the dark values behind
      `:has(.app[data-theme=dark])`. Without a host, any token declared only

@@ -5,6 +5,8 @@
    onboarding, the dialogs and the first-run workspace preview. Everything the
    markup binds to comes out of `vals`. */
 
+import { Client } from "@botinc/api";
+import { apiBaseURL } from "../workspace/live/use-live-workspace";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent, KeyboardEvent, MouseEvent } from "react";
 
@@ -32,6 +34,9 @@ export type LandingState = {
   models: string[];
   autos: string[];
   email: string;
+  code: string;
+  codeSent: boolean;
+  authBusy: boolean;
   error: string;
   dialog: Dialog;
   dialogFor: string;
@@ -90,7 +95,7 @@ const STORAGE_KEY = "botinc-landing-v4";
 
 const initial: LandingState = {
   screen: "landing", theme: "light", demoView: "thread", appView: "thread", platform: "mac", copied: false, rt: 0, wf: 0, apiFallback: false,
-  idx: 0, typed: "", live: -1, introN: 0, goals: ["route", "fix"], connected: [], models: [], autos: ["intake", "fix", "watch"], email: "", error: "",
+  idx: 0, typed: "", live: -1, introN: 0, goals: ["route", "fix"], connected: [], models: [], autos: ["intake", "fix", "watch"], email: "", code: "", codeSent: false, authBusy: false, error: "",
   dialog: null, dialogFor: "", method: "signin", scope: "", notice: "", merged: false, draft: "", msgs: [], annual: false,
 };
 
@@ -210,7 +215,7 @@ const emailOk = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
 export function useLanding(opts: { onEnterWorkspace?: () => void } = {}) {
   const [s, setS] = useState<LandingState>(initial);
   const sRef = useRef(s);
-  sRef.current = s;
+  useEffect(() => { sRef.current = s; }, [s]);
   const patch = useCallback((p: Partial<LandingState> | ((prev: LandingState) => Partial<LandingState>)) => {
     setS((prev) => ({ ...prev, ...(typeof p === "function" ? p(prev) : p) }));
   }, []);
@@ -228,7 +233,7 @@ export function useLanding(opts: { onEnterWorkspace?: () => void } = {}) {
   }, []);
 
   // The hero demo loop.
-  const run = useCallback((i: number) => {
+  const run = useCallback(function run(i: number) {
     window.clearTimeout(timers.current.t);
     window.clearInterval(timers.current.ti);
     if (sRef.current.screen !== "landing") {
@@ -291,8 +296,8 @@ export function useLanding(opts: { onEnterWorkspace?: () => void } = {}) {
     try {
       const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
       if (saved && saved.screen) {
-        patch({ screen: saved.screen, goals: saved.goals || ["fix"], connected: saved.connected || [], models: saved.models || [], autos: saved.autos || ["intake", "fix", "watch"], theme: saved.theme || "light" });
-        resume = saved.screen === "app";
+        patch({ screen: apiBaseURL() ? "landing" : saved.screen, goals: saved.goals || ["fix"], connected: saved.connected || [], models: saved.models || [], autos: saved.autos || ["intake", "fix", "watch"], theme: saved.theme || "light" });
+        resume = !apiBaseURL() && saved.screen === "app";
       }
     } catch {}
     // Proof harness: `?demo=idx,wf,rt` freezes the demo loops at one frame so a
@@ -381,6 +386,20 @@ export function useLanding(opts: { onEnterWorkspace?: () => void } = {}) {
       connect: () => patch({ dialog: "connect", dialogFor: k, scope: SRC[k]![2], error: "" }),
     }));
     const signedIn = () => persist({ screen: "goals", dialog: null, error: "" });
+    const emailSignIn = async () => {
+      if (s.authBusy) return;
+      if (!emailOk(s.email)) { patch({error:"Enter a valid email address."}); return; }
+      const baseURL=apiBaseURL();if(!baseURL){signedIn();return;}
+      patch({authBusy:true,error:""});
+      try {
+        const api=new Client({baseURL});
+        if(s.codeSent){ await api.verifyEmail(s.email,s.code); signedIn(); }
+        else {await api.startEmail(s.email);patch({codeSent:true});}
+      } catch(err) {patch({error:err instanceof Error?err.message:"Sign-in failed. Try again."});}
+      finally {patch({authBusy:false});}
+    };
+    const googleSignIn=()=>{const base=apiBaseURL();if(!base){signedIn();return;}window.location.assign(base.replace(/\/$/,"")+"/api/auth/google/start");};
+    const githubSignIn=()=>{const base=apiBaseURL();if(!base){signedIn();return;}window.location.assign(base.replace(/\/$/,"")+"/api/auth/github/start");};
     const cur = SRC[s.dialogFor] || SRC.github!;
     const plans = [
       { name: "Free", m: 0, a: 0, conc: "1", runs: "100", storage: "1 GB", note: "No credit card required", cta: "Start free", tag: "" },
@@ -397,7 +416,8 @@ export function useLanding(opts: { onEnterWorkspace?: () => void } = {}) {
     const ios = p === "ios", and = p === "android", mac = p === "mac", win = p === "win";
     const storeUrl = ios ? "https://apps.apple.com/app/botinc/id6740000000" : "https://play.google.com/store/apps/details?id=ai.botinc.console";
     const enterWorkspace = () => {
-      if (opts.onEnterWorkspace) opts.onEnterWorkspace();
+      if (apiBaseURL()) window.location.assign("/w");
+      else if (opts.onEnterWorkspace) opts.onEnterWorkspace();
       else persist({ screen: "app", draft: "" });
     };
 
@@ -411,8 +431,8 @@ export function useLanding(opts: { onEnterWorkspace?: () => void } = {}) {
       annual: s.annual, setMonthly: () => patch({ annual: false }), setAnnual: () => patch({ annual: true }), monthlyCls: s.annual ? "" : "on", annualCls: s.annual ? "on" : "", plans,
       onSignin: s.screen === "signin", onGoals: s.screen === "goals", onConnect: s.screen === "connect", onModels: s.screen === "models", onAutos: s.screen === "autos", inApp: s.screen === "app",
       back: () => persist({ screen: "landing" }),
-      googleSignIn: signedIn, githubSignIn: signedIn, email: s.email, editEmail: (e: ChangeEvent<HTMLInputElement>) => patch({ email: e.target.value, error: "" }),
-      emailSignIn: () => (emailOk(s.email) ? signedIn() : patch({ error: "Enter a valid email address." })), error: s.error,
+      googleSignIn, githubSignIn, email: s.email, editEmail: (e: ChangeEvent<HTMLInputElement>) => patch({ email: e.target.value, codeSent:false, code:"", error: "" }),
+      emailSignIn, code:s.code, codeSent:s.codeSent, authBusy:s.authBusy, editCode:(e:ChangeEvent<HTMLInputElement>)=>patch({code:e.target.value,error:""}), error: s.error,
       goals: GOALS.map(([k, t, sub, icon, logos], i) => ({ t, sub, href: "/i15.svg#" + icon, cls: "goal d" + (i + 1) + (has(k) ? " on" : ""), on: has(k), hasSentry: logos.includes("sentry"), hasPosthog: logos.includes("posthog"), hasLinear: logos.includes("linear"), hasGithub: logos.includes("github"), hasClaude: logos.includes("claude"), hasCodex: logos.includes("codex"), toggle: () => toggle("goals", k) })),
       toConnect: () => persist({ screen: "connect" }),
       sources, connectedCount: s.connected.length, connectHint: s.connected.length ? s.connected.length + " connected" : "One source is enough to start", toModels: () => persist({ screen: "models" }), backGoals: () => persist({ screen: "goals" }),

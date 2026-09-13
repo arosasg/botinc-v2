@@ -8,6 +8,7 @@ import { css } from "@/lib/dc/css";
 import { interp } from "@/lib/dc/interp";
 import { DotWave } from "./dot-wave";
 import { ThreadShell } from "./thread-shell";
+import { EmailSignIn } from "./email-sign-in";
 import { useLanding } from "./use-landing";
 
 export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => void }) {
@@ -925,28 +926,7 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
                 <div className="or">
                   <span>or</span>
                 </div>
-                <label className="sr-only" htmlFor="email">
-                  Email address
-                </label>
-                <input
-                  id="email"
-                  type="email"
-                  className="input"
-                  placeholder="Email address"
-                  value={v.email}
-                  onChange={v.editEmail}
-                />
-                <button className="btn lg full" onClick={v.emailSignIn}>
-                  Continue with email
-                </button>
-                {v.error ? (
-                  <>
-                    <p className="ob-error" role="alert">
-                      {interp(v.error)}
-                    </p>
-                  </>
-                ) : null}
-                <p className="ob-fine">Preview only. No account is created.</p>
+                <EmailSignIn v={v} />
               </div>
             </main>
           </div>

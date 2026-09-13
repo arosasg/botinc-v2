@@ -44,4 +44,5 @@ t=re.sub(r'\\u([0-9a-fA-F]{4})', lambda m: chr(int(m.group(1),16)), t)
 open(p,'w').write(t)
 PY
 done
+python3 scripts/landing-product.py
 echo regenerated

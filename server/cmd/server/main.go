@@ -55,6 +55,9 @@ func run(log *slog.Logger) error {
 	}
 
 	mailer := mail.New(cfg.ResendAPIKey, cfg.ResendFromEmail, log)
+	if cfg.SMTPHost != "" {
+		mailer = mail.NewSMTP(mail.SMTPConfig{Host: cfg.SMTPHost, Port: cfg.SMTPPort, Username: cfg.SMTPUsername, Password: cfg.SMTPPassword, From: cfg.SMTPFrom}, log)
+	}
 	authSvc := auth.New(database.Pool, cfg.DevLoginCode, cfg.CookieDomain, cfg.Production())
 	authSvc.SendCode = mailer.SendCode
 

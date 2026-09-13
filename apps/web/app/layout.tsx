@@ -28,7 +28,7 @@ export const viewport: Viewport = {
    design's fixtures drive the screens, which is what keeps the pixel proof
    reproducible. */
 function runtimeConfig() {
-  const apiURL = (process.env["BOTINC_API_URL"] ?? "").trim();
+  const apiURL = (process.env["BOTINC_API_URL"] ?? (process.env.NODE_ENV === "production" && process.env.BOTINC_DESIGN_PREVIEW !== "1" ? "/" : "")).trim();
   return `window.__BOTINC__=${JSON.stringify({ apiURL })}`;
 }
 

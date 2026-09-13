@@ -15,6 +15,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/mail"
 	"strings"
 	"time"
 
@@ -82,7 +83,8 @@ func randomDigits(n int) string {
 
 func normalizeEmail(e string) (string, error) {
 	e = strings.ToLower(strings.TrimSpace(e))
-	if !strings.Contains(e, "@") || strings.HasPrefix(e, "@") || strings.HasSuffix(e, "@") || len(e) > 254 {
+	address, err := mail.ParseAddress(e)
+	if err != nil || address.Address != e || len(e) > 254 {
 		return "", errors.New("enter a valid email address")
 	}
 	return e, nil
@@ -109,8 +111,11 @@ func (s *Service) StartEmail(ctx context.Context, email string) error {
 	if _, err := s.pool.Exec(ctx, `insert into login_codes (email, code_hash, expires_at) values ($1,$2,$3)`, email, hash(email+":"+code), time.Now().Add(codeTTL)); err != nil {
 		return err
 	}
-	if s.devCode != "" || s.SendCode == nil {
+	if s.devCode != "" {
 		return nil
+	}
+	if s.SendCode == nil {
+		return errors.New("email delivery is not configured")
 	}
 	return s.SendCode(ctx, email, code)
 }
@@ -122,10 +127,15 @@ func (s *Service) VerifyEmail(ctx context.Context, email, code string) (User, er
 		return User{}, err
 	}
 	code = strings.TrimSpace(code)
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return User{}, err
+	}
+	defer tx.Rollback(ctx)
 	var id uuid.UUID
 	var attempts int
 	var codeHash string
-	err = s.pool.QueryRow(ctx, `select id, code_hash, attempts from login_codes where email=$1 and consumed_at is null and expires_at > now() order by created_at desc limit 1`, email).Scan(&id, &codeHash, &attempts)
+	err = tx.QueryRow(ctx, `select id, code_hash, attempts from login_codes where email=$1 and consumed_at is null and expires_at > now() order by created_at desc limit 1 for update`, email).Scan(&id, &codeHash, &attempts)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return User{}, errors.New("that code has expired; request a new one")
 	}
@@ -136,10 +146,18 @@ func (s *Service) VerifyEmail(ctx context.Context, email, code string) (User, er
 		return User{}, errors.New("too many attempts; request a new code")
 	}
 	if subtle.ConstantTimeCompare([]byte(codeHash), []byte(hash(email+":"+code))) != 1 {
-		_, _ = s.pool.Exec(ctx, `update login_codes set attempts=attempts+1 where id=$1`, id)
+		if _, err := tx.Exec(ctx, `update login_codes set attempts=attempts+1 where id=$1`, id); err != nil {
+			return User{}, err
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return User{}, err
+		}
 		return User{}, errors.New("that code is not right")
 	}
-	if _, err := s.pool.Exec(ctx, `update login_codes set consumed_at=now() where id=$1`, id); err != nil {
+	if _, err := tx.Exec(ctx, `update login_codes set consumed_at=now() where id=$1`, id); err != nil {
+		return User{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
 		return User{}, err
 	}
 	return s.upsertUser(ctx, email, "", "")

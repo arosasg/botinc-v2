@@ -20,9 +20,10 @@ type Config struct {
 	CookieDomain   string
 	PublicAPIURL   string
 
-	ResendAPIKey    string
-	ResendFromEmail string
-	DevLoginCode    string // when set (non-production), every login code is this
+	SMTPHost, SMTPPort, SMTPUsername, SMTPPassword, SMTPFrom string
+	ResendAPIKey                                             string
+	ResendFromEmail                                          string
+	DevLoginCode                                             string // when set (non-production), every login code is this
 
 	GoogleClientID     string
 	GoogleClientSecret string
@@ -66,13 +67,14 @@ func Load() (Config, error) {
 	port, _ := strconv.Atoi(env("PORT", env("BACKEND_PORT", "8080")))
 	ttl, _ := time.ParseDuration(env("BOTINC_RUN_TTL", "45m"))
 	c := Config{
-		Env:                 env("APP_ENV", "development"),
-		Port:                port,
-		DatabaseURL:         env("DATABASE_URL", ""),
-		JWTSecret:           env("JWT_SECRET", ""),
-		FrontendOrigin:      env("FRONTEND_ORIGIN", "http://localhost:3100"),
-		CookieDomain:        env("COOKIE_DOMAIN", ""),
-		PublicAPIURL:        env("BOTINC_PUBLIC_API_URL", "http://localhost:8080"),
+		Env:            env("APP_ENV", "development"),
+		Port:           port,
+		DatabaseURL:    env("DATABASE_URL", ""),
+		JWTSecret:      env("JWT_SECRET", ""),
+		FrontendOrigin: env("FRONTEND_ORIGIN", "http://localhost:3100"),
+		CookieDomain:   env("COOKIE_DOMAIN", ""),
+		PublicAPIURL:   env("BOTINC_PUBLIC_API_URL", "http://localhost:8080"),
+		SMTPHost:       env("SMTP_HOST", ""), SMTPPort: env("SMTP_PORT", "587"), SMTPUsername: env("SMTP_USERNAME", ""), SMTPPassword: env("SMTP_PASSWORD", ""), SMTPFrom: env("SMTP_FROM_EMAIL", "BotInc <hello@botinc.ai>"),
 		ResendAPIKey:        env("RESEND_API_KEY", ""),
 		ResendFromEmail:     env("RESEND_FROM_EMAIL", "BotInc <hello@botinc.ai>"),
 		DevLoginCode:        first("", "BOTINC_DEV_VERIFICATION_CODE", "MULTICA_DEV_VERIFICATION_CODE"),
@@ -102,8 +104,11 @@ func Load() (Config, error) {
 		}
 		c.JWTSecret = "dev-insecure-jwt-secret-change-me"
 	}
-	if c.DevLoginCode == "" && c.ResendAPIKey == "" && c.Env != "production" {
+	if c.DevLoginCode == "" && c.ResendAPIKey == "" && c.SMTPHost == "" && c.Env != "production" {
 		c.DevLoginCode = "000000"
+	}
+	if c.Production() && c.ResendAPIKey == "" && c.SMTPHost == "" {
+		return c, fmt.Errorf("SMTP_HOST or RESEND_API_KEY is required in production")
 	}
 	return c, nil
 }
