@@ -28,7 +28,7 @@ export function DialogTopupdialog({ v }: { v: Vals }) {
           <strong>{interp(v.afterTopup)}</strong>
         </div>
         <p className="fine">Purchased credit does not reset monthly. Auto top-up stays off.</p>
-        <button className="button primary" onClick={v.payTopup}>
+        <button className="button primary" disabled={v.checkoutBusy} onClick={v.payTopup}>
           {interp(v.payLabel)}
         </button>
         {v.paymentError ? (
@@ -41,7 +41,7 @@ export function DialogTopupdialog({ v }: { v: Vals }) {
             </button>
           </>
         ) : null}
-        <p className="fine">Simulated checkout. No charge will be made.</p>
+        <p className="fine">{interp(v.checkoutNotice || "Checkout preview")}</p>
       </>
     ) : null
   );

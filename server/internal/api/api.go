@@ -25,6 +25,7 @@ import (
 )
 
 type Server struct {
+	stripeAPI string // test-only payment upstream
 	githubAPI string // test-injected upstream; production always uses api.github.com
 	cfg       config.Config
 	pool      *pgxpool.Pool
@@ -162,6 +163,7 @@ func (s *Server) Router() http.Handler {
 		r.Patch("/memories/{id}", s.saveMemory)
 		r.Delete("/memories/{id}", s.deleteMemory)
 		r.Get("/credits", s.credits)
+		r.Post("/billing/checkout", s.createCheckout)
 		r.Get("/usage", s.usage)
 	})
 
@@ -179,6 +181,7 @@ func (s *Server) Router() http.Handler {
 
 	// Autopilot webhooks: authenticated by the autopilot's secret.
 	r.Post("/api/hooks/autopilots/{id}", s.autopilotWebhook)
+	r.Post("/api/hooks/stripe", s.stripeWebhook)
 
 	return r
 }

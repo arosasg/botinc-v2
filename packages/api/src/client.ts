@@ -182,7 +182,7 @@ export class WorkspaceClient {
   projects(signal?: AbortSignal) { return this.get<{ projects: Project[] }>("/projects", signal); }
   repositories(signal?: AbortSignal) { return this.get<{ repositories: Repository[] }>("/repositories", signal); }
   credits(signal?: AbortSignal) {
-    return this.get<{ balance_cents: number; entries: Array<{ kind: string; amount_cents: number; note: string; created_at: string }> }>("/credits", signal);
+    return this.get<{ balance_cents: number; payments_enabled: boolean; payments_test_mode: boolean; entries: Array<{ kind: string; amount_cents: number; note: string; created_at: string }> }>("/credits", signal);
   }
 
   /* The realtime socket for this workspace. Reconnects with backoff, because a

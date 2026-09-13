@@ -59,6 +59,7 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
      patch.accounts10=accounts.accounts.map(mapAccount);patch.modelAccounts={[member]:patch.accounts10};
      patch.connections={[member]:Object.fromEntries(plugins.plugins.map(p=>[p.kind,p.status==="connected"]))};
      patch.plan=titleCase(overview.workspace.plan);patch.monthly=0;patch.purchased=credits.balance_cents/100;patch.runningRuns=overview.running_runs;
+     patch.paymentsEnabled=credits.payments_enabled;patch.paymentsTestMode=credits.payments_test_mode;patch.workspaceRole=overview.workspace.role||first.role;
      patch.ledger=credits.entries.map((e,i)=>({id:String(i),kind:e.kind,label:e.note,title:e.note,amount:e.amount_cents/100,date:e.created_at,when:e.created_at}));
      patch.members14=members.members.map(p=>({id:p.user_id,name:p.name||p.email.split("@")[0],email:p.email,role:titleCase(p.role),meta:"Joined "+new Date(p.joined_at).toLocaleDateString(),scope:"",locked:p.role==="owner"}));
      patch.invites14=invites.invitations.map(i=>({id:i.id,email:i.email,role:titleCase(i.role),state:"Pending",scope:"",meta:"Expires "+new Date(i.expires_at).toLocaleDateString()}));
@@ -123,6 +124,10 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
  bind("renderVals",()=>{
   const v=render.call(logic);const s=logic.state;
   v.workspaceName= s.workspace16||"BotInc";v.previewCard15=false;
+  v.topup=()=>logic.open("topup",{paymentError:false});
+  v.checkoutNotice=s.paymentsTestMode?"Stripe test checkout. Test payments add staging credit only.":"Secure checkout with Stripe. Credit is added after payment is confirmed.";
+  v.checkoutBusy=!!s.checkoutBusy;v.payLabel=s.checkoutBusy?"Opening checkout…":"Continue to Stripe";
+  v.payTopup=async()=>{if(s.checkoutBusy)return;logic.setState({checkoutBusy:true});try{if(!s.paymentsEnabled)throw new Error("Payments are not configured for this environment");const out=await api.request<{url:string}>("POST",`/api/w/${ws.slug}/billing/checkout`,{amount_cents:Math.round(Number(s.topupAmount)*100)});window.location.assign(out.url)}catch(err){fail(err);logic.setState({checkoutBusy:false})}};
   v.liveGitHub=s.plugin10==="GitHub";v.livePluginSecret=s.livePluginSecret||"";v.liveRepoName=s.liveRepoName||"";
   v.editLivePluginSecret=(e:Event)=>logic.setState({livePluginSecret:(e.target as HTMLInputElement).value});
   v.editLiveRepoName=(e:Event)=>logic.setState({liveRepoName:(e.target as HTMLInputElement).value});
