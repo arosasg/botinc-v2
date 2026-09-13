@@ -1,0 +1,41 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    env_file:
+      - path: .postgres.env
+        format: raw
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U botinc -d botinc']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  api:
+    image: ${REGISTRY}/botinc-v2-staging/server:${IMAGE_TAG}
+    restart: unless-stopped
+    env_file:
+      - path: .api.env
+        format: raw
+    depends_on:
+      postgres:
+        condition: service_healthy
+  web:
+    image: ${REGISTRY}/botinc-v2-staging/web:${IMAGE_TAG}
+    restart: unless-stopped
+    environment:
+      BOTINC_API_URL: https://test.botinc.ai
+  proxy:
+    image: caddy:2.10.2-alpine
+    restart: unless-stopped
+    ports: ['80:80', '443:443']
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+      - caddyconfig:/config
+    depends_on: [api, web]
+volumes:
+  pgdata:
+  caddydata:
+  caddyconfig:

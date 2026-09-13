@@ -62,7 +62,30 @@ func run() error {
 
 	// From here on every exit reports a status, so a run never hangs in
 	// 'running' waiting for a reconciler to give up on it.
+	heartbeatCtx, cancelHeartbeat := context.WithCancel(ctx)
+	heartbeatDone := make(chan struct{})
+	go func() {
+		defer close(heartbeatDone)
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-heartbeatCtx.Done():
+				return
+			case <-ticker.C:
+				call, cancel := context.WithTimeout(heartbeatCtx, 15*time.Second)
+				err := c.Heartbeat(call)
+				cancel()
+				if errors.Is(err, protocol.ErrUnauthorized) {
+					stop()
+					return
+				}
+			}
+		}
+	}()
 	result, workErr := execute(ctx, c, spec, workdir)
+	cancelHeartbeat()
+	<-heartbeatDone
 	finish := protocol.Finish{Status: "done", Result: result}
 	if workErr != nil {
 		finish = protocol.Finish{Status: "failed", Error: workErr.Error(), Result: result}
@@ -220,8 +243,9 @@ func branchName(spec protocol.Spec) string {
 func chatPrompt(spec protocol.Spec) string {
 	var b strings.Builder
 	b.WriteString("You are the Operator for this BotInc workspace. Answer in the fewest words that are complete and true. Say what you do not know.\n\n")
+	b.WriteString(knowledgePrompt(spec))
 	for _, m := range spec.Messages {
-		b.WriteString(strings.ToUpper(m.Role[:1]) + m.Role[1:] + ": " + m.Body + "\n")
+		b.WriteString(m.Role + ": " + m.Body + "\n")
 	}
 	if len(spec.Messages) == 0 {
 		b.WriteString("User: " + spec.Run.Prompt + "\n")
@@ -229,8 +253,17 @@ func chatPrompt(spec protocol.Spec) string {
 	return b.String()
 }
 
+func knowledgePrompt(spec protocol.Spec) string {
+	var b strings.Builder
+	for _, k := range spec.Knowledge {
+		fmt.Fprintf(&b, "\n<workspace-context kind=%q name=%q>\n%s\n</workspace-context>\n", k.Kind, k.Name, k.Body)
+	}
+	return b.String()
+}
+
 func buildPrompt(spec protocol.Spec, step protocol.Step) string {
 	var b strings.Builder
+	b.WriteString(knowledgePrompt(spec))
 	fmt.Fprintf(&b, "Step: %s.\n\n", step.Name)
 	b.WriteString(spec.Run.Prompt)
 	b.WriteString("\n\nWork in this checkout. Make the change, keep it small, and run the project's own tests. Do not commit, push or open a pull request: the runtime does that once every step is done.")

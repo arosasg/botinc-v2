@@ -135,13 +135,26 @@ type Credential struct {
 	Secret   string `json:"secret"`
 }
 
+type Knowledge struct {
+	Kind string `json:"kind"`
+	Name string `json:"name"`
+	Body string `json:"body"`
+}
+
 type Spec struct {
+	Knowledge    []Knowledge  `json:"knowledge"`
 	Run          Run          `json:"run"`
 	Steps        []Step       `json:"steps"`
 	Issue        *Issue       `json:"issue"`
 	Messages     []Message    `json:"messages"`
 	Repositories []Repository `json:"repositories"`
 	Credential   *Credential  `json:"credential"`
+}
+
+// Heartbeat uses an empty event batch, which advances liveness without
+// inventing an activity event or racing the sequence counter.
+func (c *Client) Heartbeat(ctx context.Context) error {
+	return c.call(ctx, http.MethodPost, "/events", map[string]any{"events": []any{}}, nil)
 }
 
 func (c *Client) Claim(ctx context.Context) (Run, error) {

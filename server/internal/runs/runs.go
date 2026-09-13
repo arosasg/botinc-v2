@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -190,7 +191,7 @@ func providerFor(model string) string {
 		return ""
 	case len(model) >= 6 && model[:6] == "claude":
 		return "claude"
-	case len(model) >= 3 && (model[:3] == "gpt" || model[:5] == "codex"):
+	case strings.HasPrefix(model, "gpt") || strings.HasPrefix(model, "codex"):
 		return "codex"
 	}
 	return ""
@@ -280,6 +281,9 @@ func (s *Service) Claim(ctx context.Context, runID uuid.UUID, token string) (Run
 func (s *Service) Authenticate(ctx context.Context, runID uuid.UUID, token string) (Run, error) {
 	r, err := scanRun(s.pool.QueryRow(ctx, `select `+runCols+` from runs where id=$1 and run_token_hash=$2`, runID, hashToken(token)))
 	if errors.Is(err, pgx.ErrNoRows) {
+		return Run{}, ErrBadToken
+	}
+	if err == nil && r.FinishedAt != nil {
 		return Run{}, ErrBadToken
 	}
 	return r, err

@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -111,9 +112,20 @@ func (s *Server) addRepository(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	in.FullName = strings.TrimSpace(in.FullName)
-	if !strings.Contains(in.FullName, "/") {
+	if !regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`).MatchString(in.FullName) || strings.Contains(in.FullName, "..") {
 		httpx.ErrorCode(w, 400, "bad_repository", "use owner/name")
 		return
+	}
+	if in.ProjectID != nil {
+		var exists bool
+		if err := s.pool.QueryRow(r.Context(), `select exists(select 1 from projects where id=$1 and workspace_id=$2)`, *in.ProjectID, sc.WorkspaceID).Scan(&exists); err != nil {
+			s.fail(w, err)
+			return
+		}
+		if !exists {
+			httpx.Error(w, 404, "project not found")
+			return
+		}
 	}
 	if in.DefaultBranch == "" {
 		in.DefaultBranch = "main"

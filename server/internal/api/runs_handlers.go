@@ -270,8 +270,63 @@ func (s *Server) runtimeSpec(w http.ResponseWriter, r *http.Request) {
 			spec["issue"] = is
 		}
 	}
-	// Repositories the run may touch (first project repo for now).
-	rrows, err := s.pool.Query(ctx, `select full_name, default_branch, installation_id from repositories where workspace_id=$1 order by created_at limit 5`, rn.WorkspaceID)
+	// A project run only receives that project's repositories and knowledge.
+	var projectID *uuid.UUID
+	if rn.IssueID != nil {
+		if err := s.pool.QueryRow(ctx, `select project_id from issues where id=$1 and workspace_id=$2`, *rn.IssueID, rn.WorkspaceID).Scan(&projectID); err != nil {
+			s.fail(w, err)
+			return
+		}
+	}
+	type knowledge struct {
+		Kind string `json:"kind"`
+		Name string `json:"name"`
+		Body string `json:"body"`
+	}
+	contextRows := []knowledge{}
+	skillRows, err := s.pool.Query(ctx, `select name,body from skills where workspace_id=$1 and enabled=true order by name limit 100`, rn.WorkspaceID)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	for skillRows.Next() {
+		var k knowledge
+		k.Kind = "skill"
+		if err := skillRows.Scan(&k.Name, &k.Body); err != nil {
+			skillRows.Close()
+			s.fail(w, err)
+			return
+		}
+		contextRows = append(contextRows, k)
+	}
+	skillRows.Close()
+	// Personal memory never enters shared issue work or a shared conversation.
+	var privateUser *uuid.UUID
+	if rn.ConversationID != nil {
+		if err := s.pool.QueryRow(ctx, `select case when shared=false then user_id end from conversations where id=$1`, *rn.ConversationID).Scan(&privateUser); err != nil {
+			s.fail(w, err)
+			return
+		}
+	}
+	memoryRows, err := s.pool.Query(ctx, `select scope,body from memories where workspace_id=$1 and (scope='workspace' or (scope='project' and project_id=$2) or (scope='personal' and user_id=$3)) order by pinned desc,updated_at desc limit 100`, rn.WorkspaceID, projectID, privateUser)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	for memoryRows.Next() {
+		var k knowledge
+		k.Kind = "memory"
+		if err := memoryRows.Scan(&k.Name, &k.Body); err != nil {
+			memoryRows.Close()
+			s.fail(w, err)
+			return
+		}
+		contextRows = append(contextRows, k)
+	}
+	memoryRows.Close()
+	spec["knowledge"] = contextRows
+	// Repositories the run may touch.
+	rrows, err := s.pool.Query(ctx, `select full_name, default_branch, installation_id from repositories where workspace_id=$1 and ($2::uuid is null or project_id=$2) order by created_at limit 5`, rn.WorkspaceID, projectID)
 	if err == nil {
 		type repo struct {
 			FullName       string `json:"full_name"`
