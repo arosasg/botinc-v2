@@ -7,12 +7,17 @@ import { useEffect, useState } from "react";
 import { DCLogic, useDCLogic, type LogicClass } from "@/lib/dc/logic";
 import { WorkspaceView } from "./views/workspace-view";
 import { useStickToLatest } from "./use-stick-to-latest";
+import { useLiveWorkspace } from "./live/use-live-workspace";
 
 const ROOT_PROPS = { modelLabel11: "Auto", projectLabel10: "Product", thinkingLabel: "High" };
 
 function Mounted({ Logic }: { Logic: LogicClass }) {
-  const { vals } = useDCLogic(Logic, ROOT_PROPS);
+  const { logic, vals } = useDCLogic(Logic, ROOT_PROPS);
   useStickToLatest();
+  /* Swaps the design's fixtures for real rows when an API is configured, and
+     does nothing when one is not - which is what keeps the pixel proof
+     reproducible and the design demo self-contained. */
+  useLiveWorkspace(logic as Parameters<typeof useLiveWorkspace>[0]);
   /* The design publishes its semantic tokens on the runtime's host element
      (`#dc-root, .sc-host`), including the dark values behind
      `:has(.app[data-theme=dark])`. Without a host, any token declared only

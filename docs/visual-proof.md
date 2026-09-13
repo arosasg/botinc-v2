@@ -63,3 +63,19 @@ This port keeps the two bindings apart, so the switch renders and works. The
 deviation is 164 pixels on `ob-models` in dark, and it is the only place this
 build does not match the design render. The design file should be corrected;
 until it is, this is intentional and this note is the record of it.
+
+## Live data and the proof
+
+The pixel proof runs against the design's fixtures. That is deliberate: the
+harness needs a fixed input to compare against a fixed reference, and a live
+workspace has whatever rows happen to exist. The web app reads its API address
+at run time (`BOTINC_API_URL`), and with none configured the fixtures drive
+every screen, so `pnpm build` plus the harness reproduces the same frames on
+any machine.
+
+With an API configured, the same screens render real rows. The mapping layer
+is covered by `apps/web/features/workspace/live/map.test.ts`, which pins the
+one thing most likely to drift silently: the design groups its sidebar by
+comparing status against a fixed set of sentences, and a status outside that
+set lands in a bucket that renders as "Done". A workspace of open issues
+reported them all as Done until that was pinned.

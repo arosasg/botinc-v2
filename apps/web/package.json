@@ -13,6 +13,7 @@
     "proof": "node scripts/proof.mjs"
   },
   "dependencies": {
+    "@botinc/api": "workspace:*",
     "@botinc/brand": "workspace:*",
     "next": "^16.3.5",
     "react": "catalog:",
