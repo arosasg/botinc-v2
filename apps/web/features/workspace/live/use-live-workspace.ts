@@ -65,7 +65,7 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
      patch.skills=skills.skills.map(k=>({...k,description:k.body.split("\n").find(t=>t&&!t.startsWith("#"))||"Workspace instructions",source:"Workspace",owner:"workspace",version:"Saved",files:["SKILL.md"]}));
      patch.memories14=memories.memories.map(m=>({id:m.id,scope:m.scope,owner:people.get(m.user_id)?.name||people.get(m.user_id)?.email.split("@")[0],project:projects.projects.find(p=>p.id===m.project_id)?.name,type:"Fact",text:m.body,pinned:m.pinned,provenance:"Saved by a workspace member",updated:new Date(m.updated_at).toLocaleString(),lastUsed:"",source:"",why:"Explicitly saved instructions"}));
      patch.suggested14=[];patch.repos14=repos.repositories.map(r=>({id:r.id,name:r.full_name,full:r.full_name,branch:r.default_branch,status:"Connected",provider:"GitHub"}));
-     patch.liveProjects=projects.projects;
+     patch.liveProjects=projects.projects;patch.livePlugins=plugins.plugins;
      patch.workflows14=workflows.workflows.map(w=>({id:w.id,name:w.name,meta:w.description,icon:"git-branch",state:w.active_version_id?"Active":"Draft",tone:w.active_version_id?"ok14":""}));
      patch.profileByMember15={[member]:{...(logic.state.profileByMember15?.[previous]||{}),name:me.name||member,email:me.email}};
      patch.sec19={...(logic.state.sec19||{}),twoStep:false,sms:false,codes:[],codesLeft:0,codesWhen:"Never",sessions:sessions.sessions.map(d=>({id:d.id,name:d.current?"Current browser":"Browser session",short:"browser",icon:"monitor",meta:d.user_agent,where:d.location||"",ip:d.ip,when:new Date(d.last_seen_at).toLocaleString(),current:d.current})),keys:keys.keys.map(k=>({id:k.id,name:k.name,prefix:k.prefix,scope:k.scopes.includes("write")?"Full access":"Read only",created:new Date(k.created_at).toLocaleDateString(),used:k.last_used_at?new Date(k.last_used_at).toLocaleString():"Never"}))};
@@ -97,6 +97,8 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
  bind("send",send);
  // The prototype has several generations of composer handlers. All route here.
  for(const name of ["sendComposer10","sendComposer11","sendThreadMessage9"])bind(name,send);
+ bind("pluginConnected10",(name:string)=>(logic.state.livePlugins||[]).some((p:Vals)=>p.kind===name.toLowerCase()&&p.status==="connected"));
+ bind("connect",(name:string)=>logic.showPlugin10(name));
  bind("finishChat",()=>{});bind("skillFixture16",()=>[]);
  const repo=logic.repo14;
  bind("repo14",()=>repo.call(logic)||{id:"",name:"No repository connected",connected:false,meta:"Add a repository to start coding work",branch:"",state:"Not connected",tone:""});
@@ -116,6 +118,19 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
  bind("renderVals",()=>{
   const v=render.call(logic);const s=logic.state;
   v.previewCard15=false;
+  v.liveGitHub=s.plugin10==="GitHub";v.livePluginSecret=s.livePluginSecret||"";v.liveRepoName=s.liveRepoName||"";
+  v.editLivePluginSecret=(e:Event)=>logic.setState({livePluginSecret:(e.target as HTMLInputElement).value});
+  v.editLiveRepoName=(e:Event)=>logic.setState({liveRepoName:(e.target as HTMLInputElement).value});
+  v.pluginButton10="Save connection";
+  v.pluginConnect10=write(async()=>{
+   if(s.plugin10!=="GitHub")throw new Error("This plugin still requires its provider integration");
+   if(s.livePluginSecret)await api.request("POST",`/api/w/${ws.slug}/plugins`,{kind:"github",secret:s.livePluginSecret});
+   if(s.liveRepoName)await api.request("POST",`/api/w/${ws.slug}/repositories`,{full_name:String(s.liveRepoName).trim()});
+   if(!s.livePluginSecret&&!s.liveRepoName)throw new Error("Enter a token or repository name");
+   logic.setState({livePluginSecret:"",liveRepoName:"",dialog:null});
+  });
+  v.pluginDisconnect10=write(async()=>{const p=s.livePlugins.find((p:Vals)=>p.kind===String(s.plugin10).toLowerCase());if(p)await api.request("DELETE",`/api/w/${ws.slug}/plugins/${p.id}`);logic.setState({dialog:null})});
+  v.repoFromGithub16=()=>logic.showPlugin10("GitHub");v.repoConnect14=v.repoFromGithub16;
   const chat=logic.currentChat();
   v.conversationCost10=logic.cash(chat?.cost||0);v.routeCostShort17=v.conversationCost10;
   v.routeLimit17=logic.cash(chat?.taskLimit||0);

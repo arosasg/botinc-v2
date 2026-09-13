@@ -42,10 +42,11 @@ type WorkflowVersion struct {
 // --- graph ---
 
 type graphNode struct {
-	Key   string `json:"key"`
-	Name  string `json:"name"`
-	Kind  string `json:"kind"`
-	Model string `json:"model,omitempty"`
+	Key    string `json:"key"`
+	Name   string `json:"name"`
+	Kind   string `json:"kind"`
+	Model  string `json:"model,omitempty"`
+	Prompt string `json:"prompt,omitempty"`
 }
 
 type graphDoc struct {
@@ -98,8 +99,8 @@ func validateGraph(raw json.RawMessage) (graphDoc, error) {
 	}
 	adj := map[string][]string{}
 	for _, e := range g.Edges {
-		if len(e) != 2 {
-			return g, errors.New("every edge is a [from, to] pair")
+		if len(e) < 2 || len(e) > 3 {
+			return g, errors.New("every edge is [from, to] with an optional decision label")
 		}
 		if !seen[e[0]] || !seen[e[1]] {
 			return g, fmt.Errorf("edge %v points at a node that does not exist", e)

@@ -77,6 +77,21 @@ func (s *Server) connectPlugin(w http.ResponseWriter, r *http.Request) {
 		in.Account = json.RawMessage(`{}`)
 	}
 	ctx := r.Context()
+	if in.Kind == "github" {
+		var account struct {
+			Login string `json:"login"`
+			ID    int64  `json:"id"`
+		}
+		if strings.TrimSpace(in.Secret) == "" {
+			httpx.Error(w, 400, "enter a GitHub token")
+			return
+		}
+		if err := s.githubGet(ctx, in.Secret, "/user", &account); err != nil {
+			httpx.Error(w, 400, err.Error())
+			return
+		}
+		in.Account, _ = json.Marshal(account)
+	}
 	ref := ""
 	if strings.TrimSpace(in.Secret) != "" {
 		var err error

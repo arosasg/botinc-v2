@@ -8,6 +8,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -20,6 +21,7 @@ import (
 	"github.com/arosasg/botinc-v2/runtime/internal/agent"
 	"github.com/arosasg/botinc-v2/runtime/internal/protocol"
 	"github.com/arosasg/botinc-v2/runtime/internal/repo"
+	"github.com/arosasg/botinc-v2/runtime/internal/workflow"
 )
 
 func main() {
@@ -152,7 +154,10 @@ func runBuild(ctx context.Context, c *protocol.Client, spec protocol.Spec, a age
 		return nil, errors.New("this workspace has no repository connected, so there is nothing to change")
 	}
 	target := spec.Repositories[0]
-	ghToken := strings.TrimSpace(os.Getenv("BOTINC_GITHUB_TOKEN"))
+	ghToken := target.Token
+	if ghToken == "" {
+		return nil, errors.New("repository has no authorized GitHub connection")
+	}
 	branch := branchName(spec)
 
 	_ = c.Emit(ctx, "notice", map[string]any{"text": "Checking out " + target.FullName})
@@ -162,28 +167,91 @@ func runBuild(ctx context.Context, c *protocol.Client, spec protocol.Spec, a age
 	}
 	defer checkout.Cleanup()
 
-	steps := workSteps(spec)
+	var graph workflow.Graph
+	if len(spec.Graph) > 0 {
+		if err := json.Unmarshal(spec.Graph, &graph); err != nil {
+			return nil, err
+		}
+	} else {
+		graph.Nodes = []workflow.Node{{Key: "start", Kind: "start"}}
+		previous := "start"
+		for _, step := range workSteps(spec) {
+			graph.Nodes = append(graph.Nodes, workflow.Node{Key: step.Key, Name: step.Name, Kind: step.Kind, Model: step.Model})
+			graph.Edges = append(graph.Edges, []string{previous, step.Key})
+			previous = step.Key
+		}
+		graph.Nodes = append(graph.Nodes, workflow.Node{Key: "finish", Kind: "finish"})
+		graph.Edges = append(graph.Edges, []string{previous, "finish"})
+	}
 	var cost int
-	for _, step := range steps {
-		if step.Kind == "approval" {
-			// The run stops here and waits for a person. Nothing merges itself.
-			_ = c.Step(ctx, protocol.StepUpdate{Key: step.Key, Status: "waiting"})
-			break
+	stepCosts := map[string]int{}
+	previousOutput := ""
+	err = workflow.Execute(ctx, graph, func(node workflow.Node, attempt int) (workflow.Result, error) {
+		step := protocol.Step{Key: node.Key, Name: node.Name, Kind: node.Kind, Model: node.Model}
+		if node.Kind == "approval" {
+			err := c.Step(ctx, protocol.StepUpdate{Key: node.Key, Status: "waiting"})
+			return workflow.Result{Stop: true}, err
+		}
+		if node.Kind == "question" {
+			if err := c.Step(ctx, protocol.StepUpdate{Key: node.Key, Status: "waiting", Output: map[string]any{"question": node.Prompt}}); err != nil {
+				return workflow.Result{}, err
+			}
+			ticker := time.NewTicker(2 * time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return workflow.Result{}, ctx.Err()
+				case <-ticker.C:
+					answer, err := c.Input(ctx, node.Key)
+					if err != nil {
+						return workflow.Result{}, err
+					}
+					if answer != "" {
+						previousOutput = answer
+						return workflow.Result{}, c.Step(ctx, protocol.StepUpdate{Key: node.Key, Status: "done"})
+					}
+				}
+			}
 		}
 		if cost >= spec.Run.TaskLimitCents {
-			return partial(checkout, ctx), errors.New("task budget exhausted")
+			return workflow.Result{}, errors.New("task budget exhausted")
 		}
-		_ = c.Step(ctx, protocol.StepUpdate{Key: step.Key, Status: "running", Model: spec.Run.Model})
-		out, err := agent.Run(ctx, a, agent.Options{
-			Dir: checkout.Dir, Prompt: buildPrompt(spec, step), Model: spec.Run.Model,
-			Secret: spec.Credential.Secret, Timeout: 30 * time.Minute, BudgetCents: spec.Run.TaskLimitCents - cost, Emit: emit,
-		})
+		model := node.Model
+		if model == "" || model == "auto" {
+			model = spec.Run.Model
+		}
+		if err := c.Step(ctx, protocol.StepUpdate{Key: node.Key, Status: "running", Model: model}); err != nil {
+			return workflow.Result{}, err
+		}
+		prompt := buildPrompt(spec, step) + "\n\nWorkflow instructions:\n" + node.Prompt + "\n\nPrevious step result:\n" + previousOutput
+		if node.Kind == "condition" || node.Kind == "repeat" {
+			choices := []string{}
+			for _, e := range graph.Edges {
+				if e[0] == node.Key && len(e) == 3 {
+					choices = append(choices, e[2])
+				}
+			}
+			if len(choices) == 0 {
+				choices = []string{"true", "false"}
+			}
+			prompt += "\nThis is a decision only. Do not edit files. Respond with exactly one of: " + strings.Join(choices, ", ")
+		}
+		out, runErr := agent.Run(ctx, a, agent.Options{Dir: checkout.Dir, Prompt: prompt, Model: model, Secret: spec.Credential.Secret, Timeout: 30 * time.Minute, BudgetCents: spec.Run.TaskLimitCents - cost, Emit: emit})
 		cost += resultCost(out)
-		if err != nil {
-			_ = c.Step(ctx, protocol.StepUpdate{Key: step.Key, Status: "stuck", CostCents: resultCost(out)})
-			return partial(checkout, ctx), err
+		stepCosts[node.Key] += resultCost(out)
+		previousOutput = resultText(out)
+		status := "done"
+		if runErr != nil {
+			status = "stuck"
 		}
-		_ = c.Step(ctx, protocol.StepUpdate{Key: step.Key, Status: "done", CostCents: resultCost(out)})
+		if err := c.Step(ctx, protocol.StepUpdate{Key: node.Key, Status: status, CostCents: stepCosts[node.Key], Output: map[string]any{"result": previousOutput, "attempt": attempt}}); err != nil {
+			return workflow.Result{}, err
+		}
+		return workflow.Result{Choice: strings.TrimSpace(previousOutput)}, runErr
+	})
+	if err != nil {
+		return partial(checkout, ctx), err
 	}
 
 	committed, err := checkout.Commit(ctx, commitMessage(spec))

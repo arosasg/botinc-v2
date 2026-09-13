@@ -127,11 +127,23 @@ func (s *Server) addRepository(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if in.DefaultBranch == "" {
-		in.DefaultBranch = "main"
+	token, err := s.githubToken(r.Context(), sc.WorkspaceID)
+	if err != nil {
+		httpx.Error(w, 400, err.Error())
+		return
 	}
+	upstream, err := s.authorizedRepository(r.Context(), token, in.FullName)
+	if err != nil {
+		httpx.Error(w, 400, err.Error())
+		return
+	}
+	if in.DefaultBranch == "" {
+		in.DefaultBranch = upstream.DefaultBranch
+	}
+	// An installation ID is server-owned; a caller cannot borrow platform access.
+	in.InstallationID = nil
 	var rp Repository
-	err := s.pool.QueryRow(r.Context(), `insert into repositories (workspace_id, project_id, full_name, default_branch, installation_id)
+	err = s.pool.QueryRow(r.Context(), `insert into repositories (workspace_id, project_id, full_name, default_branch, installation_id)
 		values ($1,$2,$3,$4,$5)
 		on conflict (workspace_id, full_name) do update set
 			project_id=coalesce(excluded.project_id, repositories.project_id),

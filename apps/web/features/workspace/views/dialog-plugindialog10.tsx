@@ -41,6 +41,11 @@ export function DialogPlugindialog10({ v }: { v: Vals }) {
             </Fragment>
           ))}
           <p className="fine">{interp(v.pluginPermission10)}</p>
+          {v.liveGitHub ? <>
+            <label>GitHub token<input type="password" autoComplete="new-password" value={v.livePluginSecret} onChange={v.editLivePluginSecret} /></label>
+            <label>Repository<input placeholder="owner/repository" value={v.liveRepoName} onChange={v.editLiveRepoName} /></label>
+            <p className="fine">Use a token with repository contents and pull-request write access. Leave the token blank to use your saved connection.</p>
+          </> : null}
           <button className="button primary" onClick={v.pluginConnect10}>
             {interp(v.pluginButton10)}
           </button>
@@ -51,7 +56,7 @@ export function DialogPlugindialog10({ v }: { v: Vals }) {
               </button>
             </>
           ) : null}
-          <p className="fine">Connection preview only. No account authorization is sent.</p>
+          <p className="fine">Connections are verified with the provider before they are saved.</p>
         </div>
       </>
     ) : null

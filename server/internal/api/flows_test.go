@@ -691,6 +691,7 @@ func TestRoutingFallsBackToCreditsWithNoAccount(t *testing.T) {
 func TestPluginsAndProjects(t *testing.T) {
 	h := newHarness(t)
 	h.signIn(uniqueEmail(t))
+	connectTestGitHub(t, h)
 
 	var proj struct {
 		Project Project `json:"project"`
@@ -732,10 +733,14 @@ func TestPluginsAndProjects(t *testing.T) {
 		Plugins []Plugin `json:"plugins"`
 	}
 	h.decode(pluginsRec, &plugins)
-	if len(plugins.Plugins) != 1 || plugins.Plugins[0].Kind != "slack" {
+	if len(plugins.Plugins) != 2 {
 		t.Fatalf("unexpected plugins: %+v", plugins.Plugins)
 	}
-	h.do("DELETE", h.w("/plugins/"+plugins.Plugins[0].ID.String()), nil, 200)
+	for _, plugin := range plugins.Plugins {
+		if plugin.Kind == "slack" {
+			h.do("DELETE", h.w("/plugins/"+plugin.ID.String()), nil, 200)
+		}
+	}
 }
 
 func TestMemberRolesAreEnforced(t *testing.T) {

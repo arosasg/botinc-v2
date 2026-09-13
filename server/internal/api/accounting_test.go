@@ -88,3 +88,19 @@ func TestOwnAccountUsageDoesNotSpendWorkspaceCredits(t *testing.T) {
 		t.Fatalf("own account charged workspace: %d", balance)
 	}
 }
+
+func TestAdditionalWorkspaceCannotMintStarterCredit(t *testing.T) {
+	h := newHarness(t)
+	h.signIn(uniqueEmail(t))
+	extra, err := h.server.createWorkspaceFor(t.Context(), h.userID, "Second workspace")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var balance int
+	if err := testPool.QueryRow(t.Context(), `select coalesce(sum(amount_cents),0) from credit_ledger where workspace_id=$1`, extra.ID).Scan(&balance); err != nil {
+		t.Fatal(err)
+	}
+	if balance != 0 {
+		t.Fatalf("additional workspace minted %d credits", balance)
+	}
+}

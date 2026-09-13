@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -124,6 +125,7 @@ type Message struct {
 }
 
 type Repository struct {
+	Token          string `json:"token,omitempty"`
 	FullName       string `json:"full_name"`
 	DefaultBranch  string `json:"default_branch"`
 	InstallationID *int64 `json:"installation_id"`
@@ -142,13 +144,14 @@ type Knowledge struct {
 }
 
 type Spec struct {
-	Knowledge    []Knowledge  `json:"knowledge"`
-	Run          Run          `json:"run"`
-	Steps        []Step       `json:"steps"`
-	Issue        *Issue       `json:"issue"`
-	Messages     []Message    `json:"messages"`
-	Repositories []Repository `json:"repositories"`
-	Credential   *Credential  `json:"credential"`
+	Graph        json.RawMessage `json:"graph"`
+	Knowledge    []Knowledge     `json:"knowledge"`
+	Run          Run             `json:"run"`
+	Steps        []Step          `json:"steps"`
+	Issue        *Issue          `json:"issue"`
+	Messages     []Message       `json:"messages"`
+	Repositories []Repository    `json:"repositories"`
+	Credential   *Credential     `json:"credential"`
 }
 
 // Heartbeat uses an empty event batch, which advances liveness without
@@ -214,4 +217,12 @@ type Finish struct {
 
 func (c *Client) Finish(ctx context.Context, f Finish) error {
 	return c.call(ctx, http.MethodPost, "/finish", f, nil)
+}
+
+func (c *Client) Input(ctx context.Context, key string) (string, error) {
+	var out struct {
+		Answer string `json:"answer"`
+	}
+	err := c.call(ctx, http.MethodGet, "/inputs/"+url.PathEscape(key), nil, &out)
+	return out.Answer, err
 }

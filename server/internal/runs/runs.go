@@ -394,7 +394,7 @@ func (s *Service) UpdateStep(ctx context.Context, r Run, u StepUpdate) error {
 	if err != nil {
 		return err
 	}
-	if _, err = tx.Exec(ctx, `update runs set cost_cents=cost_cents+$2, status=case when $3='waiting' then 'waiting' else status end where id=$1`, r.ID, delta, u.Status); err != nil {
+	if _, err = tx.Exec(ctx, `update runs set cost_cents=cost_cents+$2, status=case when $3='waiting' then 'waiting' when $3='running' then 'running' else status end where id=$1`, r.ID, delta, u.Status); err != nil {
 		return err
 	}
 	if funding == "credits" && delta > 0 {

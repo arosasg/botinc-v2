@@ -81,7 +81,9 @@ func (s *Server) createWorkspaceFor(ctx context.Context, userID uuid.UUID, name 
 			return ws, err
 		}
 		// Starter credit: $2.00 once, per the landing.
-		if _, err := tx.Exec(ctx, `insert into credit_ledger (workspace_id, kind, amount_cents, note) values ($1,'grant',200,'Starter credit')`, ws.ID); err != nil {
+		if _, err := tx.Exec(ctx, `with claim as (
+ insert into starter_credit_claims(user_id,workspace_id) values($2,$1) on conflict do nothing returning user_id
+) insert into credit_ledger (workspace_id, kind, amount_cents, note) select $1,'grant',200,'Starter credit' from claim`, ws.ID, userID); err != nil {
 			_ = tx.Rollback(ctx)
 			return ws, err
 		}

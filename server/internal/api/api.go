@@ -25,12 +25,13 @@ import (
 )
 
 type Server struct {
-	cfg  config.Config
-	pool *pgxpool.Pool
-	auth *auth.Service
-	hub  *realtime.Hub
-	runs *runs.Service
-	log  *slog.Logger
+	githubAPI string // test-injected upstream; production always uses api.github.com
+	cfg       config.Config
+	pool      *pgxpool.Pool
+	auth      *auth.Service
+	hub       *realtime.Hub
+	runs      *runs.Service
+	log       *slog.Logger
 }
 
 func New(cfg config.Config, pool *pgxpool.Pool, a *auth.Service, hub *realtime.Hub, r *runs.Service, log *slog.Logger) *Server {
@@ -127,6 +128,7 @@ func (s *Server) Router() http.Handler {
 		r.Get("/runs/{id}", s.getRun)
 		r.Get("/runs/{id}/events", s.runEvents)
 		r.Post("/runs/{id}/cancel", s.cancelRun)
+		r.Post("/runs/{id}/input", s.answerRun)
 
 		r.Get("/workflows", s.listWorkflows)
 		r.Post("/workflows", s.createWorkflow)
@@ -168,6 +170,7 @@ func (s *Server) Router() http.Handler {
 		r.Use(s.runtimeScope)
 		r.Post("/claim", s.runtimeClaim)
 		r.Get("/spec", s.runtimeSpec)
+		r.Get("/inputs/{key}", s.runtimeInput)
 		r.Post("/events", s.runtimeEvents)
 		r.Post("/steps", s.runtimeStep)
 		r.Post("/messages", s.runtimeMessage)

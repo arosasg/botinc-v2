@@ -84,6 +84,9 @@ func (s *Server) createConversation(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, 400, err.Error())
 		return
 	}
+	if !s.referencesAllowed(w, r, map[string]*uuid.UUID{"issue": in.IssueID}) {
+		return
+	}
 	if in.Model == "" {
 		in.Model = "auto"
 	}

@@ -137,6 +137,9 @@ func (s *Server) createIssue(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, 400, err.Error())
 		return
 	}
+	if !s.referencesAllowed(w, r, map[string]*uuid.UUID{"project": in.ProjectID, "issue": in.ParentID, "member": in.AssigneeID}) {
+		return
+	}
 	in.Title = strings.TrimSpace(in.Title)
 	if in.Title == "" {
 		httpx.ErrorCode(w, 400, "title_required", "an issue needs a title")
@@ -303,6 +306,9 @@ func (s *Server) updateIssue(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := httpx.Decode(r, &in); err != nil {
 		httpx.Error(w, 400, err.Error())
+		return
+	}
+	if !s.referencesAllowed(w, r, map[string]*uuid.UUID{"project": in.ProjectID, "issue": in.ParentID, "member": in.AssigneeID, "workflow": in.WorkflowID}) {
 		return
 	}
 	if in.Status != nil && !issueStatuses[*in.Status] {

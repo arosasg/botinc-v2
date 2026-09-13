@@ -124,6 +124,9 @@ func (s *Server) createAutopilot(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, 400, err.Error())
 		return
 	}
+	if !s.referencesAllowed(w, r, map[string]*uuid.UUID{"workflow": in.WorkflowID}) {
+		return
+	}
 	in.Name = strings.TrimSpace(in.Name)
 	if in.Name == "" {
 		httpx.ErrorCode(w, 400, "name_required", "a routine needs a name")

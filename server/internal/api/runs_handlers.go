@@ -250,6 +250,14 @@ func (s *Server) runtimeSpec(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	spec := map[string]any{"run": rn, "steps": steps}
+	if rn.WorkflowVersionID != nil {
+		var graph json.RawMessage
+		if err := s.pool.QueryRow(ctx, `select v.graph from workflow_versions v join workflows w on w.id=v.workflow_id where v.id=$1 and w.workspace_id=$2`, rn.WorkflowVersionID, rn.WorkspaceID).Scan(&graph); err != nil {
+			s.fail(w, err)
+			return
+		}
+		spec["graph"] = graph
+	}
 	if rn.ConversationID != nil {
 		rows, err := s.pool.Query(ctx, `select `+msgCols+` from messages where conversation_id=$1 order by seq desc limit 40`, *rn.ConversationID)
 		if err == nil {
@@ -266,7 +274,7 @@ func (s *Server) runtimeSpec(w http.ResponseWriter, r *http.Request) {
 	}
 	if rn.IssueID != nil {
 		var is Issue
-		if err := s.pool.QueryRow(ctx, `select `+issueCols+` from issues i where i.id=$1`, *rn.IssueID).Scan(is.scan()...); err == nil {
+		if err := s.pool.QueryRow(ctx, `select `+issueCols+` from issues i where i.id=$1 and i.workspace_id=$2`, *rn.IssueID, rn.WorkspaceID).Scan(is.scan()...); err == nil {
 			spec["issue"] = is
 		}
 	}
@@ -332,6 +340,7 @@ func (s *Server) runtimeSpec(w http.ResponseWriter, r *http.Request) {
 			FullName       string `json:"full_name"`
 			DefaultBranch  string `json:"default_branch"`
 			InstallationID *int64 `json:"installation_id"`
+			Token          string `json:"token,omitempty"`
 		}
 		repos := []repo{}
 		for rrows.Next() {
@@ -341,6 +350,20 @@ func (s *Server) runtimeSpec(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		rrows.Close()
+		if rn.IssueID != nil && len(repos) > 0 {
+			token, err := s.githubToken(ctx, rn.WorkspaceID)
+			if err != nil {
+				httpx.Error(w, 400, err.Error())
+				return
+			}
+			for i := range repos {
+				if _, err := s.authorizedRepository(ctx, token, repos[i].FullName); err != nil {
+					httpx.Error(w, 400, err.Error())
+					return
+				}
+				repos[i].Token = token
+			}
+		}
 		spec["repositories"] = repos
 	}
 	if rn.AccountID != nil {
