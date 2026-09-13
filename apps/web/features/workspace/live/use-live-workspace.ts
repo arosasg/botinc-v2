@@ -51,7 +51,7 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
      if(active&&chats.conversations.some(c=>c.id===active)){
       const detail=await ws.conversation(active,abort.signal);if(!alive)return;
       const run=detail.runs.at(-1);const phase=phaseFor(run?.status);
-      patch.chats[member]=patch.chats[member].map((c:Vals)=>c.id===active?{...mapConversation(detail.conversation,detail.messages,me,people),phase,runId:run?.id,runError:run?.error||""}:c);
+      patch.chats[member]=patch.chats[member].map((c:Vals)=>c.id===active?{...mapConversation(detail.conversation,detail.messages,me,people),phase,runId:run?.id,runError:run?.error||"",cost:detail.runs.reduce((sum,r)=>sum+r.cost_cents,0)/100,taskLimit:(run?.task_limit_cents||0)/100}:c);
       patch.phase=phase;
       if(run?.error)patch.error=run.error;
      }
@@ -69,7 +69,7 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
      patch.workflows14=workflows.workflows.map(w=>({id:w.id,name:w.name,meta:w.description,icon:"git-branch",state:w.active_version_id?"Active":"Draft",tone:w.active_version_id?"ok14":""}));
      patch.profileByMember15={[member]:{...(logic.state.profileByMember15?.[previous]||{}),name:me.name||member,email:me.email}};
      patch.sec19={...(logic.state.sec19||{}),twoStep:false,sms:false,codes:[],codesLeft:0,codesWhen:"Never",sessions:sessions.sessions.map(d=>({id:d.id,name:d.current?"Current browser":"Browser session",short:"browser",icon:"monitor",meta:d.user_agent,where:d.location||"",ip:d.ip,when:new Date(d.last_seen_at).toLocaleString(),current:d.current})),keys:keys.keys.map(k=>({id:k.id,name:k.name,prefix:k.prefix,scope:k.scopes.includes("write")?"Full access":"Read only",created:new Date(k.created_at).toLocaleDateString(),used:k.last_used_at?new Date(k.last_used_at).toLocaleString():"Never"}))};
-     logic.setState(patch);report("live");
+     logic.setState(patch);if(previous!==member)logic.newChat();report("live");
     }finally{refreshing=false;if(again&&alive){again=false;void hydrate().catch(fail)}}
    };
    restore=installActions(logic,ws,api,me,people,hydrate,fail);
@@ -115,6 +115,10 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
  const render=logic.renderVals;
  bind("renderVals",()=>{
   const v=render.call(logic);const s=logic.state;
+  v.previewCard15=false;
+  const chat=logic.currentChat();
+  v.conversationCost10=logic.cash(chat?.cost||0);v.routeCostShort17=v.conversationCost10;
+  v.routeLimit17=logic.cash(chat?.taskLimit||0);
   for(const key of ["sendMessage","sendComposer10","sendComposer11","sendThreadMessage9"])v[key]=send;
   v.createIssue=write(async()=>{const title=String(s.newIssueTitle||"").trim();if(!title)throw new Error("Give the issue a title");const out=await ws.createIssue({title,description:s.newIssueDescription,priority:String(s.newIssuePriority||"normal").toLowerCase().replace(" priority","")});await hydrate();logic.openIssue(out.issue.identifier);logic.setState({dialog:null})});
   v.pauseChat=write(async()=>{const c=logic.currentChat();if(c?.runId)await ws.cancelRun(c.runId)});
@@ -122,6 +126,16 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
   v.saveSkill=logic.saveSkill;v.saveMemory14=logic.saveMemory14;v.sendInvites14=logic.sendInvites14;
   // No demo recovery codes, invented sessions, or locally generated API keys.
   v.akCreate19=write(async()=>{const out=await api.request<{token:string}>("POST","/api/me/keys",{name:"Workspace key"});logic.setState({sec19:{...s.sec19,newKey:{secret:out.token}}})});
+  v.addNeedsKey=true;v.addTrue=false;v.addKeySample=s.liveAccountSecret||"";
+  v.editLiveAccountSecret=(e:Event)=>logic.setState({liveAccountSecret:(e.target as HTMLInputElement).value});
+  v.addMethods15=(v.addMethods15||[]).filter((m:Vals)=>/api/i.test(m.title));
+  v.addStartLabel="Save account";
+  v.addStart=write(async()=>{
+   if(!["claude","codex","openrouter"].includes(s.addProvider))throw new Error("This provider is not available for remote runs");
+   const secret=String(s.liveAccountSecret||"").trim();if(!secret)throw new Error("Enter the provider API key");
+   await api.request("POST",`/api/w/${ws.slug}/accounts`,{provider:s.addProvider,kind:"api_key",label:s.addLabel||s.addProvider,secret});
+   logic.setState({liveAccountSecret:"",dialog:null});
+  });
   v.devSummary19=`${(s.sec19?.sessions||[]).length} active sessions`;
   v.devRows19=(v.devRows19||[]).map((d:Vals)=>({...d,out:write(async()=>{await api.request("DELETE","/api/me/sessions/"+d.id)})}));
   v.devOutAll19=write(async()=>{for(const d of s.sec19.sessions){if(!d.current)await api.request("DELETE","/api/me/sessions/"+d.id)}});

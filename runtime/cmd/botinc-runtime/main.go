@@ -130,10 +130,10 @@ func runChat(ctx context.Context, c *protocol.Client, spec protocol.Spec, a agen
 	prompt := chatPrompt(spec)
 	out, err := agent.Run(ctx, a, agent.Options{
 		Dir: workdir, Prompt: prompt, Model: spec.Run.Model, Secret: spec.Credential.Secret,
-		Timeout: 20 * time.Minute, Emit: emit,
+		Timeout: 20 * time.Minute, BudgetCents: spec.Run.TaskLimitCents, Emit: emit,
 	})
 	if err != nil {
-		_ = c.Step(ctx, protocol.StepUpdate{Key: key, Status: "stuck"})
+		_ = c.Step(ctx, protocol.StepUpdate{Key: key, Status: "stuck", CostCents: resultCost(out)})
 		return nil, err
 	}
 	if text := resultText(out); text != "" {
@@ -170,14 +170,17 @@ func runBuild(ctx context.Context, c *protocol.Client, spec protocol.Spec, a age
 			_ = c.Step(ctx, protocol.StepUpdate{Key: step.Key, Status: "waiting"})
 			break
 		}
+		if cost >= spec.Run.TaskLimitCents {
+			return partial(checkout, ctx), errors.New("task budget exhausted")
+		}
 		_ = c.Step(ctx, protocol.StepUpdate{Key: step.Key, Status: "running", Model: spec.Run.Model})
 		out, err := agent.Run(ctx, a, agent.Options{
 			Dir: checkout.Dir, Prompt: buildPrompt(spec, step), Model: spec.Run.Model,
-			Secret: spec.Credential.Secret, Timeout: 30 * time.Minute, Emit: emit,
+			Secret: spec.Credential.Secret, Timeout: 30 * time.Minute, BudgetCents: spec.Run.TaskLimitCents - cost, Emit: emit,
 		})
 		cost += resultCost(out)
 		if err != nil {
-			_ = c.Step(ctx, protocol.StepUpdate{Key: step.Key, Status: "stuck"})
+			_ = c.Step(ctx, protocol.StepUpdate{Key: step.Key, Status: "stuck", CostCents: resultCost(out)})
 			return partial(checkout, ctx), err
 		}
 		_ = c.Step(ctx, protocol.StepUpdate{Key: step.Key, Status: "done", CostCents: resultCost(out)})

@@ -90,7 +90,7 @@ func Load() (Config, error) {
 		GitHubAppSlug:       env("GITHUB_APP_SLUG", ""),
 		GitHubWebhookSecret: env("GITHUB_WEBHOOK_SECRET", ""),
 		SandboxProvider:     env("BOTINC_SANDBOX_PROVIDER", "local"),
-		E2BAPIKey:           first("", "E2B_API_KEY", "BOTINC_PLATFORM_SANDBOX_API_KEY", "PLATFORM_SANDBOX_API_KEY"),
+		E2BAPIKey:           first("", "E2B_API_KEY", "PLATFORM_SANDBOX_API_KEY"),
 		E2BTemplate:         first("", "BOTINC_E2B_TEMPLATE", "MULTICA_E2B_TEMPLATE"),
 		RuntimeImage:        env("BOTINC_RUNTIME_IMAGE", "ghcr.io/arosasg/botinc-v2-runtime:latest"),
 		RunTTL:              ttl,

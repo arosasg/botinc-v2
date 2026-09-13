@@ -141,8 +141,8 @@ exit 0
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out["result"] != "hunter2" {
-		t.Fatalf("the credential should arrive in the environment: %+v", out)
+	if out["result"] != "[redacted]" {
+		t.Fatalf("the credential should arrive in the environment and be redacted from output: %+v", out)
 	}
 }
 

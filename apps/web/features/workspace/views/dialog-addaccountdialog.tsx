@@ -121,13 +121,12 @@ export function DialogAddaccountdialog({ v }: { v: Vals }) {
                 <input
                   id="add-key"
                   className="field"
-                  value={v.addKeySample}
+                  type="password" autoComplete="new-password" onChange={v.editLiveAccountSecret} value={v.addKeySample}
                   disabled={v.addTrue}
                   aria-describedby="add-key-note"
                 />
                 <p className="fine" id="add-key-note">
-                  This design preview never asks for a real key. In the product the key is requested here and stored against
-                  the provider&apos;s environment variable, never shown again.
+                  The key is stored encrypted and passed only to your remote runs.
                 </p>
               </>
             ) : null}
@@ -172,8 +171,7 @@ export function DialogAddaccountdialog({ v }: { v: Vals }) {
               </button>
             </div>
             <p className="fine">
-              Simulated authorization with a sample identity. No credential is collected and nothing is sent to the
-              provider.
+              The account is saved to this workspace. Usage is reported by the provider during a run.
             </p>
           </>
         ) : null}
