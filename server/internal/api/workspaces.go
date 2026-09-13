@@ -87,7 +87,7 @@ func (s *Server) createWorkspaceFor(ctx context.Context, userID uuid.UUID, name 
 			_ = tx.Rollback(ctx)
 			return ws, err
 		}
-		if err := seedWorkflows(ctx, tx, ws.ID); err != nil {
+		if err := SeedWorkflows(ctx, tx, ws.ID); err != nil {
 			_ = tx.Rollback(ctx)
 			return ws, err
 		}
@@ -101,7 +101,7 @@ func (s *Server) createWorkspaceFor(ctx context.Context, userID uuid.UUID, name 
 }
 
 // seedWorkflows installs the three built-in workflows every workspace starts with.
-func seedWorkflows(ctx context.Context, tx pgx.Tx, ws uuid.UUID) error {
+func SeedWorkflows(ctx context.Context, tx pgx.Tx, ws uuid.UUID) error {
 	type wf struct {
 		key, name, desc string
 		graph           map[string]any

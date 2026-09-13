@@ -45,7 +45,8 @@ func (s *Server) createCheckout(w http.ResponseWriter, r *http.Request) {
 	}
 	back := strings.TrimRight(s.cfg.FrontendOrigin, "/") + "/w?workspace=" + url.QueryEscape(sc.Slug)
 	form := url.Values{
-		"mode": {"payment"}, "client_reference_id": {id.String()}, "metadata[order_id]": {id.String()},
+		"adaptive_pricing[enabled]": {"false"},
+		"mode":                      {"payment"}, "client_reference_id": {id.String()}, "metadata[order_id]": {id.String()},
 		"line_items[0][price_data][currency]": {"usd"}, "line_items[0][price_data][unit_amount]": {strconv.Itoa(in.Amount)},
 		"line_items[0][price_data][product_data][name]": {"BotInc credits"}, "line_items[0][quantity]": {"1"},
 		"success_url": {back + "&payment=received"}, "cancel_url": {back + "&payment=cancelled"},
