@@ -1,0 +1,4 @@
+/* BotInc webfonts. Instrument Sans for everything a person reads, IBM Plex Mono
+   for every machine value. Loaded from Google Fonts with display=swap; self-hosting
+   lands with the CDN work in the deploy phase. */
+@import url("https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap");

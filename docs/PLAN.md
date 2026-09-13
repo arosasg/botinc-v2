@@ -57,6 +57,13 @@ design-ref        Frozen snapshot of the design sources used for this build (CSS
 | 7 | Runtime | Sandbox provisioning, run claim, repo checkout, coding CLI drive, event streaming, PR open | Integration test against a throwaway repo |
 | 8 | CLI | `botinc login`, `issue`, `chat`, `run`, `workflow`, `autopilot`, `account`, `workspace`, `--json` | CLI tests + smoke against test API |
 | 9 | Deploy | `test.botinc.ai` web + `api.test.botinc.ai` API + Postgres + sandbox provider, env reused from v1 vault | Live URL, health checks |
+
+Phase 9 note: the images are built and verified (`deploy/`), and the API
+refuses to start in production without its secrets or with the local sandbox
+provider. What is outstanding is the hosting itself: the credentials that
+would place this on `test.botinc.ai` live in the v1 repository's vault and
+belong to the account running `botinc.ai` today, so putting v2 there is an
+owner decision, not an implementation step.
 | 10 | E2E | New chat -> run; new issue -> workflow -> PR -> approval; autopilot on schedule; plugin OAuth; remote-only invariants | Playwright suite on the deployed stack |
 
 Phases 1-5 are web work against typed fixtures first (the same shapes the API will return), so the UI can be signed off on pixels before the API lands. Phase 6 replaces fixtures with the client.
