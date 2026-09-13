@@ -895,3 +895,123 @@ func refOf(t *testing.T, accountID uuid.UUID) string {
 	}
 	return ref
 }
+
+// A follower tails a run with ?after=<seq>. Without the cursor every poll
+// would re-send the whole log, so this is load-bearing, not a nicety.
+func TestRunEventsTailFromACursor(t *testing.T) {
+	h := newHarness(t)
+	h.signIn(uniqueEmail(t))
+	h.do("POST", h.w("/issues"), map[string]any{"title": "Tail me"}, 201)
+	var started struct {
+		Run struct {
+			ID uuid.UUID `json:"id"`
+		} `json:"run"`
+	}
+	h.decode(h.do("POST", h.w("/issues/BOT-1/work"), map[string]any{}, 202), &started)
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) && len(h.box.seen()) == 0 {
+		time.Sleep(20 * time.Millisecond)
+	}
+	specs := h.box.seen()
+	if len(specs) == 0 {
+		t.Fatal("no sandbox spec")
+	}
+	token := specs[0].RunToken
+	runPath := "/api/runtime/runs/" + started.Run.ID.String()
+	runtimeCall(h, "POST", runPath+"/claim", token, nil)
+	runtimeCall(h, "POST", runPath+"/events", token, map[string]any{"events": []map[string]any{
+		{"seq": 1, "type": "log", "payload": map[string]any{"line": "one"}},
+		{"seq": 2, "type": "log", "payload": map[string]any{"line": "two"}},
+		{"seq": 3, "type": "log", "payload": map[string]any{"line": "three"}},
+	}})
+
+	type evs struct {
+		Events []struct {
+			Seq  int    `json:"seq"`
+			Type string `json:"type"`
+		} `json:"events"`
+		Next int `json:"next"`
+	}
+	var all evs
+	h.decode(h.do("GET", h.w("/runs/"+started.Run.ID.String()+"/events"), nil, 200), &all)
+	if len(all.Events) != 3 || all.Next != 3 {
+		t.Fatalf("want all three events and a cursor of 3: %+v", all)
+	}
+	var tail evs
+	h.decode(h.do("GET", h.w("/runs/"+started.Run.ID.String()+"/events?after=2"), nil, 200), &tail)
+	if len(tail.Events) != 1 || tail.Events[0].Seq != 3 {
+		t.Fatalf("after=2 should return only event 3: %+v", tail.Events)
+	}
+	// A cursor past the end is empty and keeps its position rather than rewinding.
+	var none evs
+	h.decode(h.do("GET", h.w("/runs/"+started.Run.ID.String()+"/events?after=9"), nil, 200), &none)
+	if len(none.Events) != 0 || none.Next != 9 {
+		t.Fatalf("a cursor past the end returns nothing and holds: %+v", none)
+	}
+}
+
+// A workspace whose only account is an API key must route to that key. It
+// used to fall through to credits, so a paid key sat unused and any run
+// without an OpenRouter key on the server failed for want of a credential.
+func TestRoutingUsesAnAPIKeyWhenThatIsAllThereIs(t *testing.T) {
+	h := newHarness(t)
+	h.signIn(uniqueEmail(t))
+	var added struct {
+		Account Account `json:"account"`
+	}
+	h.decode(h.do("POST", h.w("/accounts"), map[string]any{"provider": "claude", "kind": "api_key", "secret": "k"}, 201), &added)
+
+	h.do("POST", h.w("/conversations"), map[string]any{"message": "Route me to the key."}, 201)
+	var accountID *uuid.UUID
+	var funding string
+	if err := testPool.QueryRow(t.Context(), `select account_id, funding from runs order by queued_at desc limit 1`).Scan(&accountID, &funding); err != nil {
+		t.Fatal(err)
+	}
+	if accountID == nil || *accountID != added.Account.ID {
+		t.Fatalf("the only connected account should be used, got %v", accountID)
+	}
+	if funding != "api_key" {
+		t.Fatalf("funding should be the key, got %q", funding)
+	}
+}
+
+// The runtime spec must carry the credential, or the run cannot do anything.
+func TestRuntimeSpecCarriesTheCredential(t *testing.T) {
+	h := newHarness(t)
+	h.signIn(uniqueEmail(t))
+	h.do("POST", h.w("/accounts"), map[string]any{"provider": "claude", "kind": "api_key", "secret": "sk-the-key"}, 201)
+	var conv struct {
+		Run struct {
+			ID uuid.UUID `json:"id"`
+		} `json:"run"`
+	}
+	h.decode(h.do("POST", h.w("/conversations"), map[string]any{"message": "Need a credential."}, 201), &conv)
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) && len(h.box.seen()) == 0 {
+		time.Sleep(20 * time.Millisecond)
+	}
+	specs := h.box.seen()
+	if len(specs) == 0 {
+		t.Fatal("the run was never dispatched")
+	}
+	token := specs[0].RunToken
+	runPath := "/api/runtime/runs/" + conv.Run.ID.String()
+	runtimeCall(h, "POST", runPath+"/claim", token, nil)
+	rec := runtimeCall(h, "GET", runPath+"/spec", token, nil)
+	var spec struct {
+		Credential *struct {
+			Provider string `json:"provider"`
+			Kind     string `json:"kind"`
+			Secret   string `json:"secret"`
+		} `json:"credential"`
+	}
+	h.decode(rec, &spec)
+	if spec.Credential == nil {
+		t.Fatal("the runtime spec must carry a credential when an account is connected")
+	}
+	if spec.Credential.Secret != "sk-the-key" || spec.Credential.Provider != "claude" {
+		t.Fatalf("the credential did not round-trip: %+v", spec.Credential)
+	}
+}

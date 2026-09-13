@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -139,7 +140,14 @@ func (s *Server) runEvents(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, 404, "run not found")
 		return
 	}
-	rows, err := s.pool.Query(r.Context(), `select seq, type, payload, created_at from run_events where run_id=$1 order by seq`, rn.ID)
+	// ?after=<seq> is how a follower tails a run: without it every poll would
+	// re-send the whole log and grow with the run.
+	after, _ := strconv.Atoi(r.URL.Query().Get("after"))
+	limit := 500
+	if n, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && n > 0 && n <= 2000 {
+		limit = n
+	}
+	rows, err := s.pool.Query(r.Context(), `select seq, type, payload, created_at from run_events where run_id=$1 and seq > $2 order by seq limit $3`, rn.ID, after, limit)
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -160,7 +168,11 @@ func (s *Server) runEvents(w http.ResponseWriter, r *http.Request) {
 		}
 		out = append(out, e)
 	}
-	httpx.JSON(w, 200, map[string]any{"events": out})
+	next := after
+	if len(out) > 0 {
+		next = out[len(out)-1].Seq
+	}
+	httpx.JSON(w, 200, map[string]any{"events": out, "next": next})
 }
 
 func (s *Server) cancelRun(w http.ResponseWriter, r *http.Request) {

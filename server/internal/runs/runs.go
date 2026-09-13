@@ -142,9 +142,13 @@ func (s *Service) route(ctx context.Context, ws uuid.UUID, model string) (*uuid.
 		return nil, "", err
 	}
 	defer rows.Close()
+	// Preference is ordered on two keys: a subscription is always chosen over
+	// a key, and within a tier the account with the most capacity left wins.
+	// Comparing on one blended number is how a lone API-key account used to
+	// score below the starting sentinel and be skipped entirely.
 	var best *uuid.UUID
-	bestLeft := -1.0
-	bestKind := ""
+	var bestKind string
+	bestTier, bestLeft := -1, -1.0
 	for rows.Next() {
 		var id uuid.UUID
 		var kind string
@@ -152,13 +156,14 @@ func (s *Service) route(ctx context.Context, ws uuid.UUID, model string) (*uuid.
 		if err := rows.Scan(&id, &kind, &quota); err != nil {
 			return nil, "", err
 		}
-		left := capacityLeft(quota)
-		if kind != "subscription" {
-			left = left - 1000 // subscriptions first
+		tier := 0
+		if kind == "subscription" {
+			tier = 1
 		}
-		if left > bestLeft {
+		left := capacityLeft(quota)
+		if tier > bestTier || (tier == bestTier && left > bestLeft) {
 			id := id
-			best, bestLeft, bestKind = &id, left, kind
+			best, bestTier, bestLeft, bestKind = &id, tier, left, kind
 		}
 	}
 	if best == nil {
