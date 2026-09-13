@@ -1,0 +1,15 @@
+{
+  "name": "@botinc/brand",
+  "version": "0.1.0",
+  "private": true,
+  "description": "BotInc visual language: fonts, the design CSS chain, tokens.",
+  "exports": {
+    "./styles/fonts.css": "./styles/fonts.css",
+    "./styles/workspace.css": "./styles/workspace.css",
+    "./styles/landing.css": "./styles/landing.css",
+    "./styles/overrides.css": "./styles/overrides.css"
+  },
+  "files": [
+    "styles"
+  ]
+}

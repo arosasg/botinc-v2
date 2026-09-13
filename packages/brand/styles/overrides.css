@@ -1,0 +1,16 @@
+/* Deliberate deviations from the verbatim design CSS. Keep this file short and
+   every rule justified.
+
+   1. The design pulled two marks (Grafana, New Relic) from cdn.simpleicons.org
+      and styled them by URL. v2 vendors them under /assets/connectors/si/ so
+      the page has no third-party runtime dependency; the same tile treatment
+      applies to that path. */
+.l4 img[src*="/connectors/si/"]{padding:3px;background:#fff;border:1px solid var(--line);object-fit:contain}
+.l4shell img[src*="/connectors/si/"]{padding:2px;background:#fff;border:1px solid var(--line);object-fit:contain}
+
+/* 2. The hero dot field bleeds 40px past the hero on both sides (inset -40px)
+      so the dots run under the gutter. At phone widths that bleed left a 40px
+      horizontal scroll on the whole page. Clipping the root's horizontal
+      overflow keeps the bleed under the gutter and removes the scroll; nothing
+      in the design relies on painting outside the page. */
+.l4{overflow-x:clip}
