@@ -67,16 +67,16 @@ func (s *Server) loadSteps(ctx context.Context, runID uuid.UUID) ([]StepRow, err
 
 func (s *Server) listRuns(w http.ResponseWriter, r *http.Request) {
 	sc := scopeOf(r.Context())
-	q := `select ` + runColsPrefixed("") + ` from runs where workspace_id=$1`
-	args := []any{sc.WorkspaceID}
+	q := `select ` + runColsPrefixed("r") + ` from runs r where workspace_id=$1 and (conversation_id is null or exists(select 1 from conversations c where c.id=r.conversation_id and (c.user_id=$2 or c.shared)))`
+	args := []any{sc.WorkspaceID, sc.UserID}
 	if v := r.URL.Query().Get("issue"); v != "" {
 		if id, err := uuid.Parse(v); err == nil {
-			q += ` and issue_id=$2`
+			q += ` and issue_id=$3`
 			args = append(args, id)
 		}
 	} else if v := r.URL.Query().Get("conversation"); v != "" {
 		if id, err := uuid.Parse(v); err == nil {
-			q += ` and conversation_id=$2`
+			q += ` and conversation_id=$3`
 			args = append(args, id)
 		}
 	}
@@ -108,6 +108,13 @@ func (s *Server) loadRun(r *http.Request) (runs.Run, bool, error) {
 	rn, err := s.runs.Get(r.Context(), id)
 	if errors.Is(err, pgx.ErrNoRows) || (err == nil && rn.WorkspaceID != sc.WorkspaceID) {
 		return runs.Run{}, false, nil
+	}
+	if err == nil && rn.ConversationID != nil {
+		var allowed bool
+		err = s.pool.QueryRow(r.Context(), `select exists(select 1 from conversations where id=$1 and workspace_id=$2 and (user_id=$3 or shared))`, rn.ConversationID, sc.WorkspaceID, sc.UserID).Scan(&allowed)
+		if err != nil || !allowed {
+			return runs.Run{}, false, err
+		}
 	}
 	return rn, err == nil, err
 }

@@ -38,8 +38,10 @@ func New(log *slog.Logger, allowedOrigin string) *Hub {
 	return &Hub{clients: map[*client]struct{}{}, log: log, origin: allowedOrigin}
 }
 
-func (h *Hub) Publish(ws uuid.UUID, typ string, payload any) {
-	ev := Event{Type: typ, WorkspaceID: ws, Payload: payload, At: time.Now()}
+// Workspace broadcasts are invalidations only. Private conversations and run
+// logs are fetched through their access-checked endpoints, never broadcast.
+func (h *Hub) Publish(ws uuid.UUID, typ string, _ any) {
+	ev := Event{Type: typ, WorkspaceID: ws, Payload: nil, At: time.Now()}
 	b, err := json.Marshal(ev)
 	if err != nil {
 		return
@@ -90,12 +92,13 @@ func (h *Hub) Serve(ctx context.Context, w http.ResponseWriter, r *http.Request,
 	hello, _ := json.Marshal(Event{Type: "hello", WorkspaceID: ws, At: time.Now()})
 	_ = conn.WriteMessage(websocket.TextMessage, hello)
 
+	done := make(chan struct{})
 	go func() {
 		// Drain reads so pings/pongs and close frames are processed.
 		conn.SetReadLimit(4096)
 		for {
 			if _, _, err := conn.ReadMessage(); err != nil {
-				close(c.send)
+				close(done)
 				return
 			}
 		}
@@ -105,6 +108,8 @@ func (h *Hub) Serve(ctx context.Context, w http.ResponseWriter, r *http.Request,
 	for {
 		select {
 		case <-ctx.Done():
+			return
+		case <-done:
 			return
 		case msg, ok := <-c.send:
 			if !ok {

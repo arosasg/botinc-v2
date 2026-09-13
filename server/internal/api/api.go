@@ -148,6 +148,14 @@ func (s *Server) Router() http.Handler {
 		r.Post("/plugins", s.connectPlugin)
 		r.Delete("/plugins/{id}", s.disconnectPlugin)
 
+		r.Get("/skills", s.listSkills)
+		r.Post("/skills", s.saveSkill)
+		r.Patch("/skills/{id}", s.saveSkill)
+		r.Delete("/skills/{id}", s.deleteSkill)
+		r.Get("/memories", s.listMemories)
+		r.Post("/memories", s.saveMemory)
+		r.Patch("/memories/{id}", s.saveMemory)
+		r.Delete("/memories/{id}", s.deleteMemory)
 		r.Get("/credits", s.credits)
 		r.Get("/usage", s.usage)
 	})
@@ -213,6 +221,10 @@ func (s *Server) workspaceScope(next http.Handler) http.Handler {
 		}
 		if err != nil {
 			s.fail(w, err)
+			return
+		}
+		if p.KeyWorkspaceID != nil && *p.KeyWorkspaceID != sc.WorkspaceID {
+			httpx.Error(w, 403, "API key is scoped to another workspace")
 			return
 		}
 		sc.UserID = p.User.ID

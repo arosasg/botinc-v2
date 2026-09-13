@@ -9,6 +9,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
@@ -38,9 +39,11 @@ type User struct {
 }
 
 type Principal struct {
-	User      User
-	SessionID uuid.UUID // zero for API-key callers
-	APIKeyID  uuid.UUID // zero for session callers
+	User           User
+	SessionID      uuid.UUID // zero for API-key callers
+	APIKeyID       uuid.UUID // zero for session callers
+	KeyWorkspaceID *uuid.UUID
+	KeyScopes      []string
 }
 
 type Service struct {
@@ -208,12 +211,16 @@ func (s *Service) Resolve(ctx context.Context, r *http.Request) (*Principal, err
 	}
 	if strings.HasPrefix(token, "bik_") {
 		var p Principal
-		err := s.pool.QueryRow(ctx, `select k.id, u.id, u.email, u.name, u.avatar_url, u.created_at from api_keys k join users u on u.id=k.user_id where k.token_hash=$1 and k.revoked_at is null`, hash(token)).
-			Scan(&p.APIKeyID, &p.User.ID, &p.User.Email, &p.User.Name, &p.User.AvatarURL, &p.User.CreatedAt)
+		var scopes []byte
+		err := s.pool.QueryRow(ctx, `select k.id, u.id, u.email, u.name, u.avatar_url, u.created_at, k.workspace_id, k.scopes from api_keys k join users u on u.id=k.user_id where k.token_hash=$1 and k.revoked_at is null`, hash(token)).
+			Scan(&p.APIKeyID, &p.User.ID, &p.User.Email, &p.User.Name, &p.User.AvatarURL, &p.User.CreatedAt, &p.KeyWorkspaceID, &scopes)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, errors.New("invalid API key")
 		}
 		if err != nil {
+			return nil, err
+		}
+		if err = json.Unmarshal(scopes, &p.KeyScopes); err != nil {
 			return nil, err
 		}
 		_, _ = s.pool.Exec(ctx, `update api_keys set last_used_at=now() where id=$1`, p.APIKeyID)
@@ -323,6 +330,20 @@ func (s *Service) Middleware(next http.Handler) http.Handler {
 			return
 		}
 		if p != nil {
+			if p.APIKeyID != uuid.Nil {
+				write := r.Method != "GET" && r.Method != "HEAD" && r.Method != "OPTIONS"
+				allowed := false
+				for _, scope := range p.KeyScopes {
+					if scope == "write" || (!write && scope == "read") {
+						allowed = true
+					}
+				}
+				// A workspace key cannot manage the account or mint broader credentials.
+				if !allowed || (p.KeyWorkspaceID != nil && !strings.HasPrefix(r.URL.Path, "/api/w/")) || strings.HasPrefix(r.URL.Path, "/api/me/keys") || strings.HasPrefix(r.URL.Path, "/api/auth/device/approve") {
+					http.Error(w, `{"error":"API key scope does not permit this operation"}`, 403)
+					return
+				}
+			}
 			r = r.WithContext(WithPrincipal(r.Context(), p))
 		}
 		next.ServeHTTP(w, r)

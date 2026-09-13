@@ -1,219 +1,130 @@
 "use client";
 
-/* Hydrates the design's logic from the API and sends its actions back.
- *
- * The design owns presentation: grouping, labels, ordering, every pixel. This
- * layer only swaps the fixture rows for real ones and routes the handlers that
- * change something to the server. When NEXT_PUBLIC_BOTINC_API_URL is unset the
- * hook does nothing at all, so the fixtures still drive the screens and the
- * pixel proof stays reproducible. */
-
+// The design is a presentation adapter. All durable state and writes come
+// from the API; fixtures remain available only when no API is configured.
 import { useEffect, useRef } from "react";
-import { Client, type Conversation, type Issue, type User, type WSEvent, type WorkspaceClient } from "@botinc/api";
-import type { DCLogic } from "@/lib/dc/logic";
+import { Client, type User, type WorkspaceClient, type WorkflowGraph } from "@botinc/api";
+import type { Vals } from "../vals";
 import { mapAccount, mapAutopilot, mapConversation, mapIssue, mapRun, type PeopleIndex } from "./map";
 
 export type LiveStatus = "off" | "connecting" | "live" | "signed-out" | "error";
-
-type Logic = DCLogic<Record<string, unknown>> & {
-  state: Record<string, unknown>;
-  setState: (patch: Record<string, unknown>) => void;
-  toast?: (text: string) => void;
-};
-
-declare global {
-  interface Window { __BOTINC__?: { apiURL?: string } }
-}
-
-/* Workspace state that is indexed by the member's name. */
-const MEMBER_KEYED = [
-  "connections", "agentPrefs", "funding", "memoryByMember", "skillGrants",
-  "modelAccounts", "preferencesBy10", "fallbackPolicies10",
-] as const;
-
-export function apiBaseURL(): string {
-  if (typeof window === "undefined") return "";
-  return (window.__BOTINC__?.apiURL ?? "").trim();
-}
+export type Logic = Vals & { state: Vals; setState: (patch: Vals) => void; renderVals: () => Vals };
+declare global { interface Window { __BOTINC__?: { apiURL?: string } } }
+export function apiBaseURL(): string { return typeof window === "undefined" ? "" : (window.__BOTINC__?.apiURL ?? "").trim(); }
+const titleCase = (s: string) => s ? s[0]!.toUpperCase() + s.slice(1) : "";
+const uuid = (s: unknown): s is string => typeof s === "string" && /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(s);
+const phaseFor = (s?: string) => s && ["queued", "provisioning", "running"].includes(s) ? "working" : s === "waiting" ? "paused" : "done";
 
 export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus, detail?: string) => void) {
-  /* Keep the callback in a ref: a caller that passes an inline function must
-     not tear down the socket on every render. */
-  const statusRef = useRef(onStatus);
-  statusRef.current = onStatus;
-
-  useEffect(() => {
-    const baseURL = apiBaseURL();
-    if (!logic || !baseURL) {
-      statusRef.current?.("off");
-      return;
-    }
-    let alive = true;
-    const abort = new AbortController();
-    const report = (s: LiveStatus, detail?: string) => { if (alive) statusRef.current?.(s, detail); };
-    report("connecting");
-
-    const api = new Client({ baseURL, onUnauthenticated: () => report("signed-out") });
-    let disconnect: (() => void) | undefined;
-
-    (async () => {
-      let me: User | null = null;
-      let ws: WorkspaceClient;
-      try {
-        me = (await api.me(abort.signal)).user;
-        const { workspaces } = await api.workspaces(abort.signal);
-        const first = workspaces[0];
-        if (!first) {
-          report("error", "this account has no workspace");
-          return;
-        }
-        ws = api.workspace(first.slug);
-      } catch (err) {
-        if (!alive) return;
-        report(err instanceof Error && "status" in err && (err as { status: number }).status === 401 ? "signed-out" : "error", String(err));
-        return;
-      }
-
-      const people: PeopleIndex = new Map();
-      if (me) people.set(me.id, { name: me.name, email: me.email });
-
-      const hydrate = async () => {
-        if (!alive) return;
-        const [issues, conversations, autopilots, accounts, overview] = await Promise.allSettled([
-          ws.issues(undefined, abort.signal),
-          ws.conversations(abort.signal),
-          ws.autopilots(abort.signal),
-          ws.accounts(abort.signal),
-          ws.overview(abort.signal),
-        ]);
-        if (!alive) return;
-        const patch: Record<string, unknown> = {};
-        if (issues.status === "fulfilled") {
-          patch["issues"] = issues.value.issues.map((i: Issue) => mapIssue(i, people));
-        }
-        /* The signed-in person replaces the design's sample persona. The
-           workspace derives roughly forty strings from `member`, so setting it
-           here is what stops a real workspace introducing itself as someone
-           else. */
-        const previous = String(logic.state["member"] ?? "");
-        const member = me ? (me.name.trim() || me.email.split("@")[0] || "You") : previous;
-        if (me && member !== previous) {
-          patch["member"] = member;
-          /* `member` is also the key into nine per-member maps. Renaming it
-             without moving them leaves every one of those lookups undefined,
-             and the first render throws. Anything with no API behind it keeps
-             the design's default under the new key rather than disappearing. */
-          for (const key of MEMBER_KEYED) {
-            const map = logic.state[key] as Record<string, unknown> | undefined;
-            if (!map || typeof map !== "object") continue;
-            const moved: Record<string, unknown> = {};
-            moved[member] = map[previous];
-            patch[key] = moved;
-          }
-        }
-
-        if (conversations.status === "fulfilled") {
-          /* The design indexes chats by state.member and calls .find on the
-             result, so the key has to be the member the logic is on. Keying by
-             anything else left chats[member] undefined and threw on the first
-             render. */
-          const rows = conversations.value.conversations.map((c: Conversation) => mapConversation(c, [], me, people));
-          patch["chats"] = { [member]: rows };
-        }
-        if (autopilots.status === "fulfilled") {
-          patch["autopilots9"] = autopilots.value.autopilots.map(mapAutopilot);
-        }
-        if (accounts.status === "fulfilled") {
-          const rows = accounts.value.accounts.map(mapAccount);
-          patch["accounts10"] = rows;
-          /* The provider chips in the rail read modelAccounts[member]. Leaving
-             the design's twenty samples there next to one real account is the
-             kind of plausible-but-wrong surface that is worse than an empty
-             one. */
-          patch["modelAccounts"] = { [member]: rows };
-        }
-        if (overview.status === "fulfilled") {
-          const ws0 = overview.value.workspace;
-          if (ws0?.plan) patch["plan"] = ws0.plan.charAt(0).toUpperCase() + ws0.plan.slice(1);
-          /* The footer reads monthly + purchased. The split is a fixture
-             concept; the ledger has one balance, so it goes in one bucket
-             rather than being apportioned into a shape the server never
-             reported. */
-          patch["monthly"] = 0;
-          patch["purchased"] = overview.value.credit_cents / 100;
-          patch["runningRuns"] = overview.value.running_runs;
-        }
-        if (Object.keys(patch).length) logic.setState(patch);
-        report("live");
-      };
-
-      await hydrate();
-      if (!alive) return;
-
-      /* Writes go to the server; the socket brings back what changed, so the
-         screen never shows an optimistic row the server did not accept. */
-      installActions(logic, ws, report);
-
-      disconnect = ws.connect(
-        (event: WSEvent) => { void onEvent(event, hydrate); },
-        (up: boolean) => report(up ? "live" : "connecting"),
-      );
-    })();
-
-    return () => {
-      alive = false;
-      abort.abort();
-      disconnect?.();
-    };
-  }, [logic]);
+ const statusRef = useRef(onStatus);
+ useEffect(()=>{statusRef.current=onStatus},[onStatus]);
+ useEffect(() => {
+  const baseURL=apiBaseURL(); if(!logic||!baseURL){statusRef.current?.("off");return;}
+  let alive=true; const abort=new AbortController(); let disconnect:(()=>void)|undefined; let restore:(()=>void)|undefined; let timer:ReturnType<typeof setTimeout>|undefined;
+  const report=(s:LiveStatus,detail?:string)=>{if(alive)statusRef.current?.(s,detail)};
+  report("connecting");
+  const fail=(err:unknown)=>{if(!alive)return;const text=err instanceof Error?err.message:String(err);logic.setState({error:text});report("error",text)};
+  const api=new Client({baseURL,onUnauthenticated:()=>report("signed-out")});
+  void (async()=>{
+   const me=(await api.me(abort.signal)).user;
+   const {workspaces}=await api.workspaces(abort.signal);const first=workspaces[0];if(!first)throw new Error("This account has no workspace");
+   const ws=api.workspace(first.slug);const people:PeopleIndex=new Map();const member=me.name.trim()||me.email.split("@")[0]||"You";
+   let refreshing=false,again=false;
+   const hydrate=async()=>{
+    if(!alive)return;if(refreshing){again=true;return;}refreshing=true;
+    try{
+     const [issues,chats,autos,accounts,overview,members,skills,memories,credits,plugins,repos,projects,workflows,invites]=await Promise.all([
+      ws.issues(undefined,abort.signal),ws.conversations(abort.signal),ws.autopilots(abort.signal),ws.accounts(abort.signal),ws.overview(abort.signal),ws.members(abort.signal),ws.skills(abort.signal),ws.memories(abort.signal),ws.credits(abort.signal),ws.plugins(abort.signal),ws.repositories(abort.signal),ws.projects(abort.signal),ws.workflows(abort.signal),ws.invitations(abort.signal),
+     ]);
+     if(!alive)return;
+     for(const p of members.members)people.set(p.user_id,{name:p.name,email:p.email});
+     const previous=String(logic.state.member??"");const patch:Vals={};
+     // Empty defaults replace every persona-keyed fixture before changing the key.
+     for(const k of ["connections","agentPrefs","funding","memoryByMember","skillGrants","modelAccounts","preferencesBy10","fallbackPolicies10"]){patch[k]={[member]:{}};}
+     patch.member=member;patch.signed=true;patch.workspaceName=overview.workspace.name;
+     patch.issues=issues.issues.map(i=>mapIssue(i,people));
+     const oldChats=logic.state.chats?.[previous]||[];
+     patch.chats={[member]:chats.conversations.map(c=>{
+      const old=oldChats.find((x:Vals)=>x.id===c.id);return {...mapConversation(c,[],me,people),messages:old?.messages||[],phase:old?.phase||"done"};
+     })};
+     const active=String(logic.state.activeChat||"");
+     if(active&&chats.conversations.some(c=>c.id===active)){
+      const detail=await ws.conversation(active,abort.signal);if(!alive)return;
+      const run=detail.runs.at(-1);const phase=phaseFor(run?.status);
+      patch.chats[member]=patch.chats[member].map((c:Vals)=>c.id===active?{...mapConversation(detail.conversation,detail.messages,me,people),phase,runId:run?.id,runError:run?.error||""}:c);
+      patch.phase=phase;
+      if(run?.error)patch.error=run.error;
+     }
+     patch.autopilots9=autos.autopilots.map(a=>({...mapAutopilot(a),owner:member,kind:a.trigger.kind,status:a.enabled?"active":"paused",history:[],limit:2,daily:20}));
+     patch.accounts10=accounts.accounts.map(mapAccount);patch.modelAccounts={[member]:patch.accounts10};
+     patch.connections={[member]:Object.fromEntries(plugins.plugins.map(p=>[p.kind,p.status==="connected"]))};
+     patch.plan=titleCase(overview.workspace.plan);patch.monthly=0;patch.purchased=credits.balance_cents/100;patch.runningRuns=overview.running_runs;
+     patch.ledger=credits.entries.map((e,i)=>({id:String(i),kind:e.kind,label:e.note,title:e.note,amount:e.amount_cents/100,date:e.created_at,when:e.created_at}));
+     patch.members14=members.members.map(p=>({id:p.user_id,name:p.name||p.email.split("@")[0],email:p.email,role:titleCase(p.role),meta:"Joined "+new Date(p.joined_at).toLocaleDateString(),scope:"",locked:p.role==="owner"}));
+     patch.invites14=invites.invitations.map(i=>({id:i.id,email:i.email,role:titleCase(i.role),state:"Pending",scope:"",meta:"Expires "+new Date(i.expires_at).toLocaleDateString()}));
+     patch.skills=skills.skills.map(k=>({...k,description:k.body.split("\n").find(t=>t&&!t.startsWith("#"))||"Workspace instructions",source:"Workspace",owner:"workspace",version:"Saved",files:["SKILL.md"]}));
+     patch.memories14=memories.memories.map(m=>({id:m.id,scope:m.scope,owner:people.get(m.user_id)?.name||people.get(m.user_id)?.email.split("@")[0],project:projects.projects.find(p=>p.id===m.project_id)?.name,type:"Fact",text:m.body,pinned:m.pinned,provenance:"Saved by a workspace member",updated:new Date(m.updated_at).toLocaleString(),lastUsed:"",source:"",why:"Explicitly saved instructions"}));
+     patch.suggested14=[];patch.repos14=repos.repositories.map(r=>({id:r.id,name:r.full_name,full:r.full_name,branch:r.default_branch,status:"Connected",provider:"GitHub"}));
+     patch.liveProjects=projects.projects;
+     patch.workflows14=workflows.workflows.map(w=>({id:w.id,name:w.name,meta:w.description,icon:"git-branch",state:w.active_version_id?"Active":"Draft",tone:w.active_version_id?"ok14":""}));
+     patch.profileByMember15={[member]:{...(logic.state.profileByMember15?.[previous]||{}),name:me.name||member,email:me.email}};
+     patch.sec19={...(logic.state.sec19||{}),twoStep:false,sms:false,codes:[],codesLeft:0,codesWhen:"Never",sessions:[],keys:[]};
+     logic.setState(patch);report("live");
+    }finally{refreshing=false;if(again&&alive){again=false;void hydrate().catch(fail)}}
+   };
+   restore=installActions(logic,ws,api,me,people,hydrate,fail);
+   await hydrate();if(!alive)return;
+   disconnect=ws.connect(e=>{if(e.type==="hello")return;if(timer)clearTimeout(timer);timer=setTimeout(()=>{void hydrate().catch(fail)},100)},up=>{if(up)void hydrate().catch(fail)});
+  })().catch(err=>{if(err?.status===401)report("signed-out");else fail(err)});
+  return()=>{alive=false;abort.abort();if(timer)clearTimeout(timer);disconnect?.();restore?.()};
+ },[logic]);
 }
 
-/* A change anywhere re-reads the lists it could have touched. Refetching is
-   the honest option: a hand-patched local row can drift from the server and
-   nobody notices until the numbers disagree. */
-let pending: ReturnType<typeof setTimeout> | undefined;
-async function onEvent(event: WSEvent, hydrate: () => Promise<void>) {
-  if (event.type === "hello") return;
-  if (pending) clearTimeout(pending);
-  pending = setTimeout(() => { void hydrate(); }, 150);
+// Kept outside React so adapter behavior can be tested against real API calls.
+export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User,people:PeopleIndex,hydrate:()=>Promise<void>,fail:(err:unknown)=>void){
+ const originals=new Map<string,unknown>();let disposed=false;
+ const bind=(name:string,fn:unknown)=>{if(!originals.has(name))originals.set(name,logic[name]);logic[name]=fn};
+ const write=(fn:()=>Promise<void>)=>async()=>{if(disposed)return;try{await fn();if(!disposed)await hydrate()}catch(err){if(!disposed)fail(err)}};
+ let sending=false;
+ const send=async(e?:{preventDefault:()=>void})=>{
+  e?.preventDefault();if(sending||disposed)return;const draft=String(logic.state.draft||"").trim();if(!draft)return;sending=true;
+  try{
+   const active=logic.state.activeChat;
+   if(uuid(active)){await ws.sendMessage(active,draft)}else{const out=await ws.createConversation({message:draft});if(disposed)return;logic.setState({activeChat:out.conversation.id,view:"chat"})}
+   if(!disposed){logic.setState({draft:""});await hydrate()}
+  }catch(err){if(!disposed)fail(err)}finally{sending=false}
+ };
+ bind("send",send);
+ // The prototype has several generations of composer handlers. All route here.
+ for(const name of ["sendComposer10","sendComposer11","sendThreadMessage9"])bind(name,send);
+ bind("finishChat",()=>{});bind("skillFixture16",()=>[]);
+ const repo=logic.repo14;
+ bind("repo14",()=>repo.call(logic)||{id:"",name:"No repository connected",connected:false,meta:"Add a repository to start coding work",branch:"",state:"Not connected",tone:""});
+ const openChat=async(id:string)=>{logic.setState({activeChat:id,view:"chat",dialog:null,draft:""});try{await hydrate()}catch(e){fail(e)}};
+ for(const name of ["loadChat","loadChat9","loadChat10"])bind(name,openChat);
+ const start=write(async()=>{const i=logic.issue();await ws.work(i.uuid||i.id)});bind("startIssue",start);bind("beginRun",start);
+ bind("saveSkill",write(async()=>{const s=logic.state;const out=await ws.saveSkill({name:s.skillNameInput,body:s.skillBodyInput},uuid(s.editingSkill)?s.editingSkill:undefined);await hydrate();logic.openSkill(out.skill.id)}));
+ bind("saveMemory14",write(async()=>{const s=logic.state;const project=s.liveProjects.find((p:Vals)=>p.name===s.memoryProject14);await ws.saveMemory({body:s.memoryDraft14,...(s.memoryEdit14==="__new"?{scope:s.memoryScope14||"personal",...(s.memoryScope14==="project"?{project_id:project?.id}:{} )}:{})},uuid(s.memoryEdit14)?s.memoryEdit14:undefined);logic.setState({memoryEdit14:null,memoryDraft14:""})}));
+ bind("forgetMemory14",(id:string)=>write(async()=>{await ws.deleteMemory(id)})());
+ bind("pinMemory14",(id:string)=>write(async()=>{const m=logic.state.memories14.find((m:Vals)=>m.id===id);await ws.saveMemory({pinned:!m?.pinned},id)})());
+ bind("revokeInvite14",(id:string)=>write(async()=>{await ws.revokeInvitation(id)})());
+ bind("setMemberRole14",(id:string,role:string)=>write(async()=>{await ws.setMemberRole(id,role.toLowerCase())})());
+ bind("sendInvites14",write(async()=>{const s=logic.state;const emails=String(s.inviteEmails14||"").split(/[\s,;]+/).filter(Boolean);if(!emails.length)throw new Error("Add an email address");const links=[];for(const email of emails){const invite=await ws.invite(email,String(s.inviteRole14||"member").toLowerCase());links.push(invite.link)}logic.generic("Invitation links","Share each link with the invited person",[],{genericText:links.join("\n")});logic.setState({inviteEmails14:""})}));
+ bind("openGraph14",(id:string)=>write(async()=>{const out=await ws.workflow(id);const v=out.versions.find(v=>v.id===out.workflow.active_version_id)||out.versions[0];if(!v)throw new Error("This workflow has no version");const graph={id:out.workflow.id,name:out.workflow.name,version:v.version,nodes:v.graph.nodes.map((n,i)=>({id:n.key,type:n.kind,label:n.name,model:n.model||"Auto",prompt:n.prompt||"",x:n.x??i*220,y:n.y??120})),edges:v.graph.edges.map((e,i)=>({id:"e"+i,from:e[0],to:e[1],label:""}))};logic.setState({graph14:graph,graphSaved14:structuredClone(graph),graphVersions14:out.versions.map(v=>({id:v.id,name:"Version "+v.version,meta:v.created_at,state:titleCase(v.status)})),graphId14:id,overlay14:"graph",graphSide14:"node",graphSel14:graph.nodes[0]?.id})})());
+ bind("saveGraph14",write(async()=>{const g=logic.state.graph14;const graph:WorkflowGraph={nodes:g.nodes.map((n:Vals)=>({key:n.id,name:n.label,kind:n.type,model:n.model==="Auto"?"auto":n.model,prompt:n.prompt||"",x:n.x,y:n.y})),edges:g.edges.map((e:Vals)=>[e.from,e.to])};const out=uuid(g.id)?await ws.saveWorkflow(g.id,graph):await ws.createWorkflow({name:g.name,graph});const id="workflow" in out?out.workflow.id:g.id;await logic.openGraph14(id)}));
+ const render=logic.renderVals;
+ bind("renderVals",()=>{
+  const v=render.call(logic);const s=logic.state;
+  for(const key of ["sendMessage","sendComposer10","sendComposer11","sendThreadMessage9"])v[key]=send;
+  v.createIssue=write(async()=>{const title=String(s.newIssueTitle||"").trim();if(!title)throw new Error("Give the issue a title");const out=await ws.createIssue({title,description:s.newIssueDescription,priority:String(s.newIssuePriority||"normal").toLowerCase().replace(" priority","")});await hydrate();logic.openIssue(out.issue.identifier);logic.setState({dialog:null})});
+  v.pauseChat=write(async()=>{const c=logic.currentChat();if(c?.runId)await ws.cancelRun(c.runId)});
+  v.signOut=write(async()=>{await api.logout();window.location.assign("/")});
+  v.saveSkill=logic.saveSkill;v.saveMemory14=logic.saveMemory14;v.sendInvites14=logic.sendInvites14;
+  // No demo recovery codes, invented sessions, or locally generated API keys.
+  v.akCreate19=write(async()=>{const out=await api.request<{token:string}>("POST","/api/me/keys",{name:"Workspace key"});logic.setState({sec19:{...s.sec19,newKey:{secret:out.token}}})});
+  return v;
+ });
+ logic.forceUpdate?.();
+ return()=>{disposed=true;for(const[k,v]of originals){if(v===undefined)delete logic[k];else logic[k]=v}};
 }
-
-function installActions(logic: Logic, ws: WorkspaceClient, report: (s: LiveStatus, detail?: string) => void) {
-  const fail = (err: unknown) => {
-    const message = err instanceof Error ? err.message : String(err);
-    logic.toast?.(message);
-    report("error", message);
-  };
-
-  const l = logic as unknown as Record<string, unknown>;
-
-  /* Only the handlers that change something are replaced. Everything else -
-     navigation, filtering, every dialog - stays the design's own code. */
-  const send = l["send"];
-  if (typeof send === "function") {
-    l["send"] = async () => {
-      const draft = String(logic.state["draft"] ?? "").trim();
-      if (!draft) return;
-      const activeId = logic.state["activeChat"] as string | null;
-      logic.setState({ draft: "" });
-      try {
-        if (activeId) await ws.sendMessage(activeId, draft);
-        else await ws.createConversation({ message: draft });
-      } catch (err) { fail(err); }
-    };
-  }
-
-  const work = l["workOnIssue"] ?? l["startWork"];
-  if (typeof work === "function") {
-    const key = l["workOnIssue"] ? "workOnIssue" : "startWork";
-    l[key] = async (issue: { uuid?: string; id?: string }) => {
-      const id = issue?.uuid ?? issue?.id;
-      if (!id) return;
-      try { await ws.work(id); } catch (err) { fail(err); }
-    };
-  }
-}
-
-/* Exported for the tests: the mapping is the part most likely to drift. */
-export { mapIssue, mapConversation, mapAutopilot, mapAccount, mapRun };
-export type { Issue };
+export {mapIssue,mapConversation,mapAutopilot,mapAccount,mapRun};
