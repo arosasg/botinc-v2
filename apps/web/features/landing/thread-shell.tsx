@@ -6,6 +6,8 @@
 
 import type { CSSProperties } from "react";
 import { Fragment, useEffect, useState } from "react";
+import { css } from "@/lib/dc/css";
+import { interp } from "@/lib/dc/interp";
 import type { ChangeEvent, FormEvent, KeyboardEvent, MouseEvent } from "react";
 import type { Demo, DemoStep, Msg, Theme } from "./use-landing";
 
@@ -164,7 +166,7 @@ export function ThreadShell(p: ThreadShellProps) {
                 <use href="/i15.svg#calendar" />
               </svg>
             </span>
-            Schedule<span className="count">{v.autosCount}</span>
+            Schedule<span className="count">{interp(v.autosCount)}</span>
           </button>
           <button className={v.plugNavCls} onClick={v.viewPlugins}>
             <span className="nav-icon">
@@ -181,7 +183,7 @@ export function ThreadShell(p: ThreadShellProps) {
                 <use href="/i15.svg#plug" />
               </svg>
             </span>
-            Plugins<span className="count">{v.pluginCount}</span>
+            Plugins<span className="count">{interp(v.pluginCount)}</span>
           </button>
           <button className="nav-row">
             <span className="nav-icon">
@@ -436,7 +438,7 @@ export function ThreadShell(p: ThreadShellProps) {
             <span className="person-avatar">A</span>
             <span>
               <strong>Alex</strong>
-              <small>Team trial · {v.balance} left</small>
+              <small>Team trial · {interp(v.balance)} left</small>
             </span>
             <svg
               className="ui-icon use14"
@@ -456,7 +458,7 @@ export function ThreadShell(p: ThreadShellProps) {
       <div className="app-main">
         <header className="topbar">
           <div className="breadcrumb">
-            <span>{v.crumbA}</span>
+            <span>{interp(v.crumbA)}</span>
             {v.isThread ? (
               <>
                 <span className="muted">/</span>
@@ -535,20 +537,20 @@ export function ThreadShell(p: ThreadShellProps) {
                       </button>
                       <div>
                         <span className="t9-meta">
-                          BOT-42 <span>·</span> {v.d.status} <span>·</span>{" "}
+                          BOT-42 <span>·</span> {interp(v.d?.status)} <span>·</span>{" "}
                           <span className="thread-privacy12">Autopilot · Issue intake</span>
                         </span>
                         <h1>Checkout total wrong after quantity change</h1>
-                        <button type="button" className={`wf-line18 ${v.d.wfTone}`}>
+                        <button type="button" className={`wf-line18 ${v.d?.wfTone}`}>
                           <span className="wf-dots18" aria-hidden="true">
-                            {v.d.dots.map((x, i) => (
+                            {(v.d?.dots ?? []).map((x: any, i: number) => (
                               <Fragment key={i}>
                                 <i className={x.cls} />
                               </Fragment>
                             ))}
                           </span>
-                          <strong>{v.d.wfStep}</strong>
-                          <small>{v.d.wfMeta}</small>
+                          <strong>{interp(v.d?.wfStep)}</strong>
+                          <small>{interp(v.d?.wfMeta)}</small>
                           <svg
                             className="ui-icon use14"
                             viewBox="0 0 24 24"
@@ -563,7 +565,7 @@ export function ThreadShell(p: ThreadShellProps) {
                           </svg>
                         </button>
                       </div>
-                      {v.d.needsYou ? (
+                      {v.d?.needsYou ? (
                         <>
                           <button className="head-need15 review15">
                             <svg
@@ -606,7 +608,7 @@ export function ThreadShell(p: ThreadShellProps) {
                       {v.isIntro ? (
                         <>
                           <div className="conversation-log13" aria-label="Getting to work">
-                            {v.introRows.map((m, i) => (
+                            {(v.introRows ?? []).map((m: any, i: number) => (
                               <Fragment key={i}>
                                 <article className={m.cls}>
                                   <header>
@@ -631,10 +633,10 @@ export function ThreadShell(p: ThreadShellProps) {
                                         </svg>
                                       </>
                                     ) : null}
-                                    <strong>{m.who}</strong>
-                                    <time>{m.time}</time>
+                                    <strong>{interp(m.who)}</strong>
+                                    <time>{interp(m.time)}</time>
                                   </header>
-                                  <p>{m.text}</p>
+                                  <p>{interp(m.text)}</p>
                                 </article>
                               </Fragment>
                             ))}
@@ -700,7 +702,7 @@ export function ThreadShell(p: ThreadShellProps) {
                             </>
                           ) : null}
                           <div className="conversation-log13" aria-label="Conversation history">
-                            <article className={v.d.evCls}>
+                            <article className={v.d?.evCls}>
                               <header>
                                 <img className="l4-src" src="/assets/connectors/sentry.png" alt="" />
                                 <strong>Sentry</strong>
@@ -711,7 +713,7 @@ export function ThreadShell(p: ThreadShellProps) {
                                 read 'workspaceId' — checkout/summary.ts:88
                               </p>
                             </article>
-                            <article className={v.d.apCls}>
+                            <article className={v.d?.apCls}>
                               <header>
                                 <svg
                                   className="ui-icon use14"
@@ -733,7 +735,7 @@ export function ThreadShell(p: ThreadShellProps) {
                                 workflow.
                               </p>
                             </article>
-                            <article className={v.d.opCls}>
+                            <article className={v.d?.opCls}>
                               <header>
                                 <img src="/assets/logo/botinc-mark.svg" alt="" />
                                 <strong>Operator</strong>
@@ -745,7 +747,7 @@ export function ThreadShell(p: ThreadShellProps) {
                                 your approval.
                               </p>
                             </article>
-                            {v.steps.map((s, i) => (
+                            {(v.steps ?? []).map((s: any, i: number) => (
                               <Fragment key={i}>
                                 {s.afterRoute ? (
                                   <>
@@ -794,11 +796,11 @@ export function ThreadShell(p: ThreadShellProps) {
                                           </>
                                         ) : null}
                                         <span className="wb-name16">
-                                          <strong>{s.who}</strong>
-                                          <small>{s.model}</small>
+                                          <strong>{interp(s.who)}</strong>
+                                          <small>{interp(s.model)}</small>
                                         </span>
-                                        <span className={s.outCls}>{s.out}</span>
-                                        <span className={s.stateCls}>{s.badge}</span>
+                                        <span className={s.outCls}>{interp(s.out)}</span>
+                                        <span className={s.stateCls}>{interp(s.badge)}</span>
                                         <svg
                                           className="ui-icon use14"
                                           viewBox="0 0 24 24"
@@ -817,7 +819,7 @@ export function ThreadShell(p: ThreadShellProps) {
                                 </article>
                               </Fragment>
                             ))}
-                            <div className={v.d.resultCls}>
+                            <div className={v.d?.resultCls}>
                               <button className="t9-artifact" onClick={v.openReceipt}>
                                 <span className="t9-artifact-icon">
                                   <svg
@@ -850,7 +852,7 @@ export function ThreadShell(p: ThreadShellProps) {
                                   <use href="/i15.svg#arrow-up-right" />
                                 </svg>
                               </button>
-                              {v.d.showApprove ? (
+                              {v.d?.showApprove ? (
                                 <>
                                   <section className="d9-card review13" aria-label="Decision needed">
                                     <div className="d9-card-top">
@@ -905,15 +907,15 @@ export function ThreadShell(p: ThreadShellProps) {
                                 </>
                               ) : null}
                             </div>
-                            <article className={v.d.youCls}>
+                            <article className={v.d?.youCls}>
                               <header>
                                 <span className="person13">A</span>
                                 <strong>Alex</strong>
                                 <time>09:48</time>
                               </header>
-                              <p>{v.d.youText}</p>
+                              <p>{interp(v.d?.youText)}</p>
                             </article>
-                            <article className={v.d.mergedCls}>
+                            <article className={v.d?.mergedCls}>
                               <header>
                                 <img src="/assets/logo/botinc-mark.svg" alt="" />
                                 <strong>Operator</strong>
@@ -924,7 +926,7 @@ export function ThreadShell(p: ThreadShellProps) {
                                 new events since the deploy. BOT-42 is done.
                               </p>
                             </article>
-                            {v.msgs.map((m, i) => (
+                            {(v.msgs ?? []).map((m: any, i: number) => (
                               <Fragment key={i}>
                                 <article className={m.cls}>
                                   <header>
@@ -938,10 +940,10 @@ export function ThreadShell(p: ThreadShellProps) {
                                         <span className="person13">A</span>
                                       </>
                                     ) : null}
-                                    <strong>{m.who}</strong>
-                                    <time>{m.time}</time>
+                                    <strong>{interp(m.who)}</strong>
+                                    <time>{interp(m.time)}</time>
                                   </header>
-                                  <p>{m.text}</p>
+                                  <p>{interp(m.text)}</p>
                                 </article>
                               </Fragment>
                             ))}
@@ -985,16 +987,16 @@ export function ThreadShell(p: ThreadShellProps) {
                         ) : null}
                         <span className="rh-model17">Auto</span>
                         <span className="rh-sep17">·</span>
-                        <span className="rh-acct17">{v.routeAcct}</span>
+                        <span className="rh-acct17">{interp(v.routeAcct)}</span>
                         <em className="route-kind17 sub17">SUB</em>
                         <span className="route-bar17">
-                          <i style={v.routeBar} />
+                          <i style={css(v.routeBar)} />
                         </span>
-                        <span className="route-left17">{v.routeLeft}</span>
+                        <span className="route-left17">{interp(v.routeLeft)}</span>
                       </button>
                       <button type="button" className="rh-cost17" title="Task limit for this conversation">
-                        <span className="rh-cost-long17">{v.d.cost} of $1.00</span>
-                        <span className="rh-cost-short17">{v.d.cost}</span>
+                        <span className="rh-cost-long17">{interp(v.d?.cost)} of $1.00</span>
+                        <span className="rh-cost-short17">{interp(v.d?.cost)}</span>
                       </button>
                     </div>
                     <textarea
@@ -1165,7 +1167,7 @@ export function ThreadShell(p: ThreadShellProps) {
                           <use href="/i15.svg#hand" />
                         </svg>
                       </span>
-                      Needs you<span className="w8-nav-count">{v.needsCount}</span>
+                      Needs you<span className="w8-nav-count">{interp(v.needsCount)}</span>
                     </button>
                     <button>
                       <span className="w8-nav-icon">
@@ -1182,12 +1184,12 @@ export function ThreadShell(p: ThreadShellProps) {
                           <use href="/i15.svg#circle-check" />
                         </svg>
                       </span>
-                      Done<span className="w8-nav-count">{v.doneCount}</span>
+                      Done<span className="w8-nav-count">{interp(v.doneCount)}</span>
                     </button>
                   </nav>
                 </div>
                 <div className="w8-groups">
-                  {v.workGroups.map((g, i) => (
+                  {(v.workGroups ?? []).map((g: any, i: number) => (
                     <Fragment key={i}>
                       <section className="w8-group">
                         <header className="w8-group-head">
@@ -1206,8 +1208,8 @@ export function ThreadShell(p: ThreadShellProps) {
                             </svg>
                           </span>
                           <span className="w8-gname16">
-                            <h2>{g.label}</h2>
-                            <span className="w8-group-count">{g.count}</span>
+                            <h2>{interp(g.label)}</h2>
+                            <span className="w8-group-count">{interp(g.count)}</span>
                           </span>
                           <span className="w8-collabel16 col-prio16" aria-hidden="true">
                             Priority
@@ -1226,7 +1228,7 @@ export function ThreadShell(p: ThreadShellProps) {
                           </span>
                         </header>
                         <div className="w8-rows">
-                          {g.rows.map((w, i) => (
+                          {(g.rows ?? []).map((w: any, i: number) => (
                             <Fragment key={i}>
                               <button className="w8-row" onClick={w.open}>
                                 <span className={w.stateCls}>
@@ -1243,10 +1245,10 @@ export function ThreadShell(p: ThreadShellProps) {
                                     <use href={w.iconHref} />
                                   </svg>
                                 </span>
-                                <span className="w8-id">{w.id}</span>
+                                <span className="w8-id">{interp(w.id)}</span>
                                 <span className="w8-title">
-                                  <strong>{w.title}</strong>
-                                  <small className="w8-inline-meta">{w.meta}</small>
+                                  <strong>{interp(w.title)}</strong>
+                                  <small className="w8-inline-meta">{interp(w.meta)}</small>
                                 </span>
                                 <span className={w.prioCls}>
                                   <span className="w8-bars16" aria-hidden="true">
@@ -1254,7 +1256,7 @@ export function ThreadShell(p: ThreadShellProps) {
                                     <i />
                                     <i />
                                   </span>
-                                  <span className="w8-prio-label16">{w.priority}</span>
+                                  <span className="w8-prio-label16">{interp(w.priority)}</span>
                                 </span>
                                 <span className="w8-project">storefront</span>
                                 <span className="w8-source l4-src16">
@@ -1278,13 +1280,13 @@ export function ThreadShell(p: ThreadShellProps) {
                                       <img src="/assets/connectors/github.png" alt="" />
                                     </>
                                   ) : null}
-                                  <span>{w.source}</span>
+                                  <span>{interp(w.source)}</span>
                                 </span>
                                 <span className="w8-ownercell16">
-                                  <span className="w8-owner">{w.ownerInitial}</span>
-                                  <span className="w8-ownername16">{w.owner}</span>
+                                  <span className="w8-owner">{interp(w.ownerInitial)}</span>
+                                  <span className="w8-ownername16">{interp(w.owner)}</span>
                                 </span>
-                                <time className="w8-updated">{w.updated}</time>
+                                <time className="w8-updated">{interp(w.updated)}</time>
                               </button>
                             </Fragment>
                           ))}
@@ -1332,10 +1334,10 @@ export function ThreadShell(p: ThreadShellProps) {
                   <section className="l4-psec">
                     <header className="l4-phead">
                       <h2>Connected</h2>
-                      <span>{v.pluginCount}</span>
+                      <span>{interp(v.pluginCount)}</span>
                     </header>
                     <div className="l4-plugs">
-                      {v.plugins.map((p, i) => (
+                      {(v.plugins ?? []).map((p: any, i: number) => (
                         <Fragment key={i}>
                           <button className="l4-plug" onClick={p.open}>
                             {p.isSentry ? (
@@ -1379,10 +1381,10 @@ export function ThreadShell(p: ThreadShellProps) {
                               </>
                             ) : null}
                             <span>
-                              <strong>{p.name}</strong>
-                              <small>{p.sub}</small>
+                              <strong>{interp(p.name)}</strong>
+                              <small>{interp(p.sub)}</small>
                             </span>
-                            <em className={p.stCls}>{p.st}</em>
+                            <em className={p.stCls}>{interp(p.st)}</em>
                           </button>
                         </Fragment>
                       ))}
@@ -1454,7 +1456,7 @@ export function ThreadShell(p: ThreadShellProps) {
                 <div className="v7-page-heading l4-show">
                   <div>
                     <h1>Schedule</h1>
-                    <p>{v.autosCount} autopilots on. They run without you; results wait for you.</p>
+                    <p>{interp(v.autosCount)} autopilots on. They run without you; results wait for you.</p>
                   </div>
                   <div className="head-actions14">
                     <button className="small-button primary">
@@ -1493,7 +1495,7 @@ export function ThreadShell(p: ThreadShellProps) {
                       </span>
                       <span className="w8-gname16">
                         <h2>Autopilots</h2>
-                        <span className="w8-group-count">{v.autosCount}</span>
+                        <span className="w8-group-count">{interp(v.autosCount)}</span>
                       </span>
                       <span className="w8-collabel16 col-prio16" aria-hidden="true">
                         Trigger
@@ -1512,7 +1514,7 @@ export function ThreadShell(p: ThreadShellProps) {
                       </span>
                     </header>
                     <div className="w8-rows">
-                      {v.routines.map((r, i) => (
+                      {(v.routines ?? []).map((r: any, i: number) => (
                         <Fragment key={i}>
                           <button className="w8-row" onClick={v.viewThread}>
                             <span className={r.stateCls}>
@@ -1529,13 +1531,13 @@ export function ThreadShell(p: ThreadShellProps) {
                                 <use href={r.iconHref} />
                               </svg>
                             </span>
-                            <span className="w8-id">{r.id}</span>
+                            <span className="w8-id">{interp(r.id)}</span>
                             <span className="w8-title">
-                              <strong>{r.title}</strong>
-                              <small className="w8-inline-meta">{r.meta}</small>
+                              <strong>{interp(r.title)}</strong>
+                              <small className="w8-inline-meta">{interp(r.meta)}</small>
                             </span>
                             <span className="w8-prio is-trigger">
-                              <span className="w8-prio-label16">{r.trigger}</span>
+                              <span className="w8-prio-label16">{interp(r.trigger)}</span>
                             </span>
                             <span className="w8-project">storefront</span>
                             <span className="w8-source l4-src16">
@@ -1559,13 +1561,13 @@ export function ThreadShell(p: ThreadShellProps) {
                                   <img src="/assets/connectors/github.png" alt="" />
                                 </>
                               ) : null}
-                              <span>{r.source}</span>
+                              <span>{interp(r.source)}</span>
                             </span>
                             <span className="w8-ownercell16">
                               <span className="w8-owner">O</span>
                               <span className="w8-ownername16">Operator</span>
                             </span>
-                            <time className="w8-updated">{r.last}</time>
+                            <time className="w8-updated">{interp(r.last)}</time>
                           </button>
                         </Fragment>
                       ))}

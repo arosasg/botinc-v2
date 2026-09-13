@@ -1,0 +1,47 @@
+import { chromium } from "playwright";
+const browser = await chromium.launch();
+const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: "reduce" });
+const page = await ctx.newPage();
+const errs = [];
+page.on("pageerror", (e) => errs.push("PAGEERROR " + String(e).slice(0, 200)));
+page.on("console", (m) => { if (m.type() === "error" && !/favicon|ERR_BLOCKED/.test(m.text())) errs.push("CONSOLE " + m.text().slice(0, 200)); });
+await page.goto(process.argv[2], { waitUntil: "networkidle", timeout: 120000 });
+await page.waitForTimeout(2500);
+const steps = [];
+async function step(name, fn) {
+  const before = errs.length;
+  try { await fn(); await page.waitForTimeout(500); } catch (e) { errs.push("STEP " + name + ": " + String(e).split("\n")[0].slice(0, 160)); }
+  steps.push(name + (errs.length > before ? " ✗" : " ✓"));
+}
+const click = (sel) => page.locator(sel).first().click({ timeout: 4000 });
+const clickText = (t) => page.getByRole("button", { name: new RegExp("^" + t) }).first().click({ timeout: 4000 });
+await step("sidebar New chat", () => clickText("New chat"));
+await step("type + send", async () => { await page.locator("textarea").first().fill("Hello, what is waiting for me?"); await page.keyboard.press("Enter"); await page.waitForTimeout(1500); });
+await step("Work", () => clickText("Work"));
+await step("open first issue row", () => page.locator(".w8-row, .w8-row16, [class*=w8-row]").first().click({ timeout: 4000 }));
+await step("Issue pane tab Workflow", () => clickText("Workflow"));
+await step("Pull requests tab", () => clickText("Pull requests"));
+await step("Runs tab", () => clickText("Runs"));
+await step("Files tab", () => clickText("Files"));
+await step("Schedule", () => clickText("Schedule"));
+await step("Plugins", () => clickText("Plugins"));
+await step("Settings", () => clickText("Settings"));
+await step("Search", () => clickText("Search"));
+await step("Escape", () => page.keyboard.press("Escape"));
+await step("New issue dialog", async () => { await clickText("Work"); await clickText("New issue"); });
+await step("Escape", () => page.keyboard.press("Escape"));
+await step("Model picker", async () => { await clickText("New chat"); await click(".composer10-choice"); });
+await step("Escape", () => page.keyboard.press("Escape"));
+await step("Plus menu", () => page.locator('.composer10-tools [aria-label*="Add"]').first().click({ timeout: 4000 }));
+await step("Escape", () => page.keyboard.press("Escape"));
+await step("Profile menu", () => click(".profile-button"));
+await step("Escape", () => page.keyboard.press("Escape"));
+await step("Workspace menu", () => click(".workspace-button"));
+await step("Escape", () => page.keyboard.press("Escape"));
+await step("Call", () => clickText("Call"));
+await step("Escape", () => page.keyboard.press("Escape"));
+await step("Theme toggle", () => click('[aria-label="Change appearance"]'));
+await step("mobile viewport", async () => { await page.setViewportSize({ width: 390, height: 844 }); await page.waitForTimeout(800); await page.screenshot({ path: "proof/ws-mobile-390.png" }); });
+console.log(steps.join("\n"));
+console.log(errs.length ? "ERRORS:\n" + [...new Set(errs)].join("\n") : "no errors");
+await browser.close();

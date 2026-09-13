@@ -4,6 +4,8 @@
    unchanged; every binding reads from the view-model in use-landing.ts. */
 
 import { Fragment } from "react";
+import { css } from "@/lib/dc/css";
+import { interp } from "@/lib/dc/interp";
 import { DotWave } from "./dot-wave";
 import { ThreadShell } from "./thread-shell";
 import { useLanding } from "./use-landing";
@@ -130,7 +132,7 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
                       steps={v.dSteps}
                       theme={v.theme}
                       readOnly={true}
-                      value={v.d.typed}
+                      value={v.d?.typed}
                       autosCount={v.autosCount}
                       balance="$2.00"
                       view={v.demoView}
@@ -140,7 +142,7 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
                 <div className="demo-caption">
                   <span>
                     <i />
-                    {v.d.caption}
+                    {interp(v.d?.caption)}
                   </span>
                   <span>The real workspace · click around</span>
                 </div>
@@ -155,7 +157,7 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
                 <small>BOT-42 · Implement</small>
               </div>
               <div className="hr-chain">
-                {v.r.accounts.map((a, i) => (
+                {(v.r?.accounts ?? []).map((a: any, i: number) => (
                   <Fragment key={i}>
                     <span className={a.chipCls}>
                       <i className="hr-arrow" aria-hidden="true">
@@ -192,14 +194,14 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
                             <img src="/assets/coding-accounts/deepseek.svg" alt="" />
                           </>
                         ) : null}
-                        <b>{a.name}</b>
-                        <small>{a.chip}</small>
+                        <b>{interp(a.name)}</b>
+                        <small>{interp(a.chip)}</small>
                       </span>
                     </span>
                   </Fragment>
                 ))}
               </div>
-              <p className="hr-note">{v.r.note}</p>
+              <p className="hr-note">{interp(v.r?.note)}</p>
             </section>
             <section className="rail" id="how">
               <div className="rail-head">
@@ -207,8 +209,8 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
               </div>
               <div className="rail-track">
                 <i className="rail-line" />
-                <i className="rail-fill" style={v.d.railStyle} />
-                <div className={v.d.step1}>
+                <i className="rail-fill" style={css(v.d?.railStyle)} />
+                <div className={v.d?.step1}>
                   <span className="rail-dot">
                     <svg className="ico">
                       <use href="/i15.svg#plug" />
@@ -217,9 +219,9 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
                   <span className="n">01 · CONNECT</span>
                   <h3>Connect what you run.</h3>
                   <p>Error monitoring, backlog, repo. Read-only until you approve.</p>
-                  <code>{v.d.live1}</code>
+                  <code>{interp(v.d?.live1)}</code>
                 </div>
-                <div className={v.d.step2}>
+                <div className={v.d?.step2}>
                   <span className="rail-dot">
                     <svg className="ico">
                       <use href="/i15.svg#zap" />
@@ -228,9 +230,9 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
                   <span className="n">02 · AUTOPILOT</span>
                   <h3>Autopilot triages.</h3>
                   <p>Each new error becomes an issue with a priority and an owner.</p>
-                  <code>{v.d.live2}</code>
+                  <code>{interp(v.d?.live2)}</code>
                 </div>
-                <div className={v.d.step3}>
+                <div className={v.d?.step3}>
                   <span className="rail-dot">
                     <svg className="ico">
                       <use href="/i15.svg#waypoints" />
@@ -239,9 +241,9 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
                   <span className="n">03 · WORKFLOW</span>
                   <h3>The workflow fixes it.</h3>
                   <p>Plan → Implement → Review → Verify, routed across your accounts so it never stalls.</p>
-                  <code>{v.d.live3}</code>
+                  <code>{interp(v.d?.live3)}</code>
                 </div>
-                <div className={v.d.step4}>
+                <div className={v.d?.step4}>
                   <span className="rail-dot">
                     <svg className="ico">
                       <use href="/i15.svg#hand" />
@@ -250,7 +252,7 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
                   <span className="n">04 · YOU</span>
                   <h3>You approve.</h3>
                   <p>A pull request waits with what changed and what it cost.</p>
-                  <code>{v.d.live4}</code>
+                  <code>{interp(v.d?.live4)}</code>
                 </div>
               </div>
             </section>
@@ -290,17 +292,17 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
                       </svg>
                       Routing · BOT-42 · Implement
                     </span>
-                    <span className="mono">{v.r.elapsed}</span>
+                    <span className="mono">{interp(v.r?.elapsed)}</span>
                   </div>
                   <div className="router-run">
                     <span className="mono">RUN</span>
                     <span className="bar">
-                      <i style={v.r.runStyle} />
+                      <i style={css(v.r?.runStyle)} />
                     </span>
-                    <span className="mono">{v.r.pct}</span>
+                    <span className="mono">{interp(v.r?.pct)}</span>
                   </div>
                   <div className="accounts">
-                    {v.r.accounts.map((a, i) => (
+                    {(v.r?.accounts ?? []).map((a: any, i: number) => (
                       <Fragment key={i}>
                         <div className={a.cls}>
                           {a.isClaude ? (
@@ -334,24 +336,24 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
                             </>
                           ) : null}
                           <span className="acc-name">
-                            <strong>{a.name}</strong>
-                            <small>{a.plan}</small>
+                            <strong>{interp(a.name)}</strong>
+                            <small>{interp(a.plan)}</small>
                           </span>
                           <span className="cap">
-                            <i style={a.capStyle} />
+                            <i style={css(a.capStyle)} />
                           </span>
-                          <span className="mono acc-left">{a.left}</span>
-                          <span className="acc-state">{a.state}</span>
+                          <span className="mono acc-left">{interp(a.left)}</span>
+                          <span className="acc-state">{interp(a.state)}</span>
                         </div>
                       </Fragment>
                     ))}
                   </div>
                   <div className="router-log">
-                    {v.r.log.map((l, i) => (
+                    {(v.r?.log ?? []).map((l: any, i: number) => (
                       <Fragment key={i}>
                         <p className={l.cls}>
-                          <span className="mono">{l.t}</span>
-                          <span>{l.text}</span>
+                          <span className="mono">{interp(l.t)}</span>
+                          <span>{interp(l.text)}</span>
                         </p>
                       </Fragment>
                     ))}
@@ -412,22 +414,22 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
               <div className="gate-wrap">
                 <div className="gate-track">
                   <i className="gate-line" />
-                  <span className={v.g.tokenCls} style={v.g.tokenStyle}>
+                  <span className={v.g?.tokenCls} style={css(v.g?.tokenStyle)}>
                     <svg className="ico">
                       <use href="/i15.svg#git-pull-request" />
                     </svg>
-                    BOT-42<small>{v.g.tokenNote}</small>
+                    BOT-42<small>{interp(v.g?.tokenNote)}</small>
                   </span>
                 </div>
                 <div className="gate">
-                  {v.g.steps.map((st, i) => (
+                  {(v.g?.steps ?? []).map((st: any, i: number) => (
                     <Fragment key={i}>
                       <div className={st.cls}>
                         <div className="gs-top">
-                          <span className="n">{st.n}</span>
+                          <span className="n">{interp(st.n)}</span>
                           <span className={st.stCls}>
                             <i />
-                            {st.state}
+                            {interp(st.state)}
                           </span>
                         </div>
                         <div className="gs-model">
@@ -453,12 +455,12 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
                               </svg>
                             </>
                           ) : null}
-                          <span>{st.model}</span>
+                          <span>{interp(st.model)}</span>
                         </div>
-                        <h3>{st.title}</h3>
-                        <p>{st.copy}</p>
-                        <code>{st.out}</code>
-                        <span className="gs-gate">GATE · {st.gate}</span>
+                        <h3>{interp(st.title)}</h3>
+                        <p>{interp(st.copy)}</p>
+                        <code>{interp(st.out)}</code>
+                        <span className="gs-gate">GATE · {interp(st.gate)}</span>
                       </div>
                     </Fragment>
                   ))}
@@ -779,40 +781,40 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
                 </button>
               </div>
               <div className="plans">
-                {v.plans.map((p, i) => (
+                {(v.plans ?? []).map((p: any, i: number) => (
                   <Fragment key={i}>
                     <article className={p.cls} data-glow="">
                       <div className="plan-top">
-                        <h3>{p.name}</h3>
-                        <span className="tag">{p.tag}</span>
+                        <h3>{interp(p.name)}</h3>
+                        <span className="tag">{interp(p.tag)}</span>
                       </div>
                       <p className="price">
-                        {p.price}
-                        <small>{p.unit}</small>
+                        {interp(p.price)}
+                        <small>{interp(p.unit)}</small>
                       </p>
-                      <p className="price-note">{p.sub}</p>
+                      <p className="price-note">{interp(p.sub)}</p>
                       <p className="conc">
-                        {p.conc}
+                        {interp(p.conc)}
                         <small>fixes running at the same time</small>
                       </p>
                       <ul>
                         <li>
-                          <b>{p.conc}</b>
+                          <b>{interp(p.conc)}</b>
                           <span>concurrent sessions</span>
                         </li>
                         <li>
-                          <b>{p.runs}</b>
+                          <b>{interp(p.runs)}</b>
                           <span>autopilot runs a month</span>
                         </li>
                         <li>
-                          <b>{p.storage}</b>
+                          <b>{interp(p.storage)}</b>
                           <span>storage included</span>
                         </li>
                       </ul>
                       <button className={p.btnCls} onClick={v.startFree}>
-                        {p.cta}
+                        {interp(p.cta)}
                       </button>
-                      <p className="plan-fine">{p.note}</p>
+                      <p className="plan-fine">{interp(p.note)}</p>
                     </article>
                   </Fragment>
                 ))}
@@ -876,7 +878,7 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
               <div className="foot-bottom">
                 <span>© 2026 BotInc, Inc. · San Francisco</span>
                 <div>
-                  <button onClick={v.toggleTheme}>{v.appearance} appearance</button>
+                  <button onClick={v.toggleTheme}>{interp(v.appearance)} appearance</button>
                   <span>Sample work · simulated actions</span>
                 </div>
               </div>
@@ -940,7 +942,7 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
                 {v.error ? (
                   <>
                     <p className="ob-error" role="alert">
-                      {v.error}
+                      {interp(v.error)}
                     </p>
                   </>
                 ) : null}
@@ -978,7 +980,7 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
                 <h1>What should BotInc handle for you?</h1>
                 <p>Pick any. This decides which connections and autopilots come next.</p>
                 <div className="goals">
-                  {v.goals.map((g, i) => (
+                  {(v.goals ?? []).map((g: any, i: number) => (
                     <Fragment key={i}>
                       <button className={g.cls} data-glow="" onClick={g.toggle} aria-pressed={g.on}>
                         <span className="gi">
@@ -987,8 +989,8 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
                           </svg>
                         </span>
                         <span className="gt">
-                          {g.t}
-                          <small>{g.sub}</small>
+                          {interp(g.t)}
+                          <small>{interp(g.sub)}</small>
                         </span>
                         <span className="glogos">
                           {g.hasSentry ? (
@@ -1071,9 +1073,9 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
                   <i />
                 </div>
                 <h1>Connect what you already run.</h1>
-                <p>Read-only until you approve a change. {v.connectHint}.</p>
+                <p>Read-only until you approve a change. {interp(v.connectHint)}.</p>
                 <div className="cards">
-                  {v.sources.map((c, i) => (
+                  {(v.sources ?? []).map((c: any, i: number) => (
                     <Fragment key={i}>
                       <div className={c.cls} data-glow="">
                         {c.isSentry ? (
@@ -1116,8 +1118,8 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
                             <span className="req">REQUIRED</span>
                           </>
                         ) : null}
-                        <h3>{c.name}</h3>
-                        <p>{c.sub}</p>
+                        <h3>{interp(c.name)}</h3>
+                        <p>{interp(c.sub)}</p>
                         {c.done ? (
                           <>
                             <span className="ok">
@@ -1292,7 +1294,7 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
                 <div className="apirow">
                   <div>
                     <strong>When every subscription is out</strong>
-                    <p>{v.apiCopy}</p>
+                    <p>{interp(v.apiCopy)}</p>
                   </div>
                   <button className={v.apiCls} onClick={v.toggleApi} role="switch" aria-label="API fallback" />
                 </div>
@@ -1336,9 +1338,9 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
                   <i className="on" />
                 </div>
                 <h1>These start the moment you open the workspace.</h1>
-                <p>Watching {v.repoLabel}. Nothing merges without your approval.</p>
+                <p>Watching {interp(v.repoLabel)}. Nothing merges without your approval.</p>
                 <div className="autolist">
-                  {v.autos.map((a, i) => (
+                  {(v.autos ?? []).map((a: any, i: number) => (
                     <Fragment key={i}>
                       <div className={a.rowCls}>
                         <div>
@@ -1346,9 +1348,9 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
                             <svg className="ico">
                               <use href={a.href} />
                             </svg>
-                            {a.t}
+                            {interp(a.t)}
                           </h3>
-                          <p>{a.sub}</p>
+                          <p>{interp(a.sub)}</p>
                           <div className="flow">
                             {a.isIntake ? (
                               <>
@@ -1382,7 +1384,7 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
                 </div>
                 <div className="ob-actions">
                   <button className="btn accent lg full" onClick={v.finish}>
-                    Turn on {v.autosPlural} and open my workspace
+                    Turn on {interp(v.autosPlural)} and open my workspace
                   </button>
                   <button className="tbtn muted" onClick={v.backModels}>
                     Back
@@ -1448,11 +1450,11 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
               </button>
               {v.connectDialog ? (
                 <>
-                  <span className="eyebrow">{v.connectApp} · YOUR CONNECTION</span>
-                  <h2 id="dialog-title">{v.connectTitle}</h2>
-                  <p className="dialog-copy">{v.connectCopy}</p>
+                  <span className="eyebrow">{interp(v.connectApp)} · YOUR CONNECTION</span>
+                  <h2 id="dialog-title">{interp(v.connectTitle)}</h2>
+                  <p className="dialog-copy">{interp(v.connectCopy)}</p>
                   <label className="field-label" htmlFor="connection-scope">
-                    {v.scopeLabel}
+                    {interp(v.scopeLabel)}
                   </label>
                   <input
                     id="connection-scope"
@@ -1463,7 +1465,7 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
                   />
                   <div className="permission-box">
                     <strong>What your Operator can access</strong>
-                    <p>{v.permissions}</p>
+                    <p>{interp(v.permissions)}</p>
                   </div>
                   {v.isIssueSource ? (
                     <>
@@ -1481,7 +1483,7 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
                       Cancel
                     </button>
                     <button className="small-button primary" onClick={v.finishConnect}>
-                      {v.connectButton}
+                      {interp(v.connectButton)}
                     </button>
                   </div>
                   <p className="fine">Simulated authorization. No real account is connected.</p>
@@ -1525,7 +1527,7 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
                   </div>
                   {v.isSignin ? (
                     <>
-                      {v.providers.map((p, i) => (
+                      {(v.providers ?? []).map((p: any, i: number) => (
                         <Fragment key={i}>
                           <button className="picker-row10" onClick={p.pick}>
                             {p.isClaude ? (
@@ -1559,8 +1561,8 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
                               </>
                             ) : null}
                             <span>
-                              <strong>{p.name}</strong>
-                              <small>{p.copy}</small>
+                              <strong>{interp(p.name)}</strong>
+                              <small>{interp(p.copy)}</small>
                             </span>
                             <svg
                               className="ui-icon use14"
@@ -1582,7 +1584,7 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
                   {v.isApi ? (
                     <>
                       <label className="field-label" htmlFor="api-key">
-                        {v.accountApp} API key
+                        {interp(v.accountApp)} API key
                       </label>
                       <input id="api-key" className="field" placeholder="sk-…" aria-label="API key" />
                       <div className="dialog-actions">
@@ -1696,8 +1698,8 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
               {v.appsDialog ? (
                 <>
                   <span className="eyebrow">DESKTOP AND MOBILE</span>
-                  <h2 id="dialog-title">{v.appTitle}</h2>
-                  <p className="dialog-copy">{v.appCopy}</p>
+                  <h2 id="dialog-title">{interp(v.appTitle)}</h2>
+                  <p className="dialog-copy">{interp(v.appCopy)}</p>
                   <div className="plat-tabs" role="tablist">
                     <button className={v.tabMac} role="tab" onClick={v.openMac}>
                       <svg className="ico fill">
@@ -1733,8 +1735,8 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
                           </svg>
                         </span>
                         <div>
-                          <strong>{v.appFile}</strong>
-                          <small>{v.appReq}</small>
+                          <strong>{interp(v.appFile)}</strong>
+                          <small>{interp(v.appReq)}</small>
                         </div>
                         <button className="btn accent" onClick={v.fakeDownload}>
                           <svg className="ico">
@@ -1751,7 +1753,7 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
                           <div className="cmd">
                             <code>curl -fsSL https://botinc.ai/install | bash</code>
                             <button className="tbtn" onClick={v.copyInstall}>
-                              {v.copyLabel}
+                              {interp(v.copyLabel)}
                             </button>
                           </div>
                         </>
@@ -1764,7 +1766,7 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
                           <div className="cmd">
                             <code>winget install BotInc.Daemon</code>
                             <button className="tbtn" onClick={v.copyInstall}>
-                              {v.copyLabel}
+                              {interp(v.copyLabel)}
                             </button>
                           </div>
                         </>
@@ -1803,20 +1805,20 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
                               <use href={v.appMarkHref} />
                             </svg>
                             <span>
-                              <small>{v.storeKicker}</small>
-                              <strong>{v.storeName}</strong>
+                              <small>{interp(v.storeKicker)}</small>
+                              <strong>{interp(v.storeName)}</strong>
                             </span>
                           </span>
                           <p>
-                            Point your camera at the code. It opens the {v.storeName} listing on your phone. The console
-                            travels; the daemon stays home.
+                            Point your camera at the code. It opens the {interp(v.storeName)} listing on your phone. The
+                            console travels; the daemon stays home.
                           </p>
-                          <code className="mono">{v.storeUrl}</code>
+                          <code className="mono">{interp(v.storeUrl)}</code>
                         </div>
                       </div>
                       <div className="dlg-actions">
                         <button className="btn" onClick={v.copyStore}>
-                          {v.copyLabel}
+                          {interp(v.copyLabel)}
                         </button>
                         <button className="btn accent" onClick={v.fakeDownload}>
                           Open the listing
@@ -1862,7 +1864,7 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
                   </button>
                   <button className="menu-row" onClick={v.toggleTheme}>
                     <span>Appearance</span>
-                    <span>{v.appearance}</span>
+                    <span>{interp(v.appearance)}</span>
                   </button>
                 </>
               ) : null}

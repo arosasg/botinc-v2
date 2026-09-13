@@ -12,7 +12,7 @@ import re, sys, html, json, argparse
 from html.parser import HTMLParser
 
 VOID = {"area","base","br","col","embed","hr","img","input","link","meta","source","track","wbr"}
-ATTR_MAP = {"class":"className","for":"htmlFor","tabindex":"tabIndex","readonly":"readOnly","maxlength":"maxLength",
+ATTR_MAP = {"webkitdirectory":"webkitdirectory","class":"className","for":"htmlFor","tabindex":"tabIndex","readonly":"readOnly","maxlength":"maxLength",
   "autofocus":"autoFocus","autocomplete":"autoComplete","colspan":"colSpan","rowspan":"rowSpan","spellcheck":"spellCheck",
   "contenteditable":"contentEditable","enterkeyhint":"enterKeyHint","inputmode":"inputMode","srcset":"srcSet","crossorigin":"crossOrigin",
   "autoplay":"autoPlay","playsinline":"playsInline","novalidate":"noValidate","datetime":"dateTime","accesskey":"accessKey"}
@@ -68,6 +68,9 @@ def expr(e, scope):
     head=e.split(".")[0].split("[")[0]
     if head in scope or head in ("true","false","null"): js=e
     else: js="v."+e
+    # tolerant member access: the design runtime treats a missing path as empty
+    parts=js.split(".")
+    if len(parts)>2: js=parts[0]+"."+parts[1]+"".join("?."+q for q in parts[2:])
     return ("!"+js) if neg else js
 
 def css_to_obj(s):
@@ -88,7 +91,7 @@ def jsx_text(s):
     parts=[]; last=0
     for m in BIND.finditer(s):
         parts.append(s[last:m.start()].replace("{","{'{'}").replace("}","{'}'}"))
-        parts.append("{"+CURSCOPE_EXPR(m.group(1))+"}")
+        parts.append("{interp("+CURSCOPE_EXPR(m.group(1))+")}")
         last=m.end()
     parts.append(s[last:].replace("{","{'{'}").replace("}","{'}'}"))
     return "".join(parts)
@@ -111,7 +114,8 @@ def render(node, scope, ind):
     if node.tag=="sc-for":
         attrs=dict(node.attrs); lst=BIND.search(attrs.get("list","")).group(1); var=attrs.get("as","item")
         inner=render_kids(node,scope|{var},ind+1)
-        return f"{{{expr(lst,scope)}.map(({var}, i) => (<Fragment key={{i}}>{inner}</Fragment>))}}"
+        idx = "i" if var != "i" else "ix"
+        return f"{{({expr(lst,scope)} ?? []).map(({var}: any, {idx}: number) => (<Fragment key={{{idx}}}>{inner}</Fragment>))}}"
     if node.tag in ("helmet","script","x-dc","body","html","head"):
         return render_kids(node,scope,ind) if node.tag in ("x-dc","body","html") else ""
     if node.tag=="dc-import":
@@ -152,7 +156,7 @@ def jsx_attr(k,val,scope):
     if val is None: return name if name in BOOL_ATTRS else f"{name}=\"\""
     if name=="style":
         m=BIND.fullmatch(val.strip())
-        if m: return f"style={{{expr(m.group(1),scope)}}}"
+        if m: return f"style={{css({expr(m.group(1),scope)})}}"
         return f"style={{{css_to_obj(val)}}}"
     m=BIND.fullmatch(val.strip())
     if m: return f"{name}={{{expr(m.group(1),scope)}}}"
@@ -161,7 +165,7 @@ def jsx_attr(k,val,scope):
         s=BIND.sub(lambda mm: "${"+expr(mm.group(1),scope)+"}", val.replace("`","\\`"))
         return f"{name}={{`{s}`}}"
     v=html.unescape(val)
-    if name in ("rows","cols","tabIndex","colSpan","rowSpan","maxLength","size") and v.isdigit(): return f"{name}={{{v}}}"
+    if name in ("rows","cols","tabIndex","colSpan","rowSpan","maxLength","size","aria-valuemin","aria-valuemax","aria-valuenow") and re.fullmatch(r"-?\d+(\.\d+)?", v): return f"{name}={{{v}}}"
     if name in ("src","href","xlinkHref") and (v.startswith("assets/") or v.startswith("i15.svg")): v="/"+v
     # Third-party logo CDN references become vendored assets (no runtime CDN dependency).
     if name=="src" and v.startswith("https://cdn.simpleicons.org/"): v="/assets/connectors/si/"+v.split("/")[3]+".svg"
