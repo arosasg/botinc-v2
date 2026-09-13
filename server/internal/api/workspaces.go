@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/mail"
 	"regexp"
 	"strings"
 	"time"
@@ -101,15 +102,15 @@ func (s *Server) createWorkspaceFor(ctx context.Context, userID uuid.UUID, name 
 func seedWorkflows(ctx context.Context, tx pgx.Tx, ws uuid.UUID) error {
 	type wf struct {
 		key, name, desc string
-		graph          map[string]any
+		graph           map[string]any
 	}
 	step := func(key, name, kind, model string) map[string]any {
 		return map[string]any{"key": key, "name": name, "kind": kind, "model": model}
 	}
 	list := []wf{
 		{"fix-review", "Fix & review", "Plan → Implement → Review → Verify. A pull request waits for your approval.", map[string]any{
-			"nodes": []any{step("start", "Start", "start", ""), step("plan", "Plan", "task", "auto"), step("implement", "Implement", "task", "auto"), step("review", "Review", "task", "auto"), step("verify", "Verify", "task", ""), step("approval", "Your approval", "approval", ""), step("finish", "Finish", "finish", "")},
-			"edges": []any{[]string{"start", "plan"}, []string{"plan", "implement"}, []string{"implement", "review"}, []string{"review", "verify"}, []string{"verify", "approval"}, []string{"approval", "finish"}},
+			"nodes":  []any{step("start", "Start", "start", ""), step("plan", "Plan", "task", "auto"), step("implement", "Implement", "task", "auto"), step("review", "Review", "task", "auto"), step("verify", "Verify", "task", ""), step("approval", "Your approval", "approval", ""), step("finish", "Finish", "finish", "")},
+			"edges":  []any{[]string{"start", "plan"}, []string{"plan", "implement"}, []string{"implement", "review"}, []string{"review", "verify"}, []string{"verify", "approval"}, []string{"approval", "finish"}},
 			"limits": map[string]any{"max_attempts": 3, "task_limit_cents": 200}}},
 		{"answer", "Answer", "One reply from the Operator, with tools when needed.", map[string]any{
 			"nodes": []any{step("start", "Start", "start", ""), step("answer", "Answer", "task", "auto"), step("finish", "Finish", "finish", "")},
@@ -293,10 +294,45 @@ func (s *Server) updateMember(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, 400, "role must be owner, admin or member")
 		return
 	}
-	if _, err := s.pool.Exec(r.Context(), `update members set role=$3 where workspace_id=$1 and user_id=$2`, sc.WorkspaceID, uid, in.Role); err != nil {
+	ctx := r.Context()
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
 		s.fail(w, err)
 		return
 	}
+	defer tx.Rollback(ctx)
+	// Serialize all membership changes on the workspace, including removal.
+	if _, err = tx.Exec(ctx, `select id from workspaces where id=$1 for update`, sc.WorkspaceID); err != nil {
+		s.fail(w, err)
+		return
+	}
+	var current string
+	if err = tx.QueryRow(ctx, `select role from members where workspace_id=$1 and user_id=$2`, sc.WorkspaceID, uid).Scan(&current); errors.Is(err, pgx.ErrNoRows) {
+		httpx.Error(w, 404, "member not found")
+		return
+	} else if err != nil {
+		s.fail(w, err)
+		return
+	}
+	var owners int
+	if err = tx.QueryRow(ctx, `select count(*) from members where workspace_id=$1 and role='owner'`, sc.WorkspaceID).Scan(&owners); err != nil {
+		s.fail(w, err)
+		return
+	}
+	if current == "owner" && in.Role != "owner" && owners <= 1 {
+		httpx.Error(w, 400, "a workspace keeps at least one owner")
+		return
+	}
+	if _, err = tx.Exec(ctx, `update members set role=$3 where workspace_id=$1 and user_id=$2`, sc.WorkspaceID, uid, in.Role); err != nil {
+		s.fail(w, err)
+		return
+	}
+	if err = tx.Commit(ctx); err != nil {
+		s.fail(w, err)
+		return
+	}
+	s.hub.Publish(sc.WorkspaceID, "member.updated", nil)
+
 	httpx.JSON(w, 200, map[string]bool{"ok": true})
 }
 
@@ -311,18 +347,48 @@ func (s *Server) removeMember(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, 403, "only owners and admins can remove members")
 		return
 	}
-	var owners int
-	_ = s.pool.QueryRow(r.Context(), `select count(*) from members where workspace_id=$1 and role='owner'`, sc.WorkspaceID).Scan(&owners)
+	ctx := r.Context()
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	defer tx.Rollback(ctx)
+	if _, err = tx.Exec(ctx, `select id from workspaces where id=$1 for update`, sc.WorkspaceID); err != nil {
+		s.fail(w, err)
+		return
+	}
 	var role string
-	_ = s.pool.QueryRow(r.Context(), `select role from members where workspace_id=$1 and user_id=$2`, sc.WorkspaceID, uid).Scan(&role)
+	if err = tx.QueryRow(ctx, `select role from members where workspace_id=$1 and user_id=$2`, sc.WorkspaceID, uid).Scan(&role); errors.Is(err, pgx.ErrNoRows) {
+		httpx.Error(w, 404, "member not found")
+		return
+	} else if err != nil {
+		s.fail(w, err)
+		return
+	}
+	if role == "owner" && sc.Role != "owner" {
+		httpx.Error(w, 403, "only owners can remove an owner")
+		return
+	}
+	var owners int
+	if err = tx.QueryRow(ctx, `select count(*) from members where workspace_id=$1 and role='owner'`, sc.WorkspaceID).Scan(&owners); err != nil {
+		s.fail(w, err)
+		return
+	}
 	if role == "owner" && owners <= 1 {
 		httpx.Error(w, 400, "a workspace keeps at least one owner")
 		return
 	}
-	if _, err := s.pool.Exec(r.Context(), `delete from members where workspace_id=$1 and user_id=$2`, sc.WorkspaceID, uid); err != nil {
+	if _, err = tx.Exec(ctx, `delete from members where workspace_id=$1 and user_id=$2`, sc.WorkspaceID, uid); err != nil {
 		s.fail(w, err)
 		return
 	}
+	if err = tx.Commit(ctx); err != nil {
+		s.fail(w, err)
+		return
+	}
+	s.hub.Publish(sc.WorkspaceID, "member.removed", nil)
+
 	httpx.JSON(w, 200, map[string]bool{"ok": true})
 }
 
@@ -371,6 +437,12 @@ func (s *Server) createInvitation(w http.ResponseWriter, r *http.Request) {
 	if in.Role == "" {
 		in.Role = "member"
 	}
+	in.Email = strings.ToLower(strings.TrimSpace(in.Email))
+	addr, err := mail.ParseAddress(in.Email)
+	if err != nil || addr.Address != in.Email || (in.Role != "member" && in.Role != "admin") {
+		httpx.Error(w, 400, "a valid email and member or admin role are required")
+		return
+	}
 	raw := make([]byte, 24)
 	_, _ = rand.Read(raw)
 	token := base64.RawURLEncoding.EncodeToString(raw)
@@ -387,6 +459,10 @@ func (s *Server) createInvitation(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) revokeInvitation(w http.ResponseWriter, r *http.Request) {
 	sc := scopeOf(r.Context())
+	if !requireRole(sc, "owner", "admin") {
+		httpx.Error(w, 403, "only owners and admins can revoke invitations")
+		return
+	}
 	id, ok := idParam(r, "id")
 	if !ok {
 		httpx.Error(w, 400, "bad id")
@@ -408,22 +484,35 @@ func (s *Server) acceptInvite(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, 400, err.Error())
 		return
 	}
+	ctx := r.Context()
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	defer tx.Rollback(ctx)
 	h := sha256.Sum256([]byte(strings.TrimSpace(in.Token)))
 	var wsID uuid.UUID
 	var role string
-	err := s.pool.QueryRow(r.Context(), `update invitations set accepted_at=now() where token_hash=$1 and accepted_at is null and expires_at>now() returning workspace_id, role`, hex.EncodeToString(h[:])).Scan(&wsID, &role)
+	err = tx.QueryRow(ctx, `update invitations set accepted_at=now() where token_hash=$1 and email=$2 and accepted_at is null and expires_at>now() returning workspace_id,role`, hex.EncodeToString(h[:]), p.User.Email).Scan(&wsID, &role)
 	if errors.Is(err, pgx.ErrNoRows) {
-		httpx.Error(w, 400, "that invitation is no longer valid")
+		httpx.Error(w, 400, "that invitation is no longer valid for this account")
 		return
 	}
 	if err != nil {
 		s.fail(w, err)
 		return
 	}
-	if _, err := s.pool.Exec(r.Context(), `insert into members (workspace_id, user_id, role) values ($1,$2,$3) on conflict do nothing`, wsID, p.User.ID, role); err != nil {
+	if _, err = tx.Exec(ctx, `insert into members(workspace_id,user_id,role) values($1,$2,$3) on conflict do nothing`, wsID, p.User.ID, role); err != nil {
 		s.fail(w, err)
 		return
 	}
+	if err = tx.Commit(ctx); err != nil {
+		s.fail(w, err)
+		return
+	}
+	s.hub.Publish(wsID, "member.created", nil)
+
 	var ws Workspace
 	_ = s.pool.QueryRow(r.Context(), `select `+workspaceCols+` from workspaces w where w.id=$1`, wsID).Scan(ws.scan()...)
 	ws.Role = role
