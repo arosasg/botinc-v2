@@ -5,8 +5,12 @@ import { useEffect } from "react";
 /* Keep conversation scrollers pinned to their latest entry. When content grows
    while the reader is at (or near) the bottom, follow it; when the reader has
    scrolled up to read history, leave them alone. Applies to every scroller
-   matching `selector`, including ones mounted later. */
-export function useStickToLatest(selector = ".t9-scroll, .chat-scroll, .auto-chat-scroll10") {
+   matching `selector`, including ones mounted later.
+
+   The routine page (`.rt-page16`) is excluded on purpose: it reuses the
+   conversation scroller class but is a document you read from the top, not a
+   thread you follow. Sticking it opened the routine part-scrolled. */
+export function useStickToLatest(selector = ".t9-scroll, .chat-scroll, .auto-chat-scroll10:not(.rt-page16)") {
   useEffect(() => {
     const NEAR = 48;
     const tracked = new Map<Element, { atBottom: boolean; ro: ResizeObserver }>();

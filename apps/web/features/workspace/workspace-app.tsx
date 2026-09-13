@@ -13,7 +13,17 @@ const ROOT_PROPS = { modelLabel11: "Auto", projectLabel10: "Product", thinkingLa
 function Mounted({ Logic }: { Logic: LogicClass }) {
   const { vals } = useDCLogic(Logic, ROOT_PROPS);
   useStickToLatest();
-  return <WorkspaceView v={vals} />;
+  /* The design publishes its semantic tokens on the runtime's host element
+     (`#dc-root, .sc-host`), including the dark values behind
+     `:has(.app[data-theme=dark])`. Without a host, any token declared only
+     there is unset and every `var(--x, <light fallback>)` silently renders
+     light - which is how the dark theme kept a white tile behind the source
+     icons. `display: contents` publishes the tokens without adding a box. */
+  return (
+    <div className="sc-host" style={{ display: "contents" }}>
+      <WorkspaceView v={vals} />
+    </div>
+  );
 }
 
 export function WorkspaceApp() {
