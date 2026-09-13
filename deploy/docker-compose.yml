@@ -1,0 +1,66 @@
+# The whole stack on one machine. This is how test.botinc.ai runs before it
+# moves to managed infrastructure, and how anyone can bring the product up
+# from a clean checkout.
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: botinc
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: botinc
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U botinc -d botinc"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: ../server
+    environment:
+      APP_ENV: production
+      PORT: 8080
+      DATABASE_URL: postgres://botinc:${POSTGRES_PASSWORD}@postgres:5432/botinc?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET}
+      BOTINC_SECRETS_KEY: ${BOTINC_SECRETS_KEY:?set BOTINC_SECRETS_KEY}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:?set FRONTEND_ORIGIN}
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
+      BOTINC_PUBLIC_API_URL: ${BOTINC_PUBLIC_API_URL:?set BOTINC_PUBLIC_API_URL}
+      # Remote only. The server refuses the local provider in production.
+      BOTINC_SANDBOX_PROVIDER: ${BOTINC_SANDBOX_PROVIDER:-e2b}
+      E2B_API_KEY: ${E2B_API_KEY:-}
+      BOTINC_E2B_TEMPLATE: ${BOTINC_E2B_TEMPLATE:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-BotInc <hello@botinc.ai>}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-}
+      GITHUB_APP_ID: ${GITHUB_APP_ID:-}
+      GITHUB_APP_PRIVATE_KEY: ${GITHUB_APP_PRIVATE_KEY:-}
+      GITHUB_APP_SLUG: ${GITHUB_APP_SLUG:-}
+      GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+
+  web:
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+    environment:
+      # Read per request, so this image is identical in every environment.
+      BOTINC_API_URL: ${BOTINC_PUBLIC_API_URL}
+    depends_on:
+      - api
+    ports:
+      - "3000:3000"
+
+volumes:
+  pgdata:
