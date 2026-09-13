@@ -200,6 +200,12 @@ func (s *Service) Resolve(ctx context.Context, r *http.Request) (*Principal, err
 	if token == "" {
 		return nil, nil
 	}
+	// A run token belongs to the runtime protocol, which authenticates itself
+	// further down the stack. It is not a user credential, so leave the
+	// request unauthenticated rather than failing it here.
+	if strings.HasPrefix(token, RunTokenPrefix) {
+		return nil, nil
+	}
 	if strings.HasPrefix(token, "bik_") {
 		var p Principal
 		err := s.pool.QueryRow(ctx, `select k.id, u.id, u.email, u.name, u.avatar_url, u.created_at from api_keys k join users u on u.id=k.user_id where k.token_hash=$1 and k.revoked_at is null`, hash(token)).
@@ -290,6 +296,9 @@ func (s *Service) CreateAPIKey(ctx context.Context, userID, workspaceID uuid.UUI
 }
 
 // --- context plumbing ---
+
+// RunTokenPrefix marks a token issued to a sandbox for one run.
+const RunTokenPrefix = "brt_"
 
 type ctxKey int
 

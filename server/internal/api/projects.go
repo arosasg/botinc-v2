@@ -121,7 +121,10 @@ func (s *Server) addRepository(w http.ResponseWriter, r *http.Request) {
 	var rp Repository
 	err := s.pool.QueryRow(r.Context(), `insert into repositories (workspace_id, project_id, full_name, default_branch, installation_id)
 		values ($1,$2,$3,$4,$5)
-		on conflict (workspace_id, full_name) do update set project_id=excluded.project_id, default_branch=excluded.default_branch, installation_id=excluded.installation_id
+		on conflict (workspace_id, full_name) do update set
+			project_id=coalesce(excluded.project_id, repositories.project_id),
+			default_branch=excluded.default_branch,
+			installation_id=coalesce(excluded.installation_id, repositories.installation_id)
 		returning id, project_id, provider, full_name, default_branch, installation_id, created_at`,
 		sc.WorkspaceID, in.ProjectID, in.FullName, in.DefaultBranch, in.InstallationID).
 		Scan(&rp.ID, &rp.ProjectID, &rp.Provider, &rp.FullName, &rp.DefaultBranch, &rp.InstallationID, &rp.CreatedAt)
