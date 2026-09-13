@@ -115,13 +115,20 @@ export class WorkspaceClient {
   queueMessage(id: string, body: string) { return this.post<void>(`/conversations/${id}/queue`, { body }); }
 
   // --- issues ---
-  issues(params?: { status?: string; assignee?: "me"; project?: string }, signal?: AbortSignal) {
+  async issues(params?: { status?: string; assignee?: "me"; project?: string }, signal?: AbortSignal) {
     const q = new URLSearchParams();
     if (params?.status) q.set("status", params.status);
     if (params?.assignee) q.set("assignee", params.assignee);
     if (params?.project) q.set("project", params.project);
-    const qs = q.toString();
-    return this.get<{ issues: Issue[] }>(`/issues${qs ? "?" + qs : ""}`, signal);
+    const issues: Issue[]=[];const seen=new Set<string>();let offset=0;
+    for(;;){
+      const qs=q.toString();
+      const page=await this.get<{issues:Issue[];has_more?:boolean;next_offset?:number}>(`/issues${qs?"?"+qs:""}`,signal);
+      for(const issue of page.issues){if(!seen.has(issue.id)){seen.add(issue.id);issues.push(issue)}}
+      if(!page.has_more)return {issues};
+      if(!page.issues.length||!Number.isInteger(page.next_offset)||page.next_offset!<=offset)throw new Error("Invalid issue pagination response");
+      offset=page.next_offset!;q.set("offset",String(offset));
+    }
   }
   issue(id: string, signal?: AbortSignal) {
     return this.get<{

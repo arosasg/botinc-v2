@@ -43,6 +43,8 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
      for(const k of ["connections","agentPrefs","funding","memoryByMember","skillGrants","modelAccounts","preferencesBy10","fallbackPolicies10"]){patch[k]={[member]:{}};}
      patch.liveWorkspaces=workspaces;patch.workspace16=overview.workspace.name;patch.member=member;patch.signed=true;patch.workspaceName=overview.workspace.name;
      patch.issues=issues.issues.map(i=>mapIssue(i,people));
+     const selectedIssue=issues.issues.find(i=>i.identifier===logic.state.activeIssue||i.id===logic.state.activeIssue);
+     if(selectedIssue){const detail=await ws.issue(selectedIssue.id,abort.signal);const files=await api.request<{attachments:Vals[]}>("GET",`/api/w/${ws.slug}/attachments?issue=${selectedIssue.id}`,undefined,abort.signal);patch.liveIssueDetail=detail;patch.liveIssueFiles=files.attachments;patch.issues=patch.issues.map((i:Vals)=>i.uuid===selectedIssue.id?{...i,events:detail.comments.map(c=>({who:people.get(c.author_user_id||"")?.name||"Previous agent",role:c.author_kind,when:new Date(c.created_at).toLocaleString(),text:c.body})),cost:detail.runs.reduce((sum,r)=>sum+r.cost_cents,0)/100}:i)}
      const oldChats=logic.state.chats?.[previous]||[];
      patch.chats={[member]:chats.conversations.map(c=>{
       const old=oldChats.find((x:Vals)=>x.id===c.id);return {...mapConversation(c,[],me,people),messages:old?.messages||[],phase:old?.phase||"done"};
@@ -96,6 +98,8 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
   }catch(err){if(!disposed)fail(err)}finally{sending=false}
  };
  bind("send",send);
+ bind("openIssue",(id:string)=>{logic.go("issue",{activeIssue:id,issueComment:"",liveIssueDetail:null,liveIssueFiles:[]});void hydrate().catch(fail)});
+ bind("issue",()=>logic.state.issues.find((i:Vals)=>i.id===logic.state.activeIssue||i.uuid===logic.state.activeIssue)||{id:"",title:"Select an issue",description:"",status:"Incoming",events:[]});
  // The prototype has several generations of composer handlers. All route here.
  for(const name of ["sendComposer10","sendComposer11","sendThreadMessage9"])bind(name,send);
  bind("workspaceMenu16",(event:Event)=>logic.openMenu14(null,event,[...(logic.state.liveWorkspaces||[]).map((w:Vals)=>({label:w.name,hint:w.role,on:w.slug===ws.slug,run:()=>window.location.assign("/w?workspace="+encodeURIComponent(w.slug))})),{label:"New workspace",run:()=>logic.newWorkspace16()}],"Workspaces"));
@@ -124,6 +128,19 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
  bind("renderVals",()=>{
   const v=render.call(logic);const s=logic.state;
   v.workspaceName= s.workspace16||"BotInc";v.previewCard15=false;
+  const detail=s.liveIssueDetail;const currentIssue=logic.issue();
+  v.i8Computer="Remote";v.i8Agent="Operator";
+  v.i8HasPr=!!detail?.runs?.some((r:Vals)=>r.result?.pull_request?.url);v.i8HasDeploy=false;v.i8HasCriteria=false;v.i8NoCriteria=true;
+  v.i8HasArtifacts=!!s.liveIssueFiles?.length;v.i8NoArtifacts=!v.i8HasArtifacts;
+  v.liveIssueFiles=s.liveIssueFiles||[];
+  v.commentIssue=(event?:Event)=>{event?.preventDefault();return write(async()=>{const body=String(s.issueComment||"").trim();if(!body)return;await ws.comment(currentIssue.uuid||currentIssue.id,body);logic.setState({issueComment:""})})()};
+  const activeRun=detail?.runs?.find((r:Vals)=>!r.finished_at);
+  v.i8PrimaryLabel=activeRun?"Cancel run":"Start work";v.i8HasSecondary=false;
+  v.i8Primary=write(async()=>{if(activeRun)await ws.cancelRun(activeRun.id);else await ws.work(currentIssue.uuid||currentIssue.id)});
+  v.chooseComputer=()=>logic.toast("All work runs on remote computers");
+  v.openReceipt=()=>logic.generic("Run usage","Provider-reported usage for this issue",[],{genericText:(detail?.runs||[]).map((r:Vals)=>`${r.purpose}: ${r.status} · ${logic.cash(r.cost_cents/100)}`).join("\n")||"No v2 usage has been charged for this issue. Historical execution records are preserved in the migration archive."});
+  v.saveI8Title=write(async()=>{const title=String(s.titleDraft||"").trim();if(!title)throw new Error("Enter an issue title");await ws.updateIssue(currentIssue.uuid||currentIssue.id,{title});logic.setState({titleEditing:false})});
+  v.confirmCancelIssue=write(async()=>{await ws.updateIssue(currentIssue.uuid||currentIssue.id,{status:"cancelled"});logic.setState({dialog:null})});
   v.topup=()=>logic.open("topup",{paymentError:false});
   v.checkoutNotice=s.paymentsTestMode?"Stripe test checkout. Test payments add staging credit only.":"Secure checkout with Stripe. Credit is added after payment is confirmed.";
   v.checkoutBusy=!!s.checkoutBusy;v.payLabel=s.checkoutBusy?"Opening checkout…":"Continue to Stripe";

@@ -12,6 +12,7 @@ import (
 )
 
 type Config struct {
+	AttachmentDir  string
 	AllowedEmails  string
 	Env            string // development | test | production
 	Port           int
@@ -69,6 +70,7 @@ func Load() (Config, error) {
 	port, _ := strconv.Atoi(env("PORT", env("BACKEND_PORT", "8080")))
 	ttl, _ := time.ParseDuration(env("BOTINC_RUN_TTL", "45m"))
 	c := Config{
+		AttachmentDir:  env("BOTINC_ATTACHMENT_DIR", "./data/attachments"),
 		Env:            env("APP_ENV", "development"),
 		Port:           port,
 		DatabaseURL:    env("DATABASE_URL", ""),

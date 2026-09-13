@@ -14,6 +14,7 @@ RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
 COPY scripts/e2b-launch.mjs ./e2b-launch.mjs
 COPY --from=build /out/botinc-server /botinc-server
 ENV BOTINC_E2B_LAUNCHER=/opt/botinc/e2b-launch.mjs
+ENV BOTINC_ATTACHMENT_DIR=/var/lib/botinc/attachments
 EXPOSE 8080
 USER node
 ENTRYPOINT ["/botinc-server"]

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -86,8 +87,6 @@ func (s *Server) listIssues(w http.ResponseWriter, r *http.Request) {
 		list := strings.Split(st, ",")
 		args = append(args, list)
 		sql += ` and i.status = any($2)`
-	} else {
-		sql += ` and i.status <> 'cancelled'`
 	}
 	if q.Get("assignee") == "me" {
 		args = append(args, sc.UserID)
@@ -99,7 +98,25 @@ func (s *Server) listIssues(w http.ResponseWriter, r *http.Request) {
 			sql += ` and i.project_id = $` + itoa(len(args))
 		}
 	}
-	sql += ` order by case i.status when 'needs_you' then 0 when 'in_progress' then 1 when 'in_review' then 2 when 'todo' then 3 when 'blocked' then 4 else 5 end, i.updated_at desc limit 500`
+	limit, offset := 500, 0
+	if text := q.Get("limit"); text != "" {
+		n, err := strconv.Atoi(text)
+		if err != nil || n < 1 || n > 500 {
+			httpx.Error(w, 400, "limit must be between 1 and 500")
+			return
+		}
+		limit = n
+	}
+	if text := q.Get("offset"); text != "" {
+		n, err := strconv.Atoi(text)
+		if err != nil || n < 0 {
+			httpx.Error(w, 400, "offset must be nonnegative")
+			return
+		}
+		offset = n
+	}
+	args = append(args, limit+1, offset)
+	sql += ` order by case i.status when 'needs_you' then 0 when 'in_progress' then 1 when 'in_review' then 2 when 'todo' then 3 when 'blocked' then 4 else 5 end, i.updated_at desc, i.id limit $` + itoa(len(args)-1) + ` offset $` + itoa(len(args))
 	rows, err := s.pool.Query(r.Context(), sql, args...)
 	if err != nil {
 		s.fail(w, err)
@@ -117,7 +134,15 @@ func (s *Server) listIssues(w http.ResponseWriter, r *http.Request) {
 		i.stamp(prefix)
 		out = append(out, i)
 	}
-	httpx.JSON(w, 200, map[string]any{"issues": out})
+	if err := rows.Err(); err != nil {
+		s.fail(w, err)
+		return
+	}
+	hasMore := len(out) > limit
+	if hasMore {
+		out = out[:limit]
+	}
+	httpx.JSON(w, 200, map[string]any{"issues": out, "has_more": hasMore, "next_offset": offset + len(out)})
 }
 
 func (s *Server) createIssue(w http.ResponseWriter, r *http.Request) {

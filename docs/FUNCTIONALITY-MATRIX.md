@@ -25,6 +25,7 @@ verified on staging, and independently reviewed. The production domain still ser
 | CLI | Existing commands plus skill/memory/team commands; unit tests pass | Full real-server CLI matrix, packaging and installation proof |
 | Cloud runtime | Dedicated E2B template and installed binaries verified; actual run-token launch and provider answer passed | Heartbeat/cancellation, interrupted-work preservation |
 | Staging | Isolated stack, immutable image builds, DNS/TLS and public health checks passed | Complete live matrix and backup/restore verification |
+| Migration | BotInc staging import: 1,329 issues, 13,789 comments, 10,164 archived execution records, six paused routines; replay no duplicate rows | Five other workspace exports rejected by task workspace binding; trigger adaptation, provider credentials and final delta remain |
 | Production | No cutover performed | Data migration/compatibility, independent review, rollback proof and post-cutover checks |
 
 Current staging infrastructure is owned by CloudFormation stack `botinc-v2-staging`

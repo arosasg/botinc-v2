@@ -29,3 +29,13 @@ p=Path("apps/web/features/workspace/views/dialog-topupdialog.tsx")
 s=p.read_text().replace('Simulated checkout. No charge will be made.', '{interp(v.checkoutNotice || "Checkout preview")}')
 s=s.replace('className="button primary" onClick={v.payTopup}', 'className="button primary" disabled={v.checkoutBusy} onClick={v.payTopup}')
 p.write_text(s)
+
+
+p=Path("apps/web/features/workspace/views/page-issue-detail.tsx")
+s=p.read_text()
+start='<div className="i8-artifact-buttons">'
+if 'v.liveIssueFiles' not in s:
+ pos=s.index(start);end=s.index('</div>',pos)
+ old=s[pos+len(start):end]
+ s=s[:pos+len(start)]+"{v.liveIssueFiles ? v.liveIssueFiles.map((file: any) => <a key={file.id} className=\"small-button\" href={file.url} target=\"_blank\" rel=\"noopener noreferrer\">{file.filename}</a>) : <>"+old+"</>}"+s[end:]
+p.write_text(s)
