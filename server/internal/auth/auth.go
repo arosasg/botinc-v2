@@ -309,12 +309,27 @@ func (s *Service) PollDevice(ctx context.Context, deviceCode string) (token stri
 }
 
 func (s *Service) CreateAPIKey(ctx context.Context, userID, workspaceID uuid.UUID, name string) (string, error) {
+	return s.CreateScopedAPIKey(ctx, userID, workspaceID, name, []string{"read", "write"})
+}
+func (s *Service) CreateScopedAPIKey(ctx context.Context, userID, workspaceID uuid.UUID, name string, scopes []string) (string, error) {
+	if len(scopes) == 0 {
+		scopes = []string{"read"}
+	}
+	for _, scope := range scopes {
+		if scope != "read" && scope != "write" {
+			return "", errors.New("scope must be read or write")
+		}
+	}
+	raw, err := json.Marshal(scopes)
+	if err != nil {
+		return "", err
+	}
 	token := "bik_" + randomToken(32)
 	var ws any
 	if workspaceID != uuid.Nil {
 		ws = workspaceID
 	}
-	if _, err := s.pool.Exec(ctx, `insert into api_keys (user_id, workspace_id, name, prefix, token_hash) values ($1,$2,$3,$4,$5)`, userID, ws, name, token[:12], hash(token)); err != nil {
+	if _, err := s.pool.Exec(ctx, `insert into api_keys (user_id, workspace_id, name, prefix, token_hash,scopes) values ($1,$2,$3,$4,$5,$6)`, userID, ws, name, token[:12], hash(token), raw); err != nil {
 		return "", err
 	}
 	return token, nil

@@ -29,10 +29,11 @@ type Config struct {
 	GoogleClientSecret string
 	GoogleRedirectURI  string
 
-	GitHubAppID         string
-	GitHubAppPrivateKey string
-	GitHubAppSlug       string
-	GitHubWebhookSecret string
+	GitHubOAuthClientID, GitHubOAuthClientSecret string
+	GitHubAppID                                  string
+	GitHubAppPrivateKey                          string
+	GitHubAppSlug                                string
+	GitHubWebhookSecret                          string
 
 	SandboxProvider string // local | e2b
 	E2BAPIKey       string
@@ -81,6 +82,7 @@ func Load() (Config, error) {
 		GoogleClientID:      env("GOOGLE_CLIENT_ID", ""),
 		GoogleClientSecret:  env("GOOGLE_CLIENT_SECRET", ""),
 		GoogleRedirectURI:   env("GOOGLE_REDIRECT_URI", ""),
+		GitHubOAuthClientID: env("GITHUB_OAUTH_CLIENT_ID", ""), GitHubOAuthClientSecret: env("GITHUB_OAUTH_CLIENT_SECRET", ""),
 		GitHubAppID:         env("GITHUB_APP_ID", ""),
 		GitHubAppPrivateKey: env("GITHUB_APP_PRIVATE_KEY", ""),
 		GitHubAppSlug:       env("GITHUB_APP_SLUG", ""),

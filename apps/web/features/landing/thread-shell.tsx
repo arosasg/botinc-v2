@@ -710,7 +710,7 @@ export function ThreadShell(p: ThreadShellProps) {
                               </header>
                               <p>
                                 New error in acme/storefront · release 4.12.0 · 312 users in 14 minutes. TypeError: cannot
-                                read 'workspaceId' — checkout/summary.ts:88
+                                read &apos;workspaceId&apos; — checkout/summary.ts:88
                               </p>
                             </article>
                             <article className={v.d?.apCls}>

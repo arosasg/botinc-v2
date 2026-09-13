@@ -343,21 +343,44 @@ func (s *Server) createWorkflowVersion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `select id from workflows where id=$1 for update`, wf.ID); err != nil {
+		s.fail(w, err)
+		return
+	}
 	var next int
-	_ = s.pool.QueryRow(ctx, `select coalesce(max(version),0)+1 from workflow_versions where workflow_id=$1`, wf.ID).Scan(&next)
+	if err := tx.QueryRow(ctx, `select coalesce(max(version),0)+1 from workflow_versions where workflow_id=$1`, wf.ID).Scan(&next); err != nil {
+		s.fail(w, err)
+		return
+	}
 	status := "draft"
 	if in.Activate {
 		status = "active"
 	}
 	var v WorkflowVersion
-	if err := s.pool.QueryRow(ctx, `insert into workflow_versions (workflow_id, version, status, graph) values ($1,$2,$3,$4) returning id, version, status, graph, created_at`, wf.ID, next, status, in.Graph).Scan(&v.ID, &v.Version, &v.Status, &v.Graph, &v.CreatedAt); err != nil {
+	if err := tx.QueryRow(ctx, `insert into workflow_versions (workflow_id, version, status, graph) values ($1,$2,$3,$4) returning id, version, status, graph, created_at`, wf.ID, next, status, in.Graph).Scan(&v.ID, &v.Version, &v.Status, &v.Graph, &v.CreatedAt); err != nil {
 		s.fail(w, err)
 		return
 	}
 	if in.Activate {
-		_, _ = s.pool.Exec(ctx, `update workflow_versions set status='retired' where workflow_id=$1 and id<>$2 and status='active'`, wf.ID, v.ID)
-		_, _ = s.pool.Exec(ctx, `update workflows set active_version_id=$2 where id=$1`, wf.ID, v.ID)
+		if _, err := tx.Exec(ctx, `update workflow_versions set status='retired' where workflow_id=$1 and id<>$2 and status='active'`, wf.ID, v.ID); err != nil {
+			s.fail(w, err)
+			return
+		}
+		if _, err := tx.Exec(ctx, `update workflows set active_version_id=$2 where id=$1`, wf.ID, v.ID); err != nil {
+			s.fail(w, err)
+			return
+		}
 		wf.ActiveID = &v.ID
+	}
+	if err := tx.Commit(ctx); err != nil {
+		s.fail(w, err)
+		return
 	}
 	s.hub.Publish(sc.WorkspaceID, "workflow.updated", wf)
 	httpx.JSON(w, 201, map[string]any{"workflow": wf, "version": v})
@@ -379,8 +402,18 @@ func (s *Server) activateWorkflowVersion(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	ctx := r.Context()
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `select id from workflows where id=$1 for update`, wf.ID); err != nil {
+		s.fail(w, err)
+		return
+	}
 	var vid uuid.UUID
-	err = s.pool.QueryRow(ctx, `select id from workflow_versions where workflow_id=$1 and version=$2::int`, wf.ID, chiParam(r, "version")).Scan(&vid)
+	err = tx.QueryRow(ctx, `select id from workflow_versions where workflow_id=$1 and version=$2::int`, wf.ID, chiParam(r, "version")).Scan(&vid)
 	if errors.Is(err, pgx.ErrNoRows) {
 		httpx.ErrorCode(w, 404, "version_not_found", "that version does not exist")
 		return
@@ -389,9 +422,19 @@ func (s *Server) activateWorkflowVersion(w http.ResponseWriter, r *http.Request)
 		s.fail(w, err)
 		return
 	}
-	_, _ = s.pool.Exec(ctx, `update workflow_versions set status='retired' where workflow_id=$1 and status='active'`, wf.ID)
-	_, _ = s.pool.Exec(ctx, `update workflow_versions set status='active' where id=$1`, vid)
-	if _, err := s.pool.Exec(ctx, `update workflows set active_version_id=$2 where id=$1`, wf.ID, vid); err != nil {
+	if _, err := tx.Exec(ctx, `update workflow_versions set status='retired' where workflow_id=$1 and status='active'`, wf.ID); err != nil {
+		s.fail(w, err)
+		return
+	}
+	if _, err := tx.Exec(ctx, `update workflow_versions set status='active' where id=$1`, vid); err != nil {
+		s.fail(w, err)
+		return
+	}
+	if _, err := tx.Exec(ctx, `update workflows set active_version_id=$2 where id=$1`, wf.ID, vid); err != nil {
+		s.fail(w, err)
+		return
+	}
+	if err := tx.Commit(ctx); err != nil {
 		s.fail(w, err)
 		return
 	}

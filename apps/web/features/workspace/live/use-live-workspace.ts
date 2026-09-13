@@ -33,8 +33,8 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
    const hydrate=async()=>{
     if(!alive)return;if(refreshing){again=true;return;}refreshing=true;
     try{
-     const [issues,chats,autos,accounts,overview,members,skills,memories,credits,plugins,repos,projects,workflows,invites]=await Promise.all([
-      ws.issues(undefined,abort.signal),ws.conversations(abort.signal),ws.autopilots(abort.signal),ws.accounts(abort.signal),ws.overview(abort.signal),ws.members(abort.signal),ws.skills(abort.signal),ws.memories(abort.signal),ws.credits(abort.signal),ws.plugins(abort.signal),ws.repositories(abort.signal),ws.projects(abort.signal),ws.workflows(abort.signal),ws.invitations(abort.signal),
+     const [issues,chats,autos,accounts,overview,members,skills,memories,credits,plugins,repos,projects,workflows,invites,sessions,keys]=await Promise.all([
+      ws.issues(undefined,abort.signal),ws.conversations(abort.signal),ws.autopilots(abort.signal),ws.accounts(abort.signal),ws.overview(abort.signal),ws.members(abort.signal),ws.skills(abort.signal),ws.memories(abort.signal),ws.credits(abort.signal),ws.plugins(abort.signal),ws.repositories(abort.signal),ws.projects(abort.signal),ws.workflows(abort.signal),ws.invitations(abort.signal),api.request<{sessions:Vals[]}>("GET","/api/me/sessions",undefined,abort.signal),api.request<{keys:Vals[]}>("GET","/api/me/keys",undefined,abort.signal),
      ]);
      if(!alive)return;
      for(const p of members.members)people.set(p.user_id,{name:p.name,email:p.email});
@@ -68,7 +68,7 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
      patch.liveProjects=projects.projects;
      patch.workflows14=workflows.workflows.map(w=>({id:w.id,name:w.name,meta:w.description,icon:"git-branch",state:w.active_version_id?"Active":"Draft",tone:w.active_version_id?"ok14":""}));
      patch.profileByMember15={[member]:{...(logic.state.profileByMember15?.[previous]||{}),name:me.name||member,email:me.email}};
-     patch.sec19={...(logic.state.sec19||{}),twoStep:false,sms:false,codes:[],codesLeft:0,codesWhen:"Never",sessions:[],keys:[]};
+     patch.sec19={...(logic.state.sec19||{}),twoStep:false,sms:false,codes:[],codesLeft:0,codesWhen:"Never",sessions:sessions.sessions.map(d=>({id:d.id,name:d.current?"Current browser":"Browser session",short:"browser",icon:"monitor",meta:d.user_agent,where:d.location||"",ip:d.ip,when:new Date(d.last_seen_at).toLocaleString(),current:d.current})),keys:keys.keys.map(k=>({id:k.id,name:k.name,prefix:k.prefix,scope:k.scopes.includes("write")?"Full access":"Read only",created:new Date(k.created_at).toLocaleDateString(),used:k.last_used_at?new Date(k.last_used_at).toLocaleString():"Never"}))};
      logic.setState(patch);report("live");
     }finally{refreshing=false;if(again&&alive){again=false;void hydrate().catch(fail)}}
    };
@@ -122,6 +122,17 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
   v.saveSkill=logic.saveSkill;v.saveMemory14=logic.saveMemory14;v.sendInvites14=logic.sendInvites14;
   // No demo recovery codes, invented sessions, or locally generated API keys.
   v.akCreate19=write(async()=>{const out=await api.request<{token:string}>("POST","/api/me/keys",{name:"Workspace key"});logic.setState({sec19:{...s.sec19,newKey:{secret:out.token}}})});
+  v.devSummary19=`${(s.sec19?.sessions||[]).length} active sessions`;
+  v.devRows19=(v.devRows19||[]).map((d:Vals)=>({...d,out:write(async()=>{await api.request("DELETE","/api/me/sessions/"+d.id)})}));
+  v.devOutAll19=write(async()=>{for(const d of s.sec19.sessions){if(!d.current)await api.request("DELETE","/api/me/sessions/"+d.id)}});
+  v.akRows19=(v.akRows19||[]).map((k:Vals)=>({
+   ...k,
+   revoke:write(async()=>{await api.request("DELETE","/api/me/keys/"+k.id)}),
+   scopePick:(e:Event)=>logic.openMenu14(null,e,["Read only","Full access"].map(scope=>({
+    label:scope,on:k.scope===scope,
+    run:write(async()=>{await api.request("PATCH","/api/me/keys/"+k.id,{scopes:scope==="Full access"?["read","write"]:["read"]})})
+   })),"What this key may do")
+  }));
   return v;
  });
  logic.forceUpdate?.();

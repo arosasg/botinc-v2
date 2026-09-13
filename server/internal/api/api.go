@@ -59,6 +59,8 @@ func (s *Server) Router() http.Handler {
 		r.Post("/device/start", s.deviceStart)
 		r.Post("/device/poll", s.devicePoll)
 		r.With(auth.Require).Post("/device/approve", s.deviceApprove)
+		r.Get("/github/start", s.githubStart)
+		r.Get("/github/callback", s.githubCallback)
 		r.Get("/google/start", s.googleStart)
 		r.Get("/google/callback", s.googleCallback)
 	})
@@ -71,6 +73,7 @@ func (s *Server) Router() http.Handler {
 		r.Delete("/sessions/{id}", s.revokeSession)
 		r.Get("/keys", s.listKeys)
 		r.Post("/keys", s.createKey)
+		r.Patch("/keys/{id}", s.updateKey)
 		r.Delete("/keys/{id}", s.revokeKey)
 	})
 
@@ -179,6 +182,7 @@ func (s *Server) Router() http.Handler {
 
 func (s *Server) publicConfig(w http.ResponseWriter, _ *http.Request) {
 	httpx.JSON(w, 200, map[string]any{
+		"github_sign_in": s.cfg.GitHubOAuthClientID != "" && s.cfg.GitHubOAuthClientSecret != "",
 		"google_sign_in": s.cfg.GoogleClientID != "",
 		"dev_login_code": s.cfg.DevLoginCode != "" && !s.cfg.Production(),
 		"sandbox":        s.cfg.SandboxProvider,

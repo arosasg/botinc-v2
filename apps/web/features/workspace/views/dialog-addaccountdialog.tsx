@@ -127,7 +127,7 @@ export function DialogAddaccountdialog({ v }: { v: Vals }) {
                 />
                 <p className="fine" id="add-key-note">
                   This design preview never asks for a real key. In the product the key is requested here and stored against
-                  the provider's environment variable, never shown again.
+                  the provider&apos;s environment variable, never shown again.
                 </p>
               </>
             ) : null}

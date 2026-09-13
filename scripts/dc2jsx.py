@@ -90,10 +90,10 @@ def jsx_text(s):
     # keep entities; bindings first, then escape any literal braces
     parts=[]; last=0
     for m in BIND.finditer(s):
-        parts.append(s[last:m.start()].replace("{","{'{'}").replace("}","{'}'}"))
+        parts.append(s[last:m.start()].replace("'", "&apos;").replace("{","{'{'}").replace("}","{'}'}"))
         parts.append("{interp("+CURSCOPE_EXPR(m.group(1))+")}")
         last=m.end()
-    parts.append(s[last:].replace("{","{'{'}").replace("}","{'}'}"))
+    parts.append(s[last:].replace("'", "&apos;").replace("{","{'{'}").replace("}","{'}'}"))
     return "".join(parts)
 
 CURSCOPE_EXPR=None

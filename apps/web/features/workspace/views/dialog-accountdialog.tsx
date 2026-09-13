@@ -33,7 +33,7 @@ export function DialogAccountdialog({ v }: { v: Vals }) {
         </div>
         {v.accountRemoving ? (
           <>
-            <p className="dialog-copy">Remove this account from {interp(v.memberName)}'s workspace?</p>
+            <p className="dialog-copy">Remove this account from {interp(v.memberName)}&apos;s workspace?</p>
             <div className="permission-box">
               <strong>What changes</strong>
               <p>{interp(v.acc?.removeCopy)}</p>
