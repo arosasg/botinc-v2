@@ -3,7 +3,6 @@ package db
 
 import (
 	"context"
-	"embed"
 	"fmt"
 	"io/fs"
 	"log/slog"
@@ -38,11 +37,11 @@ func (d *DB) Close() { d.Pool.Close() }
 
 // Migrate applies every *.sql file in migrations (sorted by name) that has not
 // been recorded in schema_migrations. Each file runs in its own transaction.
-func Migrate(ctx context.Context, d *DB, migrations embed.FS, log *slog.Logger) error {
+func Migrate(ctx context.Context, d *DB, migrations fs.FS, log *slog.Logger) error {
 	if _, err := d.Pool.Exec(ctx, `create table if not exists schema_migrations (name text primary key, applied_at timestamptz not null default now())`); err != nil {
 		return err
 	}
-	entries, err := fs.ReadDir(migrations, "migrations")
+	entries, err := fs.ReadDir(migrations, ".")
 	if err != nil {
 		return err
 	}
@@ -61,7 +60,7 @@ func Migrate(ctx context.Context, d *DB, migrations embed.FS, log *slog.Logger) 
 		if applied {
 			continue
 		}
-		body, err := fs.ReadFile(migrations, "migrations/"+name)
+		body, err := fs.ReadFile(migrations, name)
 		if err != nil {
 			return err
 		}

@@ -225,6 +225,8 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 	httpx.Error(w, 500, "something went wrong")
 }
 
+func chiParam(r *http.Request, name string) string { return chi.URLParam(r, name) }
+
 func idParam(r *http.Request, name string) (uuid.UUID, bool) {
 	id, err := uuid.Parse(strings.TrimSpace(chi.URLParam(r, name)))
 	return id, err == nil
