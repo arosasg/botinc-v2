@@ -54,8 +54,8 @@ describe("routine triggers", () => {
 describe("work conversation layout", () => {
   it("hydrates the routed issue on a cold deep link before active state exists", () => {
     expect(hydrationIssueKey(undefined, "issue-from-route", false)).toBe("issue-from-route");
-    expect(hydrationIssueKey("active-issue", "issue-from-route", false)).toBe("active-issue");
-    expect(hydrationIssueKey(undefined, "stale-route", true)).toBeUndefined();
+    expect(hydrationIssueKey("stale-sample-issue", "issue-from-route", false)).toBe("issue-from-route");
+    expect(hydrationIssueKey("active-issue", "stale-route", true)).toBe("active-issue");
   });
 
   it("opens the Workspace v19 issue inspector on desktop deep links", () => {
