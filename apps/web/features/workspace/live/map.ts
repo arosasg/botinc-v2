@@ -6,7 +6,7 @@
  * row, so a field with no source is left out rather than invented. A screen
  * that has nothing real to show should look empty, not plausible. */
 
-import type { Account, Attachment, Autopilot, Conversation, Issue, Message, Run, User } from "@botinc/api";
+import type { Account, Attachment, Autopilot, Conversation, Issue, Message, Run, User, WorkflowVersion } from "@botinc/api";
 
 /* The design writes status as a sentence, the API as a token, and the sentence
    is not free text: the workspace logic groups the sidebar by comparing it
@@ -115,6 +115,34 @@ export function mapConversation(c: Conversation, messages: Message[], me: User |
     result: false,
     messages: messages.map((m) => mapMessage(m, me, people, attachments)),
   };
+}
+
+export function mapWorkflowSteps(version: WorkflowVersion, openIndex: number, onToggle: (index: number) => void) {
+  const icons: Record<string, string> = {
+    start: "play",
+    finish: "circle-check",
+    condition: "git-branch",
+    repeat: "repeat-2",
+    approval: "badge-check",
+    question: "circle-help",
+  };
+  return version.graph.nodes.map((node, index) => ({
+    id: node.key,
+    label: node.name,
+    detail: [node.model && node.model !== "auto" ? node.model : "Auto", node.prompt].filter(Boolean).join(" · "),
+    state: "READY",
+    cls: "",
+    icon: `/i15.svg#${icons[node.kind] ?? "bot"}`,
+    open: index === openIndex,
+    toggle: () => onToggle(index),
+    facts: [
+      { k: "Kind", v: node.kind[0]?.toUpperCase() + node.kind.slice(1) },
+      { k: "Model", v: node.model && node.model !== "auto" ? node.model : "Auto" },
+    ],
+    hasNote: Boolean(node.prompt),
+    note: node.prompt ?? "",
+    hasRun: false,
+  }));
 }
 
 export function mapAutopilot(a: Autopilot) {

@@ -5,7 +5,7 @@
 import { useEffect, useRef } from "react";
 import { Client, type User, type WorkspaceClient, type WorkflowGraph } from "@botinc/api";
 import type { Vals } from "../vals";
-import { mapAccount, mapAutopilot, mapConversation, mapIssue, mapMessage, mapRun, type PeopleIndex } from "./map";
+import { mapAccount, mapAutopilot, mapConversation, mapIssue, mapMessage, mapRun, mapWorkflowSteps, type PeopleIndex } from "./map";
 import { parseWorkspaceRoute, workspacePath, type WorkspaceRoute } from "./routes";
 
 export type LiveStatus = "off" | "connecting" | "live" | "signed-out" | "error";
@@ -63,7 +63,7 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
      patch.liveWorkspaces=workspaces;patch.workspace16=overview.workspace.name;patch.member=member;patch.signed=true;patch.workspaceName=overview.workspace.name;
      patch.issues=issues.issues.map(i=>mapIssue(i,people));
      const selectedIssue=issues.issues.find(i=>i.identifier===logic.state.activeIssue||i.id===logic.state.activeIssue);
-     if(selectedIssue){const detail=await ws.issue(selectedIssue.id,abort.signal);const files=await api.request<{attachments:Vals[]}>("GET",`/api/w/${ws.slug}/attachments?issue=${selectedIssue.id}`,undefined,abort.signal);patch.liveIssueDetail=detail;patch.liveIssueFiles=files.attachments;patch.issues=patch.issues.map((i:Vals)=>i.uuid===selectedIssue.id?{...i,events:detail.comments.map(c=>({who:people.get(c.author_user_id||"")?.name||"Previous agent",role:c.author_kind,when:new Date(c.created_at).toLocaleString(),text:c.body})),cost:detail.runs.reduce((sum,r)=>sum+r.cost_cents,0)/100}:i)}
+     if(selectedIssue){const detail=await ws.issue(selectedIssue.id,abort.signal);const files=await api.request<{attachments:Vals[]}>("GET",`/api/w/${ws.slug}/attachments?issue=${selectedIssue.id}`,undefined,abort.signal);patch.liveIssueDetail=detail;patch.liveIssueFiles=files.attachments;patch.liveIssueWorkflow=detail.issue.workflow_id?await ws.workflow(detail.issue.workflow_id,abort.signal):null;patch.issues=patch.issues.map((i:Vals)=>i.uuid===selectedIssue.id?{...i,events:detail.comments.map(c=>({who:people.get(c.author_user_id||"")?.name||"Previous agent",role:c.author_kind,when:new Date(c.created_at).toLocaleString(),text:c.body})),cost:detail.runs.reduce((sum,r)=>sum+r.cost_cents,0)/100}:i)}
      const oldChats=logic.state.chats?.[previous]||[];
      patch.chats={[member]:chats.conversations.map(c=>{
       const old=oldChats.find((x:Vals)=>x.id===c.id);return {...mapConversation(c,[],me,people),messages:old?.messages||[],phase:old?.phase||"done"};
@@ -217,6 +217,8 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
   const activeRun=detail?.runs?.find((r:Vals)=>!r.finished_at);
   const latestRun=activeRun||detail?.runs?.at(-1);
   const sourceIssue=detail?.issue;
+  const issueWorkflow=s.liveIssueWorkflow;
+  const workflowVersion=issueWorkflow?.versions?.find((version:Vals)=>version.id===issueWorkflow.workflow.active_version_id)||issueWorkflow?.versions?.[0];
   const migrated=sourceIssue?.source?.kind==="migration";
   const timestamp=(value?:string)=>value?new Date(value).toLocaleString():"Unavailable";
   v.i8Created=timestamp(sourceIssue?.created_at);v.i8Updated=timestamp(sourceIssue?.updated_at);
@@ -232,6 +234,17 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
   v.i8PeopleNote="Issue history is shared with workspace members.";
   v.i8NoArtifactCopy=migrated?"No files attached to this imported issue.":"No output files have been recorded.";
   v.i8SourceLabel=migrated?"Imported from v1":currentIssue.source;
+  if(issueWorkflow&&workflowVersion){
+   const workflowID=String(issueWorkflow.workflow.id);const openIndex=Number(s.liveIssueWorkflowOpen??-1);
+   v.issueWorkflow17=issueWorkflow.workflow.name;v.issueWorkflowTitle17=`Uses ${issueWorkflow.workflow.name}. Open it in the editor.`;
+   v.wfPaneVersion18=`v${workflowVersion.version}`;v.wfPaneName18=issueWorkflow.workflow.name;v.wfPaneLede18=issueWorkflow.workflow.description||"The active workflow for this issue.";
+   v.wfLiveTone18=activeRun?"live18":"";v.wfNowEyebrow18=activeRun?titleCase(activeRun.status):latestRun?titleCase(latestRun.status):"Ready";
+   v.wfNowTitle18=activeRun?"Operator is running this workflow":latestRun?`Latest run: ${titleCase(latestRun.status)}`:"Ready to start";
+   v.wfNowCopy18=activeRun?"Live progress appears here as each workflow step reports back.":latestRun?.error||"No run is active. The configured steps are ready for the next request.";
+   v.wfNowHasAction18=false;v.wfSteps18=mapWorkflowSteps(workflowVersion,openIndex,(index)=>logic.setState({liveIssueWorkflowOpen:index===openIndex?-1:index}));
+   v.wfSpend18=`${detail?.runs?.length||0} runs · ${logic.cash((detail?.runs||[]).reduce((sum:number,run:Vals)=>sum+run.cost_cents,0)/100)} used`;
+   v.openIssueWorkflow17=()=>{void logic.openGraph14(workflowID)};
+  }
 
   v.i8PrimaryLabel=activeRun?"Cancel run":"Start work";v.i8HasSecondary=false;
   v.i8Primary=write(async()=>{if(activeRun)await ws.cancelRun(activeRun.id);else await ws.work(currentIssue.uuid||currentIssue.id)});

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { Account, Attachment, Autopilot, Conversation, Issue, Message, User } from "@botinc/api";
-import { mapAccount, mapAutopilot, mapConversation, mapIssue, type PeopleIndex } from "./map";
+import type { Account, Attachment, Autopilot, Conversation, Issue, Message, User, WorkflowVersion } from "@botinc/api";
+import { mapAccount, mapAutopilot, mapConversation, mapIssue, mapWorkflowSteps, type PeopleIndex } from "./map";
 
 /* The workspace logic does not treat status as free text: it groups the
    sidebar by comparing against a fixed set of sentences, and anything outside
@@ -200,5 +200,21 @@ describe("mapAutopilot", () => {
     expect(row.cron).toBe("0 9 * * *");
     expect(row.model).toBe("Auto");
     expect(row.enabled).toBe(true);
+  });
+});
+
+describe("mapWorkflowSteps", () => {
+  it("uses the active API graph instead of the design's sample workflow", () => {
+    const version: WorkflowVersion = {
+      id: "v1", version: 3, status: "active", created_at: "",
+      graph: { nodes: [{ key: "verify", name: "Verify production", kind: "task", model: "gpt-6-astra", prompt: "Check the live route." }], edges: [] },
+    };
+    let opened = -1;
+
+    const steps = mapWorkflowSteps(version, 0, (index) => { opened = index; });
+
+    expect(steps[0]).toMatchObject({ label: "Verify production", state: "READY", open: true, hasNote: true });
+    steps[0]!.toggle();
+    expect(opened).toBe(0);
   });
 });
