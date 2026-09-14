@@ -11,7 +11,7 @@ export function DialogCalldecisiondialog9({ v }: { v: Vals }) {
       <>
         <div className="call9">
           <header>
-            <span className="n9-overline">OPERATOR CALL · SIMULATION</span>
+            <span className="n9-overline">OPERATOR CALL</span>
             <button className="icon-button" aria-label="End call" onClick={v.endDecisionCall9}>
               <svg
                 className="ui-icon use14"
@@ -85,7 +85,7 @@ export function DialogCalldecisiondialog9({ v }: { v: Vals }) {
                       </Fragment>
                     ))}
                   </div>
-                  <p className="fine">Tap an answer to simulate speaking. Your microphone is not used.</p>
+                  <p className="fine">Choose an answer to continue. Microphone input is not available in this browser yet.</p>
                 </>
               ) : null}
               {v.decisionConfirm9 ? (

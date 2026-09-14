@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Apply product-only input bindings after the design generator."""
+import re
 from pathlib import Path
 p=Path("apps/web/features/workspace/views/dialog-addaccountdialog.tsx")
 s=p.read_text()
@@ -44,6 +45,8 @@ replacements={
   "Sample records. No live billing runs from this design.":"Usage entries come from completed workspace runs.",
   "Sample invoices. No payment method is charged and no document is issued.":"Invoices appear after a completed payment.",
   "Shortcuts are shown for the design preview. Rebinding is a product setting that is not simulated here.":"Keyboard shortcuts are available throughout the workspace.",
+  "<h4>By person</h4>":"<h4>By provider</h4>",
+  "<h4>Most expensive work</h4>":"<h4>Daily usage</h4>",
  },
  "apps/web/features/workspace/views/dialog-roledialog14.tsx":{
   "Owner-only powers stay with the owner. Changes here are simulated; the server enforces the real ones.":"Owner-only powers stay with the owner. The server enforces every role change.",
@@ -72,6 +75,22 @@ replacements={
   "Simulated authorization. No real account is connected.":"The connection is verified before it is saved to this workspace.",
  },
  "apps/web/features/workspace/views/dialog-calldecisiondialog9.tsx":{"Start sample call":"Start call"},
+ "apps/web/features/workspace/views/dialog-authdialog.tsx":{
+  "Prototype sign-in. No account is created.":"Sign in securely to keep this conversation in your workspace.",
+ },
+ "apps/web/features/workspace/views/dialog-invitedialog14.tsx":{
+  "Prototype only. No invitation is emailed and no account is created.":"Invitation links are created securely and can be revoked from this workspace.",
+ },
+ "apps/web/features/workspace/views/dialog-previewdialog.tsx":{
+  "REVIEW CONTROLS · SIMULATION ONLY":"WORKSPACE CONTROLS",
+  "Explore the whole experience.":"Workspace diagnostics",
+  "Preview as":"View as",
+  "Switching members is a design test control. It changes private chats and connections while keeping shared issues.":"Private chats and personal connections remain scoped to the signed-in member.",
+ },
+ "apps/web/features/workspace/views/dialog-calldecisiondialog9.tsx":{
+  "OPERATOR CALL · SIMULATION":"OPERATOR CALL",
+  "Tap an answer to simulate speaking. Your microphone is not used.":"Choose an answer to continue. Microphone input is not available in this browser yet.",
+ },
  "apps/web/features/workspace/views/dialog-quickaccountdialog10.tsx":{
   "This opens a simulated provider authorization. No credentials are requested or stored in the design.":"Continue to the provider&apos;s secure authorization screen. Use Model accounts for API-key access.",
  },
@@ -89,4 +108,13 @@ if 'v.liveIssueFiles' not in s:
  pos=s.index(start);end=s.index('</div>',pos)
  old=s[pos+len(start):end]
  s=s[:pos+len(start)]+"{v.liveIssueFiles ? v.liveIssueFiles.map((file: any) => <a key={file.id} className=\"small-button\" href={file.url} target=\"_blank\" rel=\"noopener noreferrer\">{file.filename}</a>) : <>"+old+"</>}"+s[end:]
+p.write_text(s)
+
+p=Path("apps/web/features/workspace/views/page-settings.tsx")
+s=p.read_text()
+s=s.replace("{v.repoConnected14 ? (\n                        <>\n                          <div className=\"repo-actions14\">", "{v.repoConfigAvailable14 ? (\n                        <>\n                          <div className=\"repo-actions14\">")
+s=s.replace("{v.repoConnected14 ? (\n                      <>\n                        <section className=\"repo-block14\">", "{v.repoConfigAvailable14 ? (\n                      <>\n                        <section className=\"repo-block14\">")
+marker='''                      {!v.repoConnected14 ? ('''
+notice='''                      {v.repoConnected14 && !v.repoConfigAvailable14 ? (\n                        <p className="fine">Repository access and the default branch are live. Sandbox startup settings are not stored by this deployment.</p>\n                      ) : null}\n'''
+if notice not in s:s=s.replace(marker,notice+marker)
 p.write_text(s)

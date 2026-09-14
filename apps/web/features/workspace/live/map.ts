@@ -6,7 +6,7 @@
  * row, so a field with no source is left out rather than invented. A screen
  * that has nothing real to show should look empty, not plausible. */
 
-import type { Account, Attachment, Autopilot, Conversation, Issue, Message, Run, User } from "@botinc/api";
+import type { Account, Attachment, Autopilot, Conversation, Issue, Message, Run, User, WorkflowVersion } from "@botinc/api";
 
 /* The design writes status as a sentence, the API as a token, and the sentence
    is not free text: the workspace logic groups the sidebar by comparing it
@@ -80,6 +80,14 @@ function sourceLabel(kind: string): string {
 
 export function mapMessage(m: Message, me: User | null, people: PeopleIndex, attachments: Attachment[] = []) {
   const mine = m.role === "user";
+  const messageAttachments = attachments.filter((attachment) => attachment.message_id === m.id).map((attachment) => ({
+    id: attachment.id,
+    name: attachment.filename,
+    image: attachment.content_type.startsWith("image/"),
+    url: attachment.url,
+    size: attachment.size_bytes,
+    meta: `${Math.max(1, Math.ceil(attachment.size_bytes / 1024))} KB · ${attachment.content_type.startsWith("image/") ? "Image" : "File"}`,
+  }));
   const author = mine
     ? (people.get(m.meta?.["author_user_id"] as string)?.name ?? me?.name ?? me?.email ?? "You")
     : m.role === "operator" ? "Operator" : "BotInc";
@@ -92,14 +100,8 @@ export function mapMessage(m: Message, me: User | null, people: PeopleIndex, att
     cls: mine ? "message user-message" : "message assistant-message",
     text: m.body,
     createdAt: m.created_at,
-    attachments11: attachments.filter((a) => a.message_id === m.id).map((a) => ({
-      id: a.id,
-      name: a.filename,
-      image: a.content_type.startsWith("image/"),
-      url: a.url,
-      size: a.size_bytes,
-      meta: `${Math.max(1, Math.ceil(a.size_bytes / 1024))} KB · ${a.content_type.startsWith("image/") ? "Image" : "File"}`,
-    })),
+    hasAttachments11: messageAttachments.length > 0,
+    attachments11: messageAttachments,
   };
 }
 
@@ -115,7 +117,38 @@ export function mapConversation(c: Conversation, messages: Message[], me: User |
   };
 }
 
+export function mapWorkflowSteps(version: WorkflowVersion, openIndex: number, onToggle: (index: number) => void) {
+  const icons: Record<string, string> = {
+    start: "play",
+    finish: "circle-check",
+    condition: "git-branch",
+    repeat: "repeat-2",
+    approval: "badge-check",
+    question: "circle-help",
+  };
+  return version.graph.nodes.map((node, index) => ({
+    id: node.key,
+    label: node.name,
+    detail: [node.model && node.model !== "auto" ? node.model : "Auto", node.prompt].filter(Boolean).join(" · "),
+    state: "READY",
+    cls: "",
+    icon: `/i15.svg#${icons[node.kind] ?? "bot"}`,
+    open: index === openIndex,
+    toggle: () => onToggle(index),
+    facts: [
+      { k: "Kind", v: node.kind[0]?.toUpperCase() + node.kind.slice(1) },
+      { k: "Model", v: node.model && node.model !== "auto" ? node.model : "Auto" },
+    ],
+    hasNote: Boolean(node.prompt),
+    note: node.prompt ?? "",
+    hasRun: false,
+  }));
+}
+
 export function mapAutopilot(a: Autopilot) {
+  const kind = a.trigger?.kind ?? "manual";
+  const zone = a.trigger?.tz || "UTC";
+  const schedule = describeSchedule(a.trigger?.cron ?? "", zone);
   return {
     id: a.id,
     name: a.name,
@@ -123,13 +156,69 @@ export function mapAutopilot(a: Autopilot) {
     description: a.description,
     prompt: a.prompt,
     enabled: a.enabled,
-    trigger: a.trigger?.kind ?? "manual",
+    trigger: kind,
+    kind,
     cron: a.trigger?.cron ?? "",
-    tz: a.trigger?.tz ?? "",
+    tz: zone,
+    zone,
+    source: a.trigger?.source || (kind === "schedule" ? "BotInc" : "Manual"),
+    cadence: schedule.cadence,
+    time: schedule.time,
+    triggerText: kind === "schedule" ? schedule.label : kind === "manual" ? "Started manually" : "",
+    nextText: describeNextRun(a.enabled, a.next_run_at, zone),
+    workflowId: a.workflow_id,
     lastRun: a.last_run_at,
     nextRun: a.next_run_at,
     model: a.model === "auto" ? "Auto" : a.model,
   };
+}
+
+function describeSchedule(cron: string, zone: string): { cadence: string; time: string; label: string } {
+  const [minute, hour, dayOfMonth, month, dayOfWeek] = cron.trim().split(/\s+/);
+  const clock = /^\d+$/.test(minute ?? "") && /^\d+$/.test(hour ?? "")
+    ? `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`
+    : "";
+  let cadence = cron || "Schedule";
+  let timing = cron || "Schedule configured";
+
+  if (/^\*\/\d+$/.test(minute ?? "") && hour === "*" && dayOfMonth === "*" && month === "*" && dayOfWeek === "*") {
+    const interval = minute!.slice(2);
+    cadence = `Every ${interval} minutes`;
+    timing = cadence;
+  } else if (/^\d+(,\d+)+$/.test(minute ?? "") && hour === "*" && dayOfMonth === "*" && month === "*" && dayOfWeek === "*") {
+    const minutes = minute!.split(",");
+    cadence = "Hourly";
+    timing = `Every hour at ${minutes.map(value => `:${value.padStart(2, "0")}`).join(" and ")}`;
+  } else if (clock && dayOfMonth === "*" && month === "*" && dayOfWeek === "*") {
+    cadence = "daily";
+    timing = `Every day at ${clock}`;
+  } else if (clock && dayOfMonth === "*" && month === "*" && /^\d$/.test(dayOfWeek ?? "")) {
+    const weekdays = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    cadence = "weekly";
+    timing = `Every ${weekdays[Number(dayOfWeek)]} at ${clock}`;
+  } else if (clock && /^\*\/\d+$/.test(dayOfMonth ?? "") && month === "*" && dayOfWeek === "*") {
+    const interval = dayOfMonth!.slice(2);
+    cadence = `Every ${interval} days`;
+    timing = `${cadence} at ${clock}`;
+  }
+
+  return { cadence, time: clock, label: `${timing} · ${zone}` };
+}
+
+function describeNextRun(enabled: boolean, nextRun: string | null, zone: string): string {
+  if (!enabled) return "Paused";
+  if (!nextRun) return "Ready";
+  try {
+    const formatted = new Intl.DateTimeFormat(undefined, {
+      weekday: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: zone,
+    }).format(new Date(nextRun));
+    return `Next ${formatted}`;
+  } catch {
+    return "Next run scheduled";
+  }
 }
 
 /* The design's model-account row. `limits` drives the capacity meters, so it

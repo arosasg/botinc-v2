@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { Account, Autopilot, Conversation, Issue, Message, User } from "@botinc/api";
-import { mapAccount, mapAutopilot, mapConversation, mapIssue, type PeopleIndex } from "./map";
+import type { Account, Attachment, Autopilot, Conversation, Issue, Message, User, WorkflowVersion } from "@botinc/api";
+import { mapAccount, mapAutopilot, mapConversation, mapIssue, mapWorkflowSteps, type PeopleIndex } from "./map";
 
 /* The workspace logic does not treat status as free text: it groups the
    sidebar by comparing against a fixed set of sentences, and anything outside
@@ -162,6 +162,29 @@ describe("mapConversation", () => {
     expect(rows[1]!.cls).toBe("message assistant-message");
     expect(rows[1]!.author).toBe("Operator");
   });
+
+  it("renders only the attachments linked to each message", () => {
+    const attachments: Attachment[] = [
+      {
+        id: "a1", issue_id: null, conversation_id: "c1", message_id: "m1", comment_id: null,
+        filename: "evidence.png", content_type: "image/png", size_bytes: 1025, url: "/attachments/a1",
+      },
+      {
+        id: "a2", issue_id: null, conversation_id: "c1", message_id: "m2", comment_id: null,
+        filename: "later.txt", content_type: "text/plain", size_bytes: 20, url: "/attachments/a2",
+      },
+    ];
+
+    const row = mapConversation(conversation(), [message()], me, people, attachments).messages[0]!;
+
+    expect(row.hasAttachments11).toBe(true);
+    expect(row.attachments11).toEqual([
+      {
+        id: "a1", name: "evidence.png", image: true, url: "/attachments/a1", size: 1025,
+        meta: "2 KB · Image",
+      },
+    ]);
+  });
 });
 
 describe("mapAutopilot", () => {
@@ -175,7 +198,46 @@ describe("mapAutopilot", () => {
     const row = mapAutopilot(a);
     expect(row.trigger).toBe("schedule");
     expect(row.cron).toBe("0 9 * * *");
+    expect(row.kind).toBe("schedule");
+    expect(row.cadence).toBe("daily");
+    expect(row.time).toBe("09:00");
+    expect(row.zone).toBe("Europe/Madrid");
+    expect(row.source).toBe("BotInc");
+    expect(row.workflowId).toBeNull();
+    expect(row.triggerText).toBe("Every day at 09:00 · Europe/Madrid");
+    expect(row.nextText).toMatch(/^Next /);
     expect(row.model).toBe("Auto");
     expect(row.enabled).toBe(true);
+  });
+
+  it("describes migrated interval schedules without undefined fields", () => {
+    const a: Autopilot = {
+      id: "r2", name: "Merge Warden", description: "", prompt: "Merge.",
+      trigger: { kind: "schedule", cron: "*/10 * * * *", tz: "Europe/Madrid" },
+      workflow_id: null, model: "auto", enabled: false,
+      last_run_at: null, next_run_at: null,
+    };
+
+    const row = mapAutopilot(a);
+
+    expect(row.triggerText).toBe("Every 10 minutes · Europe/Madrid");
+    expect(row.nextText).toBe("Paused");
+    expect(row.source).toBe("BotInc");
+  });
+});
+
+describe("mapWorkflowSteps", () => {
+  it("uses the active API graph instead of the design's sample workflow", () => {
+    const version: WorkflowVersion = {
+      id: "v1", version: 3, status: "active", created_at: "",
+      graph: { nodes: [{ key: "verify", name: "Verify production", kind: "task", model: "gpt-6-astra", prompt: "Check the live route." }], edges: [] },
+    };
+    let opened = -1;
+
+    const steps = mapWorkflowSteps(version, 0, (index) => { opened = index; });
+
+    expect(steps[0]).toMatchObject({ label: "Verify production", state: "READY", open: true, hasNote: true });
+    steps[0]!.toggle();
+    expect(opened).toBe(0);
   });
 });

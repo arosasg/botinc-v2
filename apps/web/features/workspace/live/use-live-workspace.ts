@@ -5,7 +5,7 @@
 import { useEffect, useRef } from "react";
 import { Client, type User, type WorkspaceClient, type WorkflowGraph } from "@botinc/api";
 import type { Vals } from "../vals";
-import { mapAccount, mapAutopilot, mapConversation, mapIssue, mapMessage, mapRun, type PeopleIndex } from "./map";
+import { mapAccount, mapAutopilot, mapConversation, mapIssue, mapMessage, mapRun, mapWorkflowSteps, type PeopleIndex } from "./map";
 import { parseWorkspaceRoute, workspacePath, type WorkspaceRoute } from "./routes";
 
 export type LiveStatus = "off" | "connecting" | "live" | "signed-out" | "error";
@@ -30,6 +30,15 @@ export function openNewChatWithDraft(logic: Pick<Logic,"setState">, workspace: s
  open();
  logic.setState({draft:readDraft(workspace,null)});
 }
+export function routineTrigger(draft: Vals): Record<string, string> {
+ const kind=String(draft.kind||"manual");
+ if(kind!=="schedule")return{kind:kind==="api"?"manual":kind,...draft.source?{source:String(draft.source)}:{}};
+ const zone=String(draft.zone||draft.tz||"UTC");const existing=String(draft.cron||"");const cadence=String(draft.cadence||"daily");
+ if(existing&&!['daily','weekdays','weekly'].includes(cadence))return{kind:"schedule",cron:existing,tz:zone,...draft.source?{source:String(draft.source)}:{}};
+ const match=/^([01]\d|2[0-3]):([0-5]\d)$/.exec(String(draft.time||""));if(!match)throw new Error("Choose a valid schedule time");
+ const tail=cadence==="weekdays"?"* * 1-5":cadence==="weekly"?"* * 1":"* * *";
+ return{kind:"schedule",cron:`${Number(match[2])} ${Number(match[1])} ${tail}`,tz:zone,...draft.source?{source:String(draft.source)}:{}};
+}
 function readLocal(key: string): string { try{return window.localStorage.getItem(key)||""}catch{return ""} }
 function saveLocal(key: string, value: string): void { try{if(value)window.localStorage.setItem(key,value);else window.localStorage.removeItem(key)}catch{} }
 
@@ -52,8 +61,8 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
    const hydrate=async()=>{
     if(!alive)return;if(refreshing){again=true;return;}refreshing=true;
     try{
-     const [issues,chats,autos,accounts,routing,overview,members,skills,memories,credits,plugins,repos,projects,workflows,invites,sessions,keys]=await Promise.all([
-      ws.issues(undefined,abort.signal),ws.conversations(abort.signal),ws.autopilots(abort.signal),ws.accounts(abort.signal),ws.routing(abort.signal),ws.overview(abort.signal),ws.members(abort.signal),ws.skills(abort.signal),ws.memories(abort.signal),ws.credits(abort.signal),ws.plugins(abort.signal),ws.repositories(abort.signal),ws.projects(abort.signal),ws.workflows(abort.signal),ws.invitations(abort.signal),api.request<{sessions:Vals[]}>("GET","/api/me/sessions",undefined,abort.signal),api.request<{keys:Vals[]}>("GET","/api/me/keys",undefined,abort.signal),
+     const [issues,chats,autos,accounts,routing,overview,members,skills,memories,credits,usage,plugins,repos,projects,workflows,invites,sessions,keys]=await Promise.all([
+      ws.issues(undefined,abort.signal),ws.conversations(abort.signal),ws.autopilots(abort.signal),ws.accounts(abort.signal),ws.routing(abort.signal),ws.overview(abort.signal),ws.members(abort.signal),ws.skills(abort.signal),ws.memories(abort.signal),ws.credits(abort.signal),ws.usage(abort.signal),ws.plugins(abort.signal),ws.repositories(abort.signal),ws.projects(abort.signal),ws.workflows(abort.signal),ws.invitations(abort.signal),api.request<{sessions:Vals[]}>("GET","/api/me/sessions",undefined,abort.signal),api.request<{keys:Vals[]}>("GET","/api/me/keys",undefined,abort.signal),
      ]);
      if(!alive)return;
      for(const p of members.members)people.set(p.user_id,{name:p.name,email:p.email});
@@ -63,7 +72,7 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
      patch.liveWorkspaces=workspaces;patch.workspace16=overview.workspace.name;patch.member=member;patch.signed=true;patch.workspaceName=overview.workspace.name;
      patch.issues=issues.issues.map(i=>mapIssue(i,people));
      const selectedIssue=issues.issues.find(i=>i.identifier===logic.state.activeIssue||i.id===logic.state.activeIssue);
-     if(selectedIssue){const detail=await ws.issue(selectedIssue.id,abort.signal);const files=await api.request<{attachments:Vals[]}>("GET",`/api/w/${ws.slug}/attachments?issue=${selectedIssue.id}`,undefined,abort.signal);patch.liveIssueDetail=detail;patch.liveIssueFiles=files.attachments;patch.issues=patch.issues.map((i:Vals)=>i.uuid===selectedIssue.id?{...i,events:detail.comments.map(c=>({who:people.get(c.author_user_id||"")?.name||"Previous agent",role:c.author_kind,when:new Date(c.created_at).toLocaleString(),text:c.body})),cost:detail.runs.reduce((sum,r)=>sum+r.cost_cents,0)/100}:i)}
+     if(selectedIssue){const detail=await ws.issue(selectedIssue.id,abort.signal);const files=await api.request<{attachments:Vals[]}>("GET",`/api/w/${ws.slug}/attachments?issue=${selectedIssue.id}`,undefined,abort.signal);patch.liveIssueDetail=detail;patch.liveIssueFiles=files.attachments;patch.liveIssueWorkflow=detail.issue.workflow_id?await ws.workflow(detail.issue.workflow_id,abort.signal):null;patch.issues=patch.issues.map((i:Vals)=>i.uuid===selectedIssue.id?{...i,events:detail.comments.map(c=>({who:people.get(c.author_user_id||"")?.name||"Previous agent",role:c.author_kind,when:new Date(c.created_at).toLocaleString(),text:c.body})),cost:detail.runs.reduce((sum,r)=>sum+r.cost_cents,0)/100}:i)}
      const oldChats=logic.state.chats?.[previous]||[];
      patch.chats={[member]:chats.conversations.map(c=>{
       const old=oldChats.find((x:Vals)=>x.id===c.id);return {...mapConversation(c,[],me,people),messages:old?.messages||[],phase:old?.phase||"done"};
@@ -92,17 +101,20 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
       patch.dockLiveCost=dock.runs.reduce((sum,r)=>sum+r.cost_cents,0)/100;
      }else if(dockConversation){saveLocal(dockConversationKey(ws.slug),"");patch.dockConversationID="";patch.dockLiveMessages=[];patch.dockLiveRun=null;patch.dockLivePhase="done";}
      patch.autopilots9=autos.autopilots.map(a=>({...mapAutopilot(a),owner:member,kind:a.trigger.kind,status:a.enabled?"active":"paused",history:[],limit:2,daily:20}));
+     const activeAutopilot=String(logic.state.activeAuto9||initialRoute.autopilot||"");
+     if(uuid(activeAutopilot)&&autos.autopilots.some(a=>a.id===activeAutopilot)){const detail=await ws.autopilot(activeAutopilot,abort.signal);patch.autopilots9=patch.autopilots9.map((autopilot:Vals)=>autopilot.id===activeAutopilot?{...autopilot,history:detail.runs.map(run=>({title:titleCase(run.status),detail:run.summary||run.run_id||"Run recorded",when:new Date(run.created_at).toLocaleString(),status:run.status}))}:autopilot)}
      patch.accounts10=accounts.accounts.map(mapAccount);patch.modelAccounts={[member]:patch.accounts10};
      patch.connections={[member]:Object.fromEntries(plugins.plugins.map(p=>[titleCase(p.kind.replace(/^mcp:/,"")),p.status==="connected"]))};
      patch.customPlugins10=plugins.plugins.filter(p=>p.kind.startsWith("mcp:")&&!catalogPluginKeys.has(pluginKey(p.kind))).map(p=>({name:String((p.account as Vals)?.name||titleCase(p.kind.slice(4).replace(/-/g," "))),owner:member,category:"Custom",copy:"Workspace MCP server",icon:"code-xml"}));
      patch.plan=titleCase(overview.workspace.plan);patch.monthly=0;patch.purchased=credits.balance_cents/100;patch.runningRuns=overview.running_runs;
      patch.paymentsEnabled=credits.payments_enabled;patch.paymentsTestMode=credits.payments_test_mode;patch.workspaceRole=overview.workspace.role||first.role;
      patch.ledger=credits.entries.map((e,i)=>({id:String(i),kind:e.kind,label:e.note,title:e.note,amount:e.amount_cents/100,date:e.created_at,when:e.created_at}));
+     patch.liveUsage=usage;
      patch.members14=members.members.map(p=>({id:p.user_id,name:p.name||p.email.split("@")[0],email:p.email,role:titleCase(p.role),meta:"Joined "+new Date(p.joined_at).toLocaleDateString(),scope:"",locked:p.role==="owner"}));
      patch.invites14=invites.invitations.map(i=>({id:i.id,email:i.email,role:titleCase(i.role),state:"Pending",scope:"",meta:"Expires "+new Date(i.expires_at).toLocaleDateString()}));
      patch.skills=skills.skills.map(k=>({...k,description:k.body.split("\n").find(t=>t&&!t.startsWith("#"))||"Workspace instructions",source:"Workspace",owner:"workspace",version:"Saved",files:["SKILL.md"]}));
      patch.memories14=memories.memories.map(m=>({id:m.id,scope:m.scope,owner:people.get(m.user_id)?.name||people.get(m.user_id)?.email.split("@")[0],project:projects.projects.find(p=>p.id===m.project_id)?.name,type:"Fact",text:m.body,pinned:m.pinned,provenance:"Saved by a workspace member",updated:new Date(m.updated_at).toLocaleString(),lastUsed:"",source:"",why:"Explicitly saved instructions"}));
-     patch.suggested14=[];patch.repos14=repos.repositories.map(r=>({id:r.id,name:r.full_name,full:r.full_name,branch:r.default_branch,status:"Connected",provider:"GitHub"}));
+     patch.suggested14=[];patch.repos14=repos.repositories.map(r=>({id:r.id,name:r.full_name,full:r.full_name,branch:r.default_branch,status:"Connected",state:"Connected",tone:"ok14",provider:"GitHub",connected:true,meta:`Default branch ${r.default_branch}`}));
      patch.liveProjects=projects.projects;patch.livePlugins=plugins.plugins;
      patch.workflows14=workflows.workflows.map(w=>({id:w.id,name:w.name,meta:w.description,icon:"git-branch",state:w.active_version_id?"Active":"Draft",tone:w.active_version_id?"ok14":""}));
      patch.profileByMember15={[member]:{...(logic.state.profileByMember15?.[previous]||{}),name:me.name||member,email:me.email}};
@@ -172,6 +184,11 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
  bind("issue",()=>logic.state.issues.find((i:Vals)=>i.id===logic.state.activeIssue||i.uuid===logic.state.activeIssue)||{id:"",title:"Select an issue",description:"",status:"Incoming",events:[]});
  // The prototype has several generations of composer handlers. All route here.
  for(const name of ["sendComposer10","sendComposer11","sendThreadMessage9"])bind(name,send);
+ bind("openAuto9",(id:string)=>{logic.go("auto9",{activeAuto9:id,panel:null});void hydrate().catch(fail)});
+ bind("toggleAuto9",(id:string,enabled:boolean)=>{void write(async()=>{await ws.setAutopilotEnabled(id,enabled)})()});
+ bind("saveAuto9",()=>{const s=logic.state,draft=s.autoDraft9||{};const error=!String(draft.title||"").trim()?"Give this routine a name.":String(draft.prompt||"").trim().length<12?"Give this routine a clear instruction.":"";if(error){logic.setState({autoFormError9:error});return}if(s.autoFormStep9!=="review"){logic.setState({autoFormStep9:"review",autoFormError9:""});return}void write(async()=>{const trigger=routineTrigger(draft);const existing=uuid(s.autoEditing9)?s.autoEditing9:undefined;const out=await ws.saveAutopilot({name:String(draft.title).trim(),description:String(draft.description||""),prompt:String(draft.prompt).trim(),model:String(draft.model||"auto").toLowerCase()==="auto"?"auto":String(draft.model),trigger,workflow_id:draft.workflowId||null,enabled:draft.enabled!==false},existing);logic.setState({dialog:null,autoEditing9:null,activeAuto9:out.autopilot.id});routeURL("auto9",{activeAuto9:out.autopilot.id})})()});
+ bind("runAuto9",()=>{const autopilot=logic.state.autopilots9?.find((row:Vals)=>row.id===logic.state.activeAuto9);if(!autopilot?.enabled){logic.toast("Enable this routine before running it.");return}void write(async()=>{await ws.triggerAutopilot(autopilot.id)})()});
+ bind("deleteRoutine14",(id:string)=>{const autopilot=logic.state.autopilots9?.find((row:Vals)=>row.id===id);if(!autopilot)return;logic.generic("Delete this routine?","Its recorded run history stays attached to the work it created.",[],{genericText:autopilot.title,genericActionLabel:"Delete routine",genericAction:()=>{void write(async()=>{await ws.deleteAutopilot(id);logic.setState({dialog:null,activeAuto9:null});logic.go("schedule9",{scheduleTab14:"routines"})})()}})});
  bind("workspaceMenu16",(event:Event)=>logic.openMenu14(null,event,[...(logic.state.liveWorkspaces||[]).map((w:Vals)=>({label:w.name,hint:w.role,on:w.slug===ws.slug,run:()=>window.location.assign(workspacePath({workspace:w.slug,view:"chat"}))})),{label:"New workspace",run:()=>logic.newWorkspace16()}],"Workspaces"));
  bind("createWorkspace16",write(async()=>{const name=String(logic.state.nwName16||"").trim();if(!name)throw new Error("Enter a workspace name");const created=await api.request<{slug:string}>("POST","/api/workspaces",{name});window.location.assign(workspacePath({workspace:created.slug,view:"chat"}))}));
  bind("commitRename16",write(async()=>{const s=logic.state;const title=String(s.renameDraft16||"").trim();if(!title)throw new Error("Enter a name");if(uuid(s.renameId16))await ws.updateConversation(s.renameId16,{title});else await api.request("PATCH",`/api/w/${ws.slug}/issues/${s.renameId16}`,{title});logic.setState({renameId16:null})}));
@@ -203,11 +220,17 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
  bind("setMemberRole14",(id:string,role:string)=>write(async()=>{await ws.setMemberRole(id,role.toLowerCase())})());
  bind("sendInvites14",write(async()=>{const s=logic.state;const emails=String(s.inviteEmails14||"").split(/[\s,;]+/).filter(Boolean);if(!emails.length)throw new Error("Add an email address");const links=[];for(const email of emails){const invite=await ws.invite(email,String(s.inviteRole14||"member").toLowerCase());links.push(invite.link)}logic.generic("Invitation links","Share each link with the invited person",[],{genericText:links.join("\n")});logic.setState({inviteEmails14:""})}));
  bind("openGraph14",(id:string)=>write(async()=>{const out=await ws.workflow(id);const v=out.versions.find(v=>v.id===out.workflow.active_version_id)||out.versions[0];if(!v)throw new Error("This workflow has no version");const graph={id:out.workflow.id,name:out.workflow.name,version:v.version,nodes:v.graph.nodes.map((n,i)=>({id:n.key,type:n.kind,label:n.name,model:n.model||"Auto",prompt:n.prompt||"",x:n.x??i*220,y:n.y??120})),edges:v.graph.edges.map((e,i)=>({id:"e"+i,from:e[0],to:e[1],label:""}))};logic.setState({view:"settings",section:"workflows",activeWorkflow:id,graph14:graph,graphSaved14:structuredClone(graph),graphVersions14:out.versions.map(v=>({id:v.id,name:"Version "+v.version,meta:v.created_at,state:titleCase(v.status)})),graphId14:id,overlay14:"graph",graphSide14:"node",graphSel14:graph.nodes[0]?.id});routeURL("settings",{section:"workflows",activeWorkflow:id})})());
+ const closeGraph=typeof logic.closeGraph14==="function"?logic.closeGraph14.bind(logic):()=>logic.setState({overlay14:null});
+ bind("closeGraph14",()=>{closeGraph();logic.setState({activeWorkflow:null});routeURL("settings",{section:"workflows",activeWorkflow:null},true)});
+ bind("backToWorkflows14",()=>{logic.closeGraph14()});
  bind("saveGraph14",write(async()=>{const g=logic.state.graph14;const graph:WorkflowGraph={nodes:g.nodes.map((n:Vals)=>({key:n.id,name:n.label,kind:n.type,model:n.model==="Auto"?"auto":n.model,prompt:n.prompt||"",x:n.x,y:n.y})),edges:g.edges.map((e:Vals)=>[e.from,e.to])};const out=uuid(g.id)?await ws.saveWorkflow(g.id,graph):await ws.createWorkflow({name:g.name,graph});const id="workflow" in out?out.workflow.id:g.id;await logic.openGraph14(id)}));
  const render=logic.renderVals;
  bind("renderVals",()=>{
   const v=render.call(logic);const s=logic.state;
   v.workspaceName= s.workspace16||"BotInc";v.previewCard15=false;
+  const autopilotByTitle=new Map<string,Vals>();for(const autopilot of s.autopilots9||[])autopilotByTitle.set(String(autopilot.title),autopilot);
+  const applyLiveSchedule=(rows:Vals[]=[])=>(rows||[]).map((row:Vals)=>{const autopilot=autopilotByTitle.get(row.title);return autopilot?{...row,trigger:autopilot.triggerText||row.trigger,next:autopilot.nextText||row.next,zone:autopilot.zone||row.zone,source:autopilot.source||row.source}:row});
+  v.routineRows14=applyLiveSchedule(v.routineRows14);v.upcomingRows14=applyLiveSchedule(v.upcomingRows14);
   const detail=s.liveIssueDetail;const currentIssue=logic.issue();
   v.i8Computer="Remote";v.i8Agent="Operator";
   v.i8HasPr=!!detail?.runs?.some((r:Vals)=>r.result?.pull_request?.url);v.i8HasDeploy=false;v.i8HasCriteria=false;v.i8NoCriteria=true;
@@ -217,6 +240,8 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
   const activeRun=detail?.runs?.find((r:Vals)=>!r.finished_at);
   const latestRun=activeRun||detail?.runs?.at(-1);
   const sourceIssue=detail?.issue;
+  const issueWorkflow=s.liveIssueWorkflow;
+  const workflowVersion=issueWorkflow?.versions?.find((version:Vals)=>version.id===issueWorkflow.workflow.active_version_id)||issueWorkflow?.versions?.[0];
   const migrated=sourceIssue?.source?.kind==="migration";
   const timestamp=(value?:string)=>value?new Date(value).toLocaleString():"Unavailable";
   v.i8Created=timestamp(sourceIssue?.created_at);v.i8Updated=timestamp(sourceIssue?.updated_at);
@@ -232,6 +257,17 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
   v.i8PeopleNote="Issue history is shared with workspace members.";
   v.i8NoArtifactCopy=migrated?"No files attached to this imported issue.":"No output files have been recorded.";
   v.i8SourceLabel=migrated?"Imported from v1":currentIssue.source;
+  if(issueWorkflow&&workflowVersion){
+   const workflowID=String(issueWorkflow.workflow.id);const openIndex=Number(s.liveIssueWorkflowOpen??-1);
+   v.issueWorkflow17=issueWorkflow.workflow.name;v.issueWorkflowTitle17=`Uses ${issueWorkflow.workflow.name}. Open it in the editor.`;
+   v.wfPaneVersion18=`v${workflowVersion.version}`;v.wfPaneName18=issueWorkflow.workflow.name;v.wfPaneLede18=issueWorkflow.workflow.description||"The active workflow for this issue.";
+   v.wfLiveTone18=activeRun?"live18":"";v.wfNowEyebrow18=activeRun?titleCase(activeRun.status):latestRun?titleCase(latestRun.status):"Ready";
+   v.wfNowTitle18=activeRun?"Operator is running this workflow":latestRun?`Latest run: ${titleCase(latestRun.status)}`:"Ready to start";
+   v.wfNowCopy18=activeRun?"Live progress appears here as each workflow step reports back.":latestRun?.error||"No run is active. The configured steps are ready for the next request.";
+   v.wfNowHasAction18=false;v.wfSteps18=mapWorkflowSteps(workflowVersion,openIndex,(index)=>logic.setState({liveIssueWorkflowOpen:index===openIndex?-1:index}));
+   v.wfSpend18=`${detail?.runs?.length||0} runs · ${logic.cash((detail?.runs||[]).reduce((sum:number,run:Vals)=>sum+run.cost_cents,0)/100)} used`;
+   v.openIssueWorkflow17=()=>{void logic.openGraph14(workflowID)};
+  }
 
   v.i8PrimaryLabel=activeRun?"Cancel run":"Start work";v.i8HasSecondary=false;
   v.i8Primary=write(async()=>{if(activeRun)await ws.cancelRun(activeRun.id);else await ws.work(currentIssue.uuid||currentIssue.id)});
@@ -286,6 +322,33 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
   v.dockHasCost19=!!s.dockConversationID;v.conversationCost10=logic.cash(s.dockLiveCost||0);
   v.dockDictate15=()=>logic.toast("Voice dictation is not available in this browser yet.");
   v.accountsNote15="Connected accounts are scoped to this workspace. Secrets are encrypted, and provider usage is reported without converting quota into a dollar amount.";
+  v.accountPrivacy14=`${(s.accounts10||[]).length} connected accounts, private to ${me.name||me.email}. Other members cannot see these identities or use their capacity.`;
+  const usage=s.liveUsage||{days:[],providers:[],total_cost_cents:0,runs:0};const usageTotal=Number(usage.total_cost_cents||0)/100;
+  v.usageMonthNote19="Last 30 days from recorded workspace runs. No preview or estimated charges are included.";
+  v.billingTabs14=(v.billingTabs14||[]).filter((tab:Vals)=>tab.label!=="Invoices");
+  v.invoiceTab14=false;v.invoiceRows14=[];
+  v.ugTotal19=logic.cash(usageTotal);v.ugOfNote19=`${Number(usage.runs||0)} recorded runs`;
+  v.ugSlices19=(usage.providers||[]).filter((provider:Vals)=>Number(provider.cost_cents)>0).map((provider:Vals,index:number)=>{const amount=Number(provider.cost_cents)/100;return{key:provider.provider,name:titleCase(String(provider.provider||"Other")),cls:`s${index%3+1}`,amount:logic.cash(amount),share:usageTotal>0?`${Math.round(amount/usageTotal*100)}%`:"0%",style:`flex:${Math.max(amount,0.01)}`,title:`${titleCase(String(provider.provider||"Other"))} · ${logic.cash(amount)}`}});
+  v.ugPeople19=(usage.providers||[]).map((provider:Vals)=>({key:provider.provider,initial:titleCase(String(provider.provider||"?"))[0]||"?",name:titleCase(String(provider.provider||"Other")),meta:`${Number(provider.runs||0)} runs`,amount:logic.cash(Number(provider.cost_cents||0)/100)}));
+  v.ugTasks19=(usage.days||[]).slice().reverse().map((day:Vals)=>({key:day.day,id:new Date(day.day).toLocaleDateString(),title:`${Number(day.runs||0)} recorded runs`,meta:"Workspace usage",amount:logic.cash(Number(day.cost_cents||0)/100),open:()=>{}}));
+  v.ugFootNote19="Every figure comes from a recorded workspace run. Provider subscription quota is never converted into credit.";
+  v.monthlyText=Number(s.monthly||0)>0?`${logic.cash(s.monthly)} included credit available now`:"No included credit remaining";
+  const repositoryByName=new Map<string,Vals>();for(const repository of s.repos14||[])repositoryByName.set(String(repository.name),repository);
+  v.repoTabs14=(v.repoTabs14||[]).map((row:Vals)=>{const repository=repositoryByName.get(String(row.name));return repository?{...row,sub:`Default branch ${repository.branch}`,ready:"Connected",tone:"ok14",readyIcon:"/i15.svg#circle-check"}:row});
+  const selectedRepository=(s.repos14||[]).find((repository:Vals)=>repository.id===s.repoSel14)||(s.repos14||[])[0];
+  const hasGitHubConnection=(s.livePlugins||[]).some((plugin:Vals)=>pluginKey(plugin.kind)==="github"&&plugin.status==="connected");
+  if(selectedRepository){v.repoName14=selectedRepository.full;v.repoMeta14=`Default branch ${selectedRepository.branch}`;v.repoState14=hasGitHubConnection?"Connected":"Needs reconnection";v.repoTone14=hasGitHubConnection?"ok14":"bad14";v.repoConnected14=hasGitHubConnection;v.repoHealth14=[{title:"GitHub connection",detail:hasGitHubConnection?"Available to this workspace":"Reconnect GitHub before starting repository work",tone:hasGitHubConnection?"ok14":"bad14",icon:"/i15.svg#"+(hasGitHubConnection?"circle-check":"circle-alert"),when:""},{title:"Default branch",detail:selectedRepository.branch,tone:"ok14",icon:"/i15.svg#git-branch",when:""}];}
+  v.repoConfigAvailable14=false;v.repoConnectLabel14=hasGitHubConnection?"Manage connection":"Reconnect";v.repoConnect14=()=>logic.showPlugin10("GitHub");
+  const designProject="https://claude.ai/design/p/3409ba65-04b6-44b3-af90-d9eac984e5ec";
+  const openDesign=(file:string)=>window.open(`${designProject}?file=${encodeURIComponent(file)}`,"_blank","noopener,noreferrer");
+  const hasFigmaConnection=(s.livePlugins||[]).some((plugin:Vals)=>pluginKey(plugin.kind)==="figma"&&plugin.status==="connected");
+  v.dsName15="BotInc product design";v.dsMeta15="Workspace v19 · Landing v4 · Claude Design";v.dsOpen15=()=>openDesign("Workspace v19.dc.html");
+  v.designRows16=[
+   {title:"Workspace v19",copy:"Workspace shell, chat, work, routines, settings, and responsive behavior.",kind16:"Claude Design",updated16:"Current",state:"Active",tone:"ok14",hasLogo16:true,logo16:"/assets/brands-v12/claude.svg",logoCls16:"has-logo16",editLabel:"Source",action:"Open",edit:()=>openDesign("Workspace v19.dc.html"),open:()=>openDesign("Workspace v19.dc.html")},
+   {title:"Landing v4",copy:"Public product, pricing, model routing, and responsive landing experience.",kind16:"Claude Design",updated16:"Current",state:"Active",tone:"ok14",hasLogo16:true,logo16:"/assets/brands-v12/claude.svg",logoCls16:"has-logo16",editLabel:"Source",action:"Open",edit:()=>openDesign("Landing v4.dc.html"),open:()=>openDesign("Landing v4.dc.html")},
+   {title:"Figma connection",copy:"Design files and components available to Operator through the migrated plugin.",kind16:"Plugin",updated16:"Connected account",state:hasFigmaConnection?"Connected":"Not connected",tone:hasFigmaConnection?"ok14":"warn14",hasLogo16:true,logo16:"/assets/brands-v12/figma.svg",logoCls16:"has-logo16",editLabel:"Manage",action:hasFigmaConnection?"Use":"Connect",edit:()=>logic.showPlugin10("Figma"),open:()=>logic.showPlugin10("Figma")},
+  ];
+  v.dsAdd15=()=>logic.showPlugin10("Figma");
   v.pfWeeks15=[];v.pfMonths15=[];v.pfStats15=[];v.pfActivitySummary15="Repository activity appears after connected repositories report it.";v.pfFoot15="No repository contribution activity has been reported yet.";
   if(Array.isArray(v.conversationGroups12))v.conversationGroups12=v.conversationGroups12.map((group:Vals)=>({...group,rows:(group.rows||[]).map((row:Vals)=>{
    const id=String(row.id||"");

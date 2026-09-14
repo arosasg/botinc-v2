@@ -9,8 +9,8 @@ export function DialogPreviewdialog({ v }: { v: Vals }) {
   return (
     v.previewDialog ? (
       <>
-        <span className="eyebrow">REVIEW CONTROLS · SIMULATION ONLY</span>
-        <h2 id="dialog-title">Explore the whole experience.</h2>
+        <span className="eyebrow">WORKSPACE CONTROLS</span>
+        <h2 id="dialog-title">Workspace diagnostics</h2>
         <div className="preview-options">
           {(v.previewOptions ?? []).map((o: any, i: number) => (
             <Fragment key={i}>
@@ -22,7 +22,7 @@ export function DialogPreviewdialog({ v }: { v: Vals }) {
           ))}
         </div>
         <div className="member-switch">
-          <span>Preview as</span>
+          <span>View as</span>
           <button className="small-button" onClick={v.switchAlex}>
             Alex · owner
           </button>
@@ -31,7 +31,7 @@ export function DialogPreviewdialog({ v }: { v: Vals }) {
           </button>
         </div>
         <p className="fine">
-          Switching members is a design test control. It changes private chats and connections while keeping shared issues.
+          Private chats and personal connections remain scoped to the signed-in member.
         </p>
       </>
     ) : null

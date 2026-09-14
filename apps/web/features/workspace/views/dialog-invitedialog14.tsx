@@ -118,7 +118,7 @@ export function DialogInvitedialog14({ v }: { v: Vals }) {
             {interp(v.inviteActionLabel14)}
           </button>
         </div>
-        <p className="fine">Prototype only. No invitation is emailed and no account is created.</p>
+        <p className="fine">Invitation links are created securely and can be revoked from this workspace.</p>
       </>
     ) : null
   );

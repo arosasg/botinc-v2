@@ -209,6 +209,8 @@ export class WorkspaceClient {
   createWorkflow(input: {name: string; graph: WorkflowGraph}) { return this.post<{workflow: Workflow}>("/workflows", input); }
   updateConversation(id: string, input: {title?: string; archived?: boolean; shared?: boolean}) { return this.patch<void>(`/conversations/${id}`, input); }
   saveAutopilot(input: Record<string, unknown>, id?: string) { return id ? this.patch<{autopilot: Autopilot}>(`/autopilots/${id}`,input) : this.post<{autopilot: Autopilot}>("/autopilots",input); }
+  autopilot(id: string, signal?: AbortSignal) { return this.get<{autopilot: Autopilot; runs: Array<{id:string; run_id:string|null; status:string; summary:string; created_at:string}>}>(`/autopilots/${id}`,signal); }
+  deleteAutopilot(id: string) { return this.del<void>(`/autopilots/${id}`); }
   usage(signal?: AbortSignal) { return this.get<{days: Array<{day:string; runs:number; cost_cents:number}>; providers: Array<{provider:string; runs:number; cost_cents:number}>; total_cost_cents:number; runs:number}>("/usage", signal); }
 
   // --- the rest ---
