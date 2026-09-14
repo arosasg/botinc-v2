@@ -1,4 +1,5 @@
 const ROOT_PUBLIC_ASSET = /^(?:assets\/|[a-z0-9-]+\.svg(?:#|$))/i;
+const LEGACY_WORKSPACE_SPRITE = /^\/?assets\/icons\/workspace-v(?:6|9)\.svg(#.*)?$/i;
 
 export interface ConversationPaneBounds {
   min: number;
@@ -6,6 +7,8 @@ export interface ConversationPaneBounds {
 }
 
 export function absolutePublicAsset(value: string): string {
+  const legacySprite = LEGACY_WORKSPACE_SPRITE.exec(value);
+  if (legacySprite) return `/assets/icons/workspace-v14.svg${legacySprite[1] || ""}`;
   return ROOT_PUBLIC_ASSET.test(value) ? `/${value}` : value;
 }
 

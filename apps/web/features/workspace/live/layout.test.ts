@@ -10,6 +10,8 @@ describe("workspace public assets", () => {
   it("anchors design assets and symbol sprites at the domain root", () => {
     expect(absolutePublicAsset("assets/brands-v12/claude.svg")).toBe("/assets/brands-v12/claude.svg");
     expect(absolutePublicAsset("i15.svg#git-branch")).toBe("/i15.svg#git-branch");
+    expect(absolutePublicAsset("assets/icons/workspace-v6.svg#message-square")).toBe("/assets/icons/workspace-v14.svg#message-square");
+    expect(absolutePublicAsset("/assets/icons/workspace-v9.svg#circle-dot")).toBe("/assets/icons/workspace-v14.svg#circle-dot");
     expect(absolutePublicAsset("/assets/brands-v12/claude.svg")).toBe("/assets/brands-v12/claude.svg");
     expect(absolutePublicAsset("https://cdn.example.com/logo.svg")).toBe("https://cdn.example.com/logo.svg");
     expect(absolutePublicAsset("blob:preview")).toBe("blob:preview");
