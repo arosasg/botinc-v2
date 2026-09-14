@@ -250,6 +250,12 @@ func (s *Server) runtimeSpec(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	spec := map[string]any{"run": rn, "steps": steps}
+	if mcpConfig, err := s.runtimeMCPConfig(ctx, rn.WorkspaceID); err != nil {
+		s.fail(w, err)
+		return
+	} else if len(mcpConfig) > 0 {
+		spec["mcp_config"] = mcpConfig
+	}
 	if rn.WorkflowVersionID != nil {
 		var graph json.RawMessage
 		if err := s.pool.QueryRow(ctx, `select v.graph from workflow_versions v join workflows w on w.id=v.workflow_id where v.id=$1 and w.workspace_id=$2`, rn.WorkflowVersionID, rn.WorkspaceID).Scan(&graph); err != nil {

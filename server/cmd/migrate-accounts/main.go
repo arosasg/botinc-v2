@@ -12,6 +12,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -154,6 +155,10 @@ func run(ctx context.Context) error {
 		}
 		counts[account.provider]++
 	}
+	pluginCount, err := migrateWorkspaceConnectors(ctx, sourcePool, tx, targetAEAD, workspaceIDs)
+	if err != nil {
+		return err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
@@ -166,8 +171,52 @@ func run(ctx context.Context) error {
 	for _, provider := range providers {
 		fmt.Printf(" %s=%d", provider, counts[provider])
 	}
-	fmt.Println()
+	fmt.Printf(" mcp_connectors=%d\n", pluginCount)
 	return nil
+}
+
+func migrateWorkspaceConnectors(ctx context.Context, source *pgxpool.Pool, target pgx.Tx, aead cipher.AEAD, workspaceIDs []string) (int, error) {
+	rows, err := source.Query(ctx, `select id::text, coalesce(mcp_config, '{}'::jsonb)::text
+		from workspace where id = any($1::uuid[]) order by id`, workspaceIDs)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+	total := 0
+	for rows.Next() {
+		var sourceWorkspace, raw string
+		if err := rows.Scan(&sourceWorkspace, &raw); err != nil {
+			return 0, err
+		}
+		var config struct {
+			Servers map[string]json.RawMessage `json:"mcpServers"`
+		}
+		if err := json.Unmarshal([]byte(raw), &config); err != nil {
+			return 0, fmt.Errorf("decode MCP configuration for workspace %s: %w", sourceWorkspace, err)
+		}
+		workspaceID, connectedBy, err := targetWorkspaceOwner(ctx, target, sourceWorkspace)
+		if err != nil {
+			return 0, err
+		}
+		for serverName, entry := range config.Servers {
+			ref, err := insertTargetSecret(ctx, target, aead, workspaceID, entry)
+			if err != nil {
+				return 0, err
+			}
+			kind := "mcp:" + strings.ToLower(strings.TrimSpace(serverName))
+			account, _ := json.Marshal(map[string]string{"name": serverName, "source": "v1 migration"})
+			_, err = target.Exec(ctx, `insert into plugins (workspace_id, kind, status, account, secret_ref, connected_by)
+				values ($1,$2,'connected',$3,$4,$5)
+				on conflict (workspace_id,kind) do update set status='connected', account=excluded.account,
+				secret_ref=excluded.secret_ref, connected_by=excluded.connected_by, updated_at=now()`,
+				workspaceID, kind, account, ref, connectedBy)
+			if err != nil {
+				return 0, fmt.Errorf("insert connector %s: %w", serverName, err)
+			}
+			total++
+		}
+	}
+	return total, rows.Err()
 }
 
 func targetIdentity(ctx context.Context, tx pgx.Tx, sourceWorkspace, email string) (uuid.UUID, uuid.UUID, error) {
@@ -181,6 +230,20 @@ func targetIdentity(ctx context.Context, tx pgx.Tx, sourceWorkspace, email strin
 		Scan(&workspaceID, &userID)
 	if err != nil {
 		return uuid.Nil, uuid.Nil, fmt.Errorf("target identity for source workspace %s: %w", sourceWorkspace, err)
+	}
+	return workspaceID, userID, nil
+}
+
+func targetWorkspaceOwner(ctx context.Context, tx pgx.Tx, sourceWorkspace string) (uuid.UUID, uuid.UUID, error) {
+	prefix := sourceWorkspace
+	if len(prefix) > 8 {
+		prefix = prefix[:8]
+	}
+	var workspaceID, userID uuid.UUID
+	err := tx.QueryRow(ctx, `select w.id, m.user_id from workspaces w join members m on m.workspace_id=w.id
+		where w.slug=$1 and m.role='owner' order by m.created_at limit 1`, "v1-"+prefix).Scan(&workspaceID, &userID)
+	if err != nil {
+		return uuid.Nil, uuid.Nil, fmt.Errorf("target owner for source workspace %s: %w", sourceWorkspace, err)
 	}
 	return workspaceID, userID, nil
 }

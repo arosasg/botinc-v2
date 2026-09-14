@@ -128,6 +128,7 @@ type Options struct {
 	Secret          string
 	CredentialEnv   map[string]string
 	CredentialFiles map[string]string
+	MCPConfig       []byte
 	Timeout         time.Duration
 	BudgetCents     int
 	// Emit receives every event as it is parsed.
@@ -153,6 +154,16 @@ func Run(ctx context.Context, a Adapter, o Options) (map[string]any, error) {
 		defer cancel()
 	}
 	args := a.Args(o.Prompt, o.Model)
+	removeMCP := func() {}
+	if len(o.MCPConfig) > 0 && a.Provider == "claude" {
+		mcpPath := filepath.Join(o.Dir, ".botinc-mcp.json")
+		if err := os.WriteFile(mcpPath, o.MCPConfig, 0o600); err != nil {
+			return nil, fmt.Errorf("write MCP configuration: %w", err)
+		}
+		removeMCP = func() { _ = os.Remove(mcpPath) }
+		defer removeMCP()
+		args = append(args, "--mcp-config", mcpPath, "--strict-mcp-config")
+	}
 	if o.BudgetCents > 0 && (a.Provider == "claude" || a.Provider == "openrouter") {
 		args = append(args, "--max-budget-usd", fmt.Sprintf("%.2f", float64(o.BudgetCents)/100))
 	}
@@ -163,6 +174,13 @@ func Run(ctx context.Context, a Adapter, o Options) (map[string]any, error) {
 		return nil, err
 	}
 	defer cleanup()
+	if len(o.MCPConfig) > 0 {
+		secrets = append(secrets, string(o.MCPConfig))
+		var document any
+		if json.Unmarshal(o.MCPConfig, &document) == nil {
+			secrets = append(secrets, stringLeaves(document)...)
+		}
+	}
 	cmd.Env = append(os.Environ(), a.Env(o.Secret)...)
 	cmd.Env = append(cmd.Env, credentialEnv...)
 	isolate(cmd)
@@ -313,6 +331,9 @@ func stringLeaves(value any) []string {
 	case string:
 		if current != "" {
 			out = append(out, current)
+			if strings.HasPrefix(strings.ToLower(current), "bearer ") {
+				out = append(out, strings.TrimSpace(current[len("Bearer "):]))
+			}
 		}
 	case map[string]any:
 		for _, child := range current {

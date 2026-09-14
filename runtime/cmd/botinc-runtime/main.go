@@ -133,7 +133,8 @@ func runChat(ctx context.Context, c *protocol.Client, spec protocol.Spec, a agen
 	out, err := agent.Run(ctx, a, agent.Options{
 		Dir: workdir, Prompt: prompt, Model: spec.Run.Model, Secret: spec.Credential.Secret,
 		CredentialEnv: spec.Credential.Env, CredentialFiles: spec.Credential.Files,
-		Timeout: 20 * time.Minute, BudgetCents: spec.Run.TaskLimitCents, Emit: emit,
+		MCPConfig: spec.MCPConfig,
+		Timeout:   20 * time.Minute, BudgetCents: spec.Run.TaskLimitCents, Emit: emit,
 	})
 	if err != nil {
 		_ = c.Step(ctx, protocol.StepUpdate{Key: key, Status: "stuck", CostCents: resultCost(out)})
@@ -269,7 +270,7 @@ func runBuild(ctx context.Context, c *protocol.Client, spec protocol.Spec, a age
 			}
 			prompt += "\nThis is a decision only. Do not edit files. Respond with exactly one of: " + strings.Join(choices, ", ")
 		}
-		out, runErr := agent.Run(ctx, a, agent.Options{Dir: checkout.Dir, Prompt: prompt, Model: model, Secret: spec.Credential.Secret, CredentialEnv: spec.Credential.Env, CredentialFiles: spec.Credential.Files, Timeout: 30 * time.Minute, BudgetCents: spec.Run.TaskLimitCents - cost, Emit: emit})
+		out, runErr := agent.Run(ctx, a, agent.Options{Dir: checkout.Dir, Prompt: prompt, Model: model, Secret: spec.Credential.Secret, CredentialEnv: spec.Credential.Env, CredentialFiles: spec.Credential.Files, MCPConfig: spec.MCPConfig, Timeout: 30 * time.Minute, BudgetCents: spec.Run.TaskLimitCents - cost, Emit: emit})
 		cost += resultCost(out)
 		stepCosts[node.Key] += resultCost(out)
 		previousOutput = resultText(out)

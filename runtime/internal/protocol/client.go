@@ -150,6 +150,7 @@ type Knowledge struct {
 
 type Spec struct {
 	Graph        json.RawMessage `json:"graph"`
+	MCPConfig    json.RawMessage `json:"mcp_config"`
 	Knowledge    []Knowledge     `json:"knowledge"`
 	Run          Run             `json:"run"`
 	Steps        []Step          `json:"steps"`

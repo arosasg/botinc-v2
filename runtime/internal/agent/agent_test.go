@@ -184,6 +184,33 @@ func TestStructuredCredentialCannotEscapeItsPrivateDirectory(t *testing.T) {
 	}
 }
 
+func TestClaudeReceivesPrivateMCPConfiguration(t *testing.T) {
+	fakeCLI(t, "mcpcli", `
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "--mcp-config" ]; then shift; mcp="$1"; fi
+  shift
+done
+test "$(cat "$mcp")" = '{"mcpServers":{"gmail":{"url":"https://example.test","headers":{"Authorization":"Bearer mcp-secret"}}}}' || exit 10
+echo '{"type":"result","result":"mcp-secret"}'
+`)
+	adapter := adapterFor("mcpcli")
+	adapter.Provider = "claude"
+	workdir := t.TempDir()
+	out, err := Run(context.Background(), adapter, Options{
+		Dir:       workdir,
+		MCPConfig: []byte(`{"mcpServers":{"gmail":{"url":"https://example.test","headers":{"Authorization":"Bearer mcp-secret"}}}}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out["result"] != "[redacted]" {
+		t.Fatalf("MCP token leaked through output: %+v", out)
+	}
+	if _, err := os.Stat(filepath.Join(workdir, ".botinc-mcp.json")); !os.IsNotExist(err) {
+		t.Fatal("task MCP file was not removed")
+	}
+}
+
 func TestPickResolvesTheKnownProviders(t *testing.T) {
 	for _, p := range []string{"claude", "codex", "openrouter"} {
 		if a, err := Pick(p); err != nil || a.Provider != p {

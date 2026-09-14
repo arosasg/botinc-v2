@@ -68,7 +68,7 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
      }
      patch.autopilots9=autos.autopilots.map(a=>({...mapAutopilot(a),owner:member,kind:a.trigger.kind,status:a.enabled?"active":"paused",history:[],limit:2,daily:20}));
      patch.accounts10=accounts.accounts.map(mapAccount);patch.modelAccounts={[member]:patch.accounts10};
-     patch.connections={[member]:Object.fromEntries(plugins.plugins.map(p=>[p.kind,p.status==="connected"]))};
+     patch.connections={[member]:Object.fromEntries(plugins.plugins.map(p=>[titleCase(p.kind.replace(/^mcp:/,"")),p.status==="connected"]))};
      patch.plan=titleCase(overview.workspace.plan);patch.monthly=0;patch.purchased=credits.balance_cents/100;patch.runningRuns=overview.running_runs;
      patch.paymentsEnabled=credits.payments_enabled;patch.paymentsTestMode=credits.payments_test_mode;patch.workspaceRole=overview.workspace.role||first.role;
      patch.ledger=credits.entries.map((e,i)=>({id:String(i),kind:e.kind,label:e.note,title:e.note,amount:e.amount_cents/100,date:e.created_at,when:e.created_at}));
@@ -125,7 +125,7 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
  bind("commitRename16",write(async()=>{const s=logic.state;const title=String(s.renameDraft16||"").trim();if(!title)throw new Error("Enter a name");if(uuid(s.renameId16))await ws.updateConversation(s.renameId16,{title});else await api.request("PATCH",`/api/w/${ws.slug}/issues/${s.renameId16}`,{title});logic.setState({renameId16:null})}));
  bind("archiveRow16",(id:string)=>write(async()=>{if(!uuid(id))throw new Error("Open the issue to change its status");await ws.updateConversation(id,{archived:true});if(logic.state.activeChat===id)logic.newChat()})());
  bind("shareRow16",(row:Vals)=>write(async()=>{const url=new URL("/w",window.location.origin);url.searchParams.set("workspace",ws.slug);if(uuid(row.id)){await ws.updateConversation(row.id,{shared:true});url.searchParams.set("view","chat");url.searchParams.set("conversation",row.id)}else{const issue=row.uuid||row.issueId||String(row.id||"").replace(/^issue:/,"");if(!issue)throw new Error("Open a record before sharing it");url.searchParams.set("view","issue");url.searchParams.set("issue",issue)}await navigator.clipboard.writeText(url.toString());logic.toast("Workspace link copied")})());
- bind("pluginConnected10",(name:string)=>(logic.state.livePlugins||[]).some((p:Vals)=>p.kind===name.toLowerCase()&&p.status==="connected"));
+ bind("pluginConnected10",(name:string)=>(logic.state.livePlugins||[]).some((p:Vals)=>p.kind.replace(/^mcp:/,"")===name.toLowerCase()&&p.status==="connected"));
  bind("connect",(name:string)=>logic.showPlugin10(name));
  bind("finishChat",()=>{});bind("skillFixture16",()=>[]);
  const repo=logic.repo14;
