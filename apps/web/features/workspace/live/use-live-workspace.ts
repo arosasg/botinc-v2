@@ -6,7 +6,7 @@ import { useEffect, useRef } from "react";
 import { Client, type User, type WorkspaceClient, type WorkflowGraph } from "@botinc/api";
 import type { Vals } from "../vals";
 import { clampConversationPaneWidth, conversationPaneBounds, normalizePublicAssets } from "./layout";
-import { mapAccount, mapAutopilot, mapConversation, mapIssue, mapMessage, mapRun, mapWorkflowSteps, type PeopleIndex } from "./map";
+import { mapAccount, mapAutopilot, mapConversation, mapIssue, mapIssueTimeline, mapMessage, mapRun, mapWorkflowSteps, type PeopleIndex } from "./map";
 import { parseWorkspaceRoute, workspacePath, type WorkspaceRoute } from "./routes";
 
 export type LiveStatus = "off" | "connecting" | "live" | "signed-out" | "error";
@@ -21,6 +21,9 @@ const phaseFor = (s?: string) => s && ["queued", "provisioning", "running"].incl
 const draftKey = (workspace: string, conversation?: unknown) => `botinc:draft:v2:${workspace}:${uuid(conversation) ? conversation : "new"}`;
 const dockConversationKey = (workspace: string) => `botinc:dock-conversation:v2:${workspace}`;
 const dockDraftKey = (workspace: string) => `botinc:dock-draft:v2:${workspace}`;
+export function threadInspectorPatch(isDesktop: boolean): Vals {
+ return isDesktop?{inspector10:true,mobileInspector10:false,inspectorTab10:"issue",paneWidth11:400,paneRestore11:400}:{};
+}
 export function readDraft(workspace: string, conversation?: unknown): string {
  try{return window.localStorage.getItem(draftKey(workspace,conversation))||""}catch{return ""}
 }
@@ -120,7 +123,7 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
      patch.workflows14=workflows.workflows.map(w=>({id:w.id,name:w.name,meta:w.description,icon:"git-branch",state:w.active_version_id?"Active":"Draft",tone:w.active_version_id?"ok14":""}));
      patch.profileByMember15={[member]:{...(logic.state.profileByMember15?.[previous]||{}),name:me.name||member,email:me.email}};
      patch.sec19={...(logic.state.sec19||{}),twoStep:false,sms:false,codes:[],codesLeft:0,codesWhen:"Never",sessions:sessions.sessions.map(d=>({id:d.id,name:d.current?"Current browser":"Browser session",short:"browser",icon:"monitor",meta:d.user_agent,where:d.location||"",ip:d.ip,when:new Date(d.last_seen_at).toLocaleString(),current:d.current})),keys:keys.keys.map(k=>({id:k.id,name:k.name,prefix:k.prefix,scope:k.scopes.includes("write")?"Full access":"Read only",created:new Date(k.created_at).toLocaleDateString(),used:k.last_used_at?new Date(k.last_used_at).toLocaleString():"Never"}))};
-     logic.setState(patch);if(!hydrated){if(previous!==member)logic.newChat();const conversation=initialRoute.conversation;const issue=initialRoute.issue;const requestedView=initialRoute.view;if(conversation&&chats.conversations.some(c=>c.id===conversation)){logic.setState({activeChat:conversation,view:"chat",draft:readDraft(ws.slug,conversation)});again=true}else if(issue&&issues.issues.some(i=>i.id===issue||i.identifier===issue)){logic.setState({activeIssue:issue,view:requestedView==="thread9"?"thread9":"issue"});again=true}else{logic.setState({view:requestedView,...initialRoute.autopilot?{activeAuto9:initialRoute.autopilot}:{},...initialRoute.section?{section:initialRoute.section}:{},draft:readDraft(ws.slug,null)})}const canonicalIssue=issue?issues.issues.find(i=>i.id===issue||i.identifier===issue)?.id:undefined;window.history.replaceState({},"",workspacePath({...initialRoute,workspace:ws.slug,...canonicalIssue?{issue:canonicalIssue}:{}}))}hydrated=true;report("live");
+     logic.setState(patch);if(!hydrated){if(previous!==member)logic.newChat();const conversation=initialRoute.conversation;const issue=initialRoute.issue;const requestedView=initialRoute.view;if(conversation&&chats.conversations.some(c=>c.id===conversation)){logic.setState({activeChat:conversation,view:"chat",draft:readDraft(ws.slug,conversation)});again=true}else if(issue&&issues.issues.some(i=>i.id===issue||i.identifier===issue)){const thread=requestedView==="thread9";const issueID=issues.issues.find(i=>i.id===issue||i.identifier===issue)!.id;logic.setState({activeIssue:issue,view:thread?"thread9":"issue",threadDraft9:readDraft(ws.slug,issueID),...threadInspectorPatch(thread&&window.matchMedia("(min-width: 901px)").matches)});again=true}else{logic.setState({view:requestedView,...initialRoute.autopilot?{activeAuto9:initialRoute.autopilot}:{},...initialRoute.section?{section:initialRoute.section}:{},draft:readDraft(ws.slug,null)})}const canonicalIssue=issue?issues.issues.find(i=>i.id===issue||i.identifier===issue)?.id:undefined;window.history.replaceState({},"",workspacePath({...initialRoute,workspace:ws.slug,...canonicalIssue?{issue:canonicalIssue}:{}}))}hydrated=true;report("live");
     }finally{refreshing=false;if(again&&alive){again=false;void hydrate().catch(fail)}}
    };
    let liveRefreshing=false,liveAgain=false;
@@ -200,8 +203,15 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
  const write=(fn:()=>Promise<void>)=>async()=>{if(disposed)return;try{await fn();if(!disposed)await hydrate()}catch(err){if(!disposed)fail(err)}};
  let sending=false;
  const send=async(e?:{preventDefault:()=>void})=>{
-  e?.preventDefault();if(sending||disposed)return;let draft=String(logic.state.draft||"").trim();const queued=[...(logic.state.attachments11||[])].filter((a:Vals)=>pendingFiles.has(a.id));if(!draft&&!queued.length)return;if(!draft)draft="Review the attached files.";sending=true;
+  e?.preventDefault();if(sending||disposed)return;const isThread=logic.state.view==="thread9";let draft=String(isThread?logic.state.threadDraft9:logic.state.draft||"").trim();const queued=[...(logic.state.attachments11||[])].filter((a:Vals)=>pendingFiles.has(a.id));if(!draft&&!queued.length)return;if(!draft)draft="Review the attached files.";sending=true;
   try{
+   if(isThread){
+    const issue=logic.issue();const issueID=String(issue.uuid||issue.id);if(!uuid(issueID))throw new Error("Open an issue before sending a message");
+    for(const item of queued){const file=pendingFiles.get(item.id);if(!file)continue;await ws.uploadIssueAttachment(issueID,file)}
+    await ws.comment(issueID,draft);saveDraft(ws.slug,issueID,"");
+    for(const item of queued){pendingFiles.delete(item.id);if(String(item.url||"").startsWith("blob:"))URL.revokeObjectURL(item.url)}
+    if(!disposed){logic.setState({threadDraft9:"",attachments11:[]});await hydrate()}return;
+   }
    let active=logic.state.activeChat;
    if(!uuid(active)){const out=await ws.createConversation({title:draft.slice(0,72),model:String(logic.state.model||"auto").toLowerCase()==="auto"?"auto":String(logic.state.model)});if(disposed)return;active=out.conversation.id;logic.setState({activeChat:active,view:"chat"});routeURL("chat",{activeChat:active})}
    const attachmentIDs:string[]=[];
@@ -233,7 +243,7 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
    if(!disposed){logic.setState({dockLiveDraft:"",dockAttachmentsLive:[]});await hydrate()}
   }catch(err){if(!disposed)fail(err)}finally{dockSending=false}
  };
- bind("openIssue",(id:string)=>{logic.go("thread9",{activeIssue:id,issueComment:"",liveIssueDetail:null,liveIssueFiles:[]});void hydrate().catch(fail)});
+ bind("openIssue",(id:string)=>{const issue=logic.state.issues.find((row:Vals)=>row.id===id||row.uuid===id);logic.go("thread9",{activeIssue:id,issueComment:"",threadDraft9:readDraft(ws.slug,issue?.uuid||id),liveIssueDetail:null,liveIssueFiles:[],...threadInspectorPatch(window.matchMedia("(min-width: 901px)").matches)});void hydrate().catch(fail)});
  bind("issue",()=>logic.state.issues.find((i:Vals)=>i.id===logic.state.activeIssue||i.uuid===logic.state.activeIssue)||{id:"",title:"Select an issue",description:"",status:"Incoming",events:[]});
  // The prototype has several generations of composer handlers. All route here.
  for(const name of ["sendComposer10","sendComposer11","sendThreadMessage9"])bind(name,send);
@@ -299,6 +309,14 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
   const issueWorkflow=s.liveIssueWorkflow;
   const workflowVersion=issueWorkflow?.versions?.find((version:Vals)=>version.id===issueWorkflow.workflow.active_version_id)||issueWorkflow?.versions?.[0];
   const migrated=sourceIssue?.source?.kind==="migration";
+  const timeline=sourceIssue?mapIssueTimeline(sourceIssue,detail?.comments||[],detail?.runs||[],people,String(s.member||me.name||me.email)):[];
+  const timelineExpanded=!!s.historyExpanded13?.[currentIssue.id];
+  const visibleTimeline=timelineExpanded?timeline:timeline.slice(-7);
+  v.hasScenario13=timeline.length>0;v.scenarioCount13=timeline.length;
+  v.scenarioRows13=visibleTimeline.map((row)=>({...row,quote:()=>{logic.setState({threadDraft9:`> ${row.text}\n\n`});saveDraft(ws.slug,currentIssue.uuid||currentIssue.id,`> ${row.text}\n\n`)},copy:()=>navigator.clipboard?.writeText(row.text),fork14:()=>{},branch14:()=>{},more14:()=>{}}));
+  v.hasEarlier13=!timelineExpanded&&timeline.length>7;v.earlierCount13=Math.max(0,timeline.length-7);
+  v.showEarlier13=()=>{logic.setState({historyExpanded13:{...s.historyExpanded13,[currentIssue.id]:true}});setTimeout(()=>logic.scrollThread13?.("start"),40)};
+  v.showStart13=v.showEarlier13;v.jumpLatest13=()=>logic.scrollThread13?.("latest");
   const timestamp=(value?:string)=>value?new Date(value).toLocaleString():"Unavailable";
   v.i8Created=timestamp(sourceIssue?.created_at);v.i8Updated=timestamp(sourceIssue?.updated_at);
   v.i8RunState=latestRun?titleCase(latestRun.status):migrated?"Ready to continue":"Ready";v.i8RunTone="";
@@ -409,11 +427,11 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
   if(Array.isArray(v.conversationGroups12))v.conversationGroups12=v.conversationGroups12.map((group:Vals)=>({...group,rows:(group.rows||[]).map((row:Vals)=>{
    const id=String(row.id||"");
    if(id.startsWith("chat:")&&uuid(id.slice(5)))return{...row,open:()=>{void openChat(id.slice(5))}};
-   if(id.startsWith("issue:")){const issue=id.slice(6);return{...row,open:()=>{logic.setState({activeIssue:issue,view:"thread9",issueComment:"",liveIssueDetail:null,liveIssueFiles:[]});routeURL("thread9",{activeIssue:issue});void hydrate().catch(fail)}}}
+   if(id.startsWith("issue:")){const issue=id.slice(6);const issueRow=(logic.state.issues||[]).find((item:Vals)=>item.id===issue||item.uuid===issue);return{...row,open:()=>{logic.setState({activeIssue:issue,view:"thread9",issueComment:"",threadDraft9:readDraft(ws.slug,issueRow?.uuid||issue),liveIssueDetail:null,liveIssueFiles:[],...threadInspectorPatch(window.matchMedia("(min-width: 901px)").matches)});routeURL("thread9",{activeIssue:issue});void hydrate().catch(fail)}}}
    return row;
   })}));
   for(const key of ["sendMessage","sendComposer10","sendComposer11","sendThreadMessage9"])v[key]=send;
-  v.editComposer10=(event:Event)=>{const value=(event.target as HTMLTextAreaElement).value;logic.setState({draft:value});saveDraft(ws.slug,s.activeChat,value)};
+  v.editComposer10=(event:Event)=>{const value=(event.target as HTMLTextAreaElement).value;if(s.view==="thread9"){const issueID=currentIssue.uuid||currentIssue.id;logic.setState({threadDraft9:value});saveDraft(ws.slug,issueID,value)}else{logic.setState({draft:value});saveDraft(ws.slug,s.activeChat,value)}};
   v.composerKey12=(event:KeyboardEvent)=>{if(event.key==="Enter"&&!event.shiftKey&&!event.isComposing){event.preventDefault();void send(event)}};
   const addFiles=(files:File[],target:"main"|"dock"=fileTarget)=>{const stateKey=target==="dock"?"dockAttachmentsLive":"attachments11";const rows=files.filter(file=>file.size<=64*1024*1024).map(file=>{const id=`upload-${Date.now()}-${crypto.randomUUID()}`;pendingFiles.set(id,file);return{id,name:file.webkitRelativePath||file.name,image:file.type.startsWith("image/"),url:file.type.startsWith("image/")?URL.createObjectURL(file):"",size:file.size,meta:`${Math.max(1,Math.ceil(file.size/1024))} KB · ${file.type.startsWith("image/")?"Image":"File"}`,remove:()=>{pendingFiles.delete(id);logic.setState({[stateKey]:(logic.state[stateKey]||[]).filter((a:Vals)=>a.id!==id)})}}});if(rows.length!==files.length)logic.setState({composerError10:"Choose files smaller than 64 MB."});if(rows.length)logic.setState({[stateKey]:[...(logic.state[stateKey]||[]),...rows],composerError10:""})};
   const changed=(event:Event)=>{const input=event.target as HTMLInputElement;addFiles(Array.from(input.files||[]),fileTarget);input.value="";fileTarget="main"};
@@ -454,7 +472,7 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
   return normalizePublicAssets(v) as Vals;
  });
  logic.forceUpdate?.();
- const popRoute=()=>{const route=parseWorkspaceRoute(new URL(window.location.href));if(route.workspace!==ws.slug){window.location.reload();return}if(route.conversation){logic.setState({view:"chat",activeChat:route.conversation,draft:readDraft(ws.slug,route.conversation)});void hydrate().catch(fail)}else if(route.issue){logic.setState({view:route.view==="thread9"?"thread9":"issue",activeIssue:route.issue});void hydrate().catch(fail)}else{logic.setState({view:route.view,...route.view==="chat"?{activeChat:null,draft:readDraft(ws.slug,null)}:{},...route.autopilot?{activeAuto9:route.autopilot}:{},...route.section?{section:route.section}:{}});if(route.workflow&&typeof logic.openGraph14==="function")void logic.openGraph14(route.workflow)}};
+  const popRoute=()=>{const route=parseWorkspaceRoute(new URL(window.location.href));if(route.workspace!==ws.slug){window.location.reload();return}if(route.conversation){logic.setState({view:"chat",activeChat:route.conversation,draft:readDraft(ws.slug,route.conversation)});void hydrate().catch(fail)}else if(route.issue){const thread=route.view==="thread9";logic.setState({view:thread?"thread9":"issue",activeIssue:route.issue,threadDraft9:readDraft(ws.slug,route.issue),...threadInspectorPatch(thread&&window.matchMedia("(min-width: 901px)").matches)});void hydrate().catch(fail)}else{logic.setState({view:route.view,...route.view==="chat"?{activeChat:null,draft:readDraft(ws.slug,null)}:{},...route.autopilot?{activeAuto9:route.autopilot}:{},...route.section?{section:route.section}:{}});if(route.workflow&&typeof logic.openGraph14==="function")void logic.openGraph14(route.workflow)}};
  window.addEventListener("popstate",popRoute);
  return()=>{disposed=true;finishPaneDrag?.();if(paneFrame!==undefined)cancelAnimationFrame(paneFrame);window.removeEventListener("popstate",popRoute);for(const[k,v]of originals){if(v===undefined)delete logic[k];else logic[k]=v}};
 }

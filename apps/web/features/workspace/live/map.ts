@@ -6,7 +6,7 @@
  * row, so a field with no source is left out rather than invented. A screen
  * that has nothing real to show should look empty, not plausible. */
 
-import type { Account, Attachment, Autopilot, Conversation, Issue, Message, Run, User, WorkflowVersion } from "@botinc/api";
+import type { Account, Attachment, Autopilot, Conversation, Issue, IssueComment, Message, Run, User, WorkflowVersion } from "@botinc/api";
 
 /* The design writes status as a sentence, the API as a token, and the sentence
    is not free text: the workspace logic groups the sidebar by comparing it
@@ -37,6 +37,25 @@ export function initial(name: string): string {
 }
 
 export type PeopleIndex = Map<string, { name: string; email: string }>;
+
+export interface IssueTimelineRow {
+  id: string;
+  sortAt: string;
+  plain17?: boolean;
+  route17?: boolean;
+  operator?: boolean;
+  human?: boolean;
+  initial?: string;
+  who?: string;
+  time: string;
+  text: string;
+  cls: string;
+  routeTone?: string;
+  hasLogo?: boolean;
+  logo?: string;
+  logoClass?: string;
+  hasLeft?: boolean;
+}
 
 function owner(people: PeopleIndex, id: string | null): { owner: string; ownerInitial: string } {
   if (!id) return { owner: "", ownerInitial: "" };
@@ -76,6 +95,93 @@ function sourceLabel(kind: string): string {
     case "manual": return "Manual";
     default: return kind ? kind[0]!.toUpperCase() + kind.slice(1) : "Manual";
   }
+}
+
+function timelineTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.valueOf())) return "";
+  return new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(date);
+}
+
+function modelBrand(model: string): { logo: string; logoClass: string } {
+  const normalized = model.toLowerCase();
+  if (normalized.includes("gpt") || normalized.includes("codex") || normalized.includes("openai")) {
+    return { logo: "/assets/brands-v12/codex.svg", logoClass: "mono12" };
+  }
+  if (normalized.includes("openrouter")) {
+    return { logo: "/assets/brands-v12/openrouter.svg", logoClass: "" };
+  }
+  return { logo: "/assets/brands-v12/claude.svg", logoClass: "" };
+}
+
+/**
+ * Translate the durable issue record into the rich Workspace v19 timeline.
+ * The Design sample used its own scenario fixtures. Production must never
+ * depend on those IDs, so this mapper only emits rows backed by API data.
+ */
+export function mapIssueTimeline(
+  issue: Issue,
+  comments: IssueComment[],
+  runs: Run[],
+  people: PeopleIndex,
+  currentMember: string,
+): IssueTimelineRow[] {
+  const rows: IssueTimelineRow[] = [];
+
+  if (issue.description.trim()) {
+    const author = people.get(issue.created_by ?? "")?.name || "Original request";
+    rows.push({
+      id: `issue:${issue.id}`,
+      sortAt: issue.created_at,
+      plain17: true,
+      human: true,
+      initial: initial(author),
+      who: author,
+      time: timelineTime(issue.created_at),
+      text: issue.description,
+      cls: "human13",
+    });
+  }
+
+  for (const run of runs) {
+    const status = run.status.replaceAll("_", " ");
+    const isActive = ["queued", "provisioning", "running"].includes(run.status);
+    const brand = modelBrand(run.model);
+    rows.push({
+      id: `run:${run.id}`,
+      sortAt: run.queued_at,
+      route17: true,
+      routeTone: isActive ? "tone-midrun17" : run.status === "failed" ? "tone-warn17" : "tone-credit17",
+      hasLogo: true,
+      logo: brand.logo,
+      logoClass: brand.logoClass,
+      hasLeft: false,
+      time: timelineTime(run.queued_at),
+      text: `${run.model || "Auto"} - ${run.purpose || "Work"} - ${status}`,
+      cls: "route-entry17",
+    });
+  }
+
+  for (const comment of comments) {
+    const isHuman = comment.author_kind === "user";
+    const author = isHuman
+      ? people.get(comment.author_user_id ?? "")?.name || currentMember || "Workspace member"
+      : "Operator";
+    rows.push({
+      id: `comment:${comment.id}`,
+      sortAt: comment.created_at,
+      plain17: true,
+      operator: !isHuman,
+      human: isHuman,
+      initial: initial(author),
+      who: author,
+      time: timelineTime(comment.created_at),
+      text: comment.body,
+      cls: isHuman ? "human13" : "",
+    });
+  }
+
+  return rows.sort((left, right) => left.sortAt.localeCompare(right.sortAt));
 }
 
 export function mapMessage(m: Message, me: User | null, people: PeopleIndex, attachments: Attachment[] = []) {

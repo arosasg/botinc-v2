@@ -152,6 +152,12 @@ export class WorkspaceClient {
     body.set("file", file, file.name);
     return this.api.requestForm<{ attachment: Attachment }>(this.w("/attachments"), body);
   }
+  uploadIssueAttachment(id: string, file: File) {
+    const body = new FormData();
+    body.set("issue_id", id);
+    body.set("file", file, file.name);
+    return this.api.requestForm<{ attachment: Attachment }>(this.w("/attachments"), body);
+  }
 
   // --- issues ---
   async issues(params?: { status?: string; assignee?: "me"; project?: string }, signal?: AbortSignal) {
