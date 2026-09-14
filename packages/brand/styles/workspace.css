@@ -6551,6 +6551,10 @@ button{font-family:inherit}button .ui-icon{color:inherit}
 /* Mobile Work is a readable two-track list. The late desktop column pinning
    above must not strand hidden metadata in off-screen grid tracks. */
 @media(max-width:760px){
+  .app-v19 .topbar .call-top.call-btn16{
+    width:34px;min-width:34px;height:34px;padding:0;justify-content:center;border-radius:9999px}
+  .app-v19 .topbar .call-top.call-btn16>.call-btn-mark16{display:grid}
+  .app-v19 .topbar .call-top.call-btn16>span:last-child{display:none}
   .app-v19 main.work-v9>.v7-page-heading{display:grid;grid-template-columns:minmax(0,1fr);gap:14px}
   .app-v19 main.work-v9>.v7-page-heading>.head-actions14{
     display:flex;align-items:center;justify-content:flex-start;gap:8px;min-width:0;flex-wrap:wrap}
