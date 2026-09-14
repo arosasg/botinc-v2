@@ -30,6 +30,15 @@ export function openNewChatWithDraft(logic: Pick<Logic,"setState">, workspace: s
  open();
  logic.setState({draft:readDraft(workspace,null)});
 }
+export function routineTrigger(draft: Vals): Record<string, string> {
+ const kind=String(draft.kind||"manual");
+ if(kind!=="schedule")return{kind:kind==="api"?"manual":kind,...draft.source?{source:String(draft.source)}:{}};
+ const zone=String(draft.zone||draft.tz||"UTC");const existing=String(draft.cron||"");const cadence=String(draft.cadence||"daily");
+ if(existing&&!['daily','weekdays','weekly'].includes(cadence))return{kind:"schedule",cron:existing,tz:zone,...draft.source?{source:String(draft.source)}:{}};
+ const match=/^([01]\d|2[0-3]):([0-5]\d)$/.exec(String(draft.time||""));if(!match)throw new Error("Choose a valid schedule time");
+ const tail=cadence==="weekdays"?"* * 1-5":cadence==="weekly"?"* * 1":"* * *";
+ return{kind:"schedule",cron:`${Number(match[2])} ${Number(match[1])} ${tail}`,tz:zone,...draft.source?{source:String(draft.source)}:{}};
+}
 function readLocal(key: string): string { try{return window.localStorage.getItem(key)||""}catch{return ""} }
 function saveLocal(key: string, value: string): void { try{if(value)window.localStorage.setItem(key,value);else window.localStorage.removeItem(key)}catch{} }
 
@@ -92,6 +101,8 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
       patch.dockLiveCost=dock.runs.reduce((sum,r)=>sum+r.cost_cents,0)/100;
      }else if(dockConversation){saveLocal(dockConversationKey(ws.slug),"");patch.dockConversationID="";patch.dockLiveMessages=[];patch.dockLiveRun=null;patch.dockLivePhase="done";}
      patch.autopilots9=autos.autopilots.map(a=>({...mapAutopilot(a),owner:member,kind:a.trigger.kind,status:a.enabled?"active":"paused",history:[],limit:2,daily:20}));
+     const activeAutopilot=String(logic.state.activeAuto9||initialRoute.autopilot||"");
+     if(uuid(activeAutopilot)&&autos.autopilots.some(a=>a.id===activeAutopilot)){const detail=await ws.autopilot(activeAutopilot,abort.signal);patch.autopilots9=patch.autopilots9.map((autopilot:Vals)=>autopilot.id===activeAutopilot?{...autopilot,history:detail.runs.map(run=>({title:titleCase(run.status),detail:run.summary||run.run_id||"Run recorded",when:new Date(run.created_at).toLocaleString(),status:run.status}))}:autopilot)}
      patch.accounts10=accounts.accounts.map(mapAccount);patch.modelAccounts={[member]:patch.accounts10};
      patch.connections={[member]:Object.fromEntries(plugins.plugins.map(p=>[titleCase(p.kind.replace(/^mcp:/,"")),p.status==="connected"]))};
      patch.customPlugins10=plugins.plugins.filter(p=>p.kind.startsWith("mcp:")&&!catalogPluginKeys.has(pluginKey(p.kind))).map(p=>({name:String((p.account as Vals)?.name||titleCase(p.kind.slice(4).replace(/-/g," "))),owner:member,category:"Custom",copy:"Workspace MCP server",icon:"code-xml"}));
@@ -173,6 +184,11 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
  bind("issue",()=>logic.state.issues.find((i:Vals)=>i.id===logic.state.activeIssue||i.uuid===logic.state.activeIssue)||{id:"",title:"Select an issue",description:"",status:"Incoming",events:[]});
  // The prototype has several generations of composer handlers. All route here.
  for(const name of ["sendComposer10","sendComposer11","sendThreadMessage9"])bind(name,send);
+ bind("openAuto9",(id:string)=>{logic.go("auto9",{activeAuto9:id,panel:null});void hydrate().catch(fail)});
+ bind("toggleAuto9",(id:string,enabled:boolean)=>{void write(async()=>{await ws.setAutopilotEnabled(id,enabled)})()});
+ bind("saveAuto9",()=>{const s=logic.state,draft=s.autoDraft9||{};const error=!String(draft.title||"").trim()?"Give this routine a name.":String(draft.prompt||"").trim().length<12?"Give this routine a clear instruction.":"";if(error){logic.setState({autoFormError9:error});return}if(s.autoFormStep9!=="review"){logic.setState({autoFormStep9:"review",autoFormError9:""});return}void write(async()=>{const trigger=routineTrigger(draft);const existing=uuid(s.autoEditing9)?s.autoEditing9:undefined;const out=await ws.saveAutopilot({name:String(draft.title).trim(),description:String(draft.description||""),prompt:String(draft.prompt).trim(),model:String(draft.model||"auto").toLowerCase()==="auto"?"auto":String(draft.model),trigger,workflow_id:draft.workflowId||null,enabled:draft.enabled!==false},existing);logic.setState({dialog:null,autoEditing9:null,activeAuto9:out.autopilot.id});routeURL("auto9",{activeAuto9:out.autopilot.id})})()});
+ bind("runAuto9",()=>{const autopilot=logic.state.autopilots9?.find((row:Vals)=>row.id===logic.state.activeAuto9);if(!autopilot?.enabled){logic.toast("Enable this routine before running it.");return}void write(async()=>{await ws.triggerAutopilot(autopilot.id)})()});
+ bind("deleteRoutine14",(id:string)=>{const autopilot=logic.state.autopilots9?.find((row:Vals)=>row.id===id);if(!autopilot)return;logic.generic("Delete this routine?","Its recorded run history stays attached to the work it created.",[],{genericText:autopilot.title,genericActionLabel:"Delete routine",genericAction:()=>{void write(async()=>{await ws.deleteAutopilot(id);logic.setState({dialog:null,activeAuto9:null});logic.go("schedule9",{scheduleTab14:"routines"})})()}})});
  bind("workspaceMenu16",(event:Event)=>logic.openMenu14(null,event,[...(logic.state.liveWorkspaces||[]).map((w:Vals)=>({label:w.name,hint:w.role,on:w.slug===ws.slug,run:()=>window.location.assign(workspacePath({workspace:w.slug,view:"chat"}))})),{label:"New workspace",run:()=>logic.newWorkspace16()}],"Workspaces"));
  bind("createWorkspace16",write(async()=>{const name=String(logic.state.nwName16||"").trim();if(!name)throw new Error("Enter a workspace name");const created=await api.request<{slug:string}>("POST","/api/workspaces",{name});window.location.assign(workspacePath({workspace:created.slug,view:"chat"}))}));
  bind("commitRename16",write(async()=>{const s=logic.state;const title=String(s.renameDraft16||"").trim();if(!title)throw new Error("Enter a name");if(uuid(s.renameId16))await ws.updateConversation(s.renameId16,{title});else await api.request("PATCH",`/api/w/${ws.slug}/issues/${s.renameId16}`,{title});logic.setState({renameId16:null})}));

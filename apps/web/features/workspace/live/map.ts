@@ -166,6 +166,7 @@ export function mapAutopilot(a: Autopilot) {
     time: schedule.time,
     triggerText: kind === "schedule" ? schedule.label : kind === "manual" ? "Started manually" : "",
     nextText: describeNextRun(a.enabled, a.next_run_at, zone),
+    workflowId: a.workflow_id,
     lastRun: a.last_run_at,
     nextRun: a.next_run_at,
     model: a.model === "auto" ? "Auto" : a.model,

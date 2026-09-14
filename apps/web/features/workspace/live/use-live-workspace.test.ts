@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { openNewChatWithDraft, saveDraft } from "./use-live-workspace";
+import { openNewChatWithDraft, routineTrigger, saveDraft } from "./use-live-workspace";
 
 describe("new conversation drafts", () => {
   const values = new Map<string, string>();
@@ -34,5 +34,19 @@ describe("new conversation drafts", () => {
     });
 
     expect(state).toEqual({ activeChat: null, draft: "saved new conversation" });
+  });
+});
+
+describe("routine triggers", () => {
+  it("turns the Workspace v19 daily schedule into the API cron shape", () => {
+    expect(routineTrigger({ kind: "schedule", cadence: "daily", time: "09:30", zone: "Europe/Madrid" })).toEqual({
+      kind: "schedule", cron: "30 9 * * *", tz: "Europe/Madrid",
+    });
+  });
+
+  it("preserves an imported interval cron the editor cannot express", () => {
+    expect(routineTrigger({ kind: "schedule", cadence: "Every 10 minutes", cron: "*/10 * * * *", zone: "UTC" })).toEqual({
+      kind: "schedule", cron: "*/10 * * * *", tz: "UTC",
+    });
   });
 });

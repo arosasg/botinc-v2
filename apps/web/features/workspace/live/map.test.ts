@@ -203,6 +203,7 @@ describe("mapAutopilot", () => {
     expect(row.time).toBe("09:00");
     expect(row.zone).toBe("Europe/Madrid");
     expect(row.source).toBe("BotInc");
+    expect(row.workflowId).toBeNull();
     expect(row.triggerText).toBe("Every day at 09:00 · Europe/Madrid");
     expect(row.nextText).toMatch(/^Next /);
     expect(row.model).toBe("Auto");
