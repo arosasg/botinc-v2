@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { ApiError, Client } from "./client";
+import { ApiError, Client, webSocketURL } from "./client";
 
 /* A fake fetch that records what the client asked for and replies with what
    the test wants. No network, no server: this pins the contract the client
@@ -93,6 +93,14 @@ describe("Client", () => {
     const api = new Client({ baseURL: "https://api.test///", fetch: fetchImpl });
     await api.me();
     expect(calls[0]!.url).toBe("https://api.test/api/me");
+  });
+
+  it("builds an absolute same-origin websocket URL when the API base is relative", () => {
+    expect(webSocketURL("/", "/api/w/acme/ws", "https://botinc.ai")).toBe("wss://botinc.ai/api/w/acme/ws");
+  });
+
+  it("keeps a separately hosted API in websocket URLs", () => {
+    expect(webSocketURL("https://api.botinc.ai/", "/api/w/acme/ws", "https://botinc.ai")).toBe("wss://api.botinc.ai/api/w/acme/ws");
   });
 
   it("tails run events from a cursor", async () => {
