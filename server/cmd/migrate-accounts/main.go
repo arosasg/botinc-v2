@@ -87,6 +87,16 @@ func run(ctx context.Context) error {
 
 	workspaceIDs := strings.Split(workspaceCSV, ",")
 	rows, err := sourcePool.Query(ctx, `
+		with latest_snapshot as (
+			select distinct on (runtime.workspace_id, ra.account_key)
+				runtime.workspace_id, ra.account_key, ra.limits, ra.usage_captured_at,
+				ra.status, ra.limit_reason, ra.limited_until
+			from runtime_account ra
+			join agent_runtime runtime on runtime.id=ra.runtime_id
+			where runtime.workspace_id = any($1::uuid[])
+			order by runtime.workspace_id, ra.account_key,
+				coalesce(ra.usage_captured_at,ra.last_reported_at) desc
+		)
 		select a.id::text, a.workspace_id::text, u.email, a.provider, a.account_key,
 			a.label, a.email, a.plan, a.credential_kind, a.credential_encrypted,
 			a.refresh_encrypted, a.expires_at, a.refresh_error, a.enabled,
@@ -94,14 +104,8 @@ func run(ctx context.Context) error {
 			coalesce(snapshot.limits, '[]'::jsonb), snapshot.usage_captured_at,
 			coalesce(snapshot.status, ''), coalesce(snapshot.limit_reason, ''), snapshot.limited_until
 		from agent_account a join "user" u on u.id=a.owner_id
-		left join lateral (
-			select ra.limits, ra.usage_captured_at, ra.status, ra.limit_reason, ra.limited_until
-			from runtime_account ra
-			join agent_runtime runtime on runtime.id=ra.runtime_id
-			where runtime.workspace_id=a.workspace_id and ra.account_key=a.account_key
-			order by coalesce(ra.usage_captured_at,ra.last_reported_at) desc
-			limit 1
-		) snapshot on true
+		left join latest_snapshot snapshot
+			on snapshot.workspace_id=a.workspace_id and snapshot.account_key=a.account_key
 		where a.workspace_id = any($1::uuid[])
 		order by a.workspace_id, a.provider, a.account_key`, workspaceIDs)
 	if err != nil {
