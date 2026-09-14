@@ -188,9 +188,11 @@ func TestClaudeReceivesPrivateMCPConfiguration(t *testing.T) {
 	fakeCLI(t, "mcpcli", `
 while [ "$#" -gt 0 ]; do
   if [ "$1" = "--mcp-config" ]; then shift; mcp="$1"; fi
+  if [ "$1" = "--allowedTools" ]; then shift; allowed="$1"; fi
   shift
 done
 test "$(cat "$mcp")" = '{"mcpServers":{"gmail":{"url":"https://example.test","headers":{"Authorization":"Bearer mcp-secret"}}}}' || exit 10
+test "$allowed" = 'mcp__*' || exit 11
 echo '{"type":"result","result":"mcp-secret"}'
 `)
 	adapter := adapterFor("mcpcli")
