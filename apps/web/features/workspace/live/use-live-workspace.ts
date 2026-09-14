@@ -25,7 +25,7 @@ export function threadInspectorPatch(isDesktop: boolean): Vals {
  return isDesktop?{inspector10:true,mobileInspector10:false,inspectorTab10:"issue",paneWidth11:400,paneRestore11:400}:{};
 }
 export function hydrationIssueKey(activeIssue: unknown, routeIssue: string | undefined, hydrated: boolean): unknown {
- return activeIssue||(!hydrated?routeIssue:undefined);
+ return !hydrated&&routeIssue?routeIssue:activeIssue;
 }
 export function readDraft(workspace: string, conversation?: unknown): string {
  try{return window.localStorage.getItem(draftKey(workspace,conversation))||""}catch{return ""}
