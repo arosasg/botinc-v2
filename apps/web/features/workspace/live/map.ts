@@ -80,6 +80,14 @@ function sourceLabel(kind: string): string {
 
 export function mapMessage(m: Message, me: User | null, people: PeopleIndex, attachments: Attachment[] = []) {
   const mine = m.role === "user";
+  const messageAttachments = attachments.filter((attachment) => attachment.message_id === m.id).map((attachment) => ({
+    id: attachment.id,
+    name: attachment.filename,
+    image: attachment.content_type.startsWith("image/"),
+    url: attachment.url,
+    size: attachment.size_bytes,
+    meta: `${Math.max(1, Math.ceil(attachment.size_bytes / 1024))} KB · ${attachment.content_type.startsWith("image/") ? "Image" : "File"}`,
+  }));
   const author = mine
     ? (people.get(m.meta?.["author_user_id"] as string)?.name ?? me?.name ?? me?.email ?? "You")
     : m.role === "operator" ? "Operator" : "BotInc";
@@ -92,14 +100,8 @@ export function mapMessage(m: Message, me: User | null, people: PeopleIndex, att
     cls: mine ? "message user-message" : "message assistant-message",
     text: m.body,
     createdAt: m.created_at,
-    attachments11: attachments.filter((a) => a.message_id === m.id).map((a) => ({
-      id: a.id,
-      name: a.filename,
-      image: a.content_type.startsWith("image/"),
-      url: a.url,
-      size: a.size_bytes,
-      meta: `${Math.max(1, Math.ceil(a.size_bytes / 1024))} KB · ${a.content_type.startsWith("image/") ? "Image" : "File"}`,
-    })),
+    hasAttachments11: messageAttachments.length > 0,
+    attachments11: messageAttachments,
   };
 }
 

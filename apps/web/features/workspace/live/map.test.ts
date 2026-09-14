@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Account, Autopilot, Conversation, Issue, Message, User } from "@botinc/api";
+import type { Account, Attachment, Autopilot, Conversation, Issue, Message, User } from "@botinc/api";
 import { mapAccount, mapAutopilot, mapConversation, mapIssue, type PeopleIndex } from "./map";
 
 /* The workspace logic does not treat status as free text: it groups the
@@ -161,6 +161,29 @@ describe("mapConversation", () => {
     expect(rows[0]!.hasAvatar).toBe(false);
     expect(rows[1]!.cls).toBe("message assistant-message");
     expect(rows[1]!.author).toBe("Operator");
+  });
+
+  it("renders only the attachments linked to each message", () => {
+    const attachments: Attachment[] = [
+      {
+        id: "a1", issue_id: null, conversation_id: "c1", message_id: "m1", comment_id: null,
+        filename: "evidence.png", content_type: "image/png", size_bytes: 1025, url: "/attachments/a1",
+      },
+      {
+        id: "a2", issue_id: null, conversation_id: "c1", message_id: "m2", comment_id: null,
+        filename: "later.txt", content_type: "text/plain", size_bytes: 20, url: "/attachments/a2",
+      },
+    ];
+
+    const row = mapConversation(conversation(), [message()], me, people, attachments).messages[0]!;
+
+    expect(row.hasAttachments11).toBe(true);
+    expect(row.attachments11).toEqual([
+      {
+        id: "a1", name: "evidence.png", image: true, url: "/attachments/a1", size: 1025,
+        meta: "2 KB · Image",
+      },
+    ]);
   });
 });
 
