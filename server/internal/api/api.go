@@ -41,7 +41,7 @@ func New(cfg config.Config, pool *pgxpool.Pool, a *auth.Service, hub *realtime.H
 
 func (s *Server) Router() http.Handler {
 	r := chi.NewRouter()
-	r.Use(middleware.RealIP, middleware.RequestID, middleware.Recoverer, middleware.Timeout(60*time.Second))
+	r.Use(middleware.RealIP, middleware.RequestID, middleware.Recoverer, timeoutUnlessWebSocket(60*time.Second))
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{s.cfg.FrontendOrigin},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
@@ -187,6 +187,23 @@ func (s *Server) Router() http.Handler {
 	r.Post("/api/hooks/stripe", s.stripeWebhook)
 
 	return r
+}
+
+// A request timeout is useful for ordinary API calls, but WebSockets are
+// intentionally long-lived. Wrapping an upgraded connection makes the timeout
+// writer try to send a 504 after the response has been hijacked and forces each
+// browser to reconnect once a minute.
+func timeoutUnlessWebSocket(timeout time.Duration) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		timed := middleware.Timeout(timeout)(next)
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if strings.EqualFold(strings.TrimSpace(r.Header.Get("Upgrade")), "websocket") {
+				next.ServeHTTP(w, r)
+				return
+			}
+			timed.ServeHTTP(w, r)
+		})
+	}
 }
 
 func (s *Server) publicConfig(w http.ResponseWriter, _ *http.Request) {

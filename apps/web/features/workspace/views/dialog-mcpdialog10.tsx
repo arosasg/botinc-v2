@@ -25,7 +25,7 @@ export function DialogMcpdialog10({ v }: { v: Vals }) {
           </span>
           <div>
             <h2 id="dialog-title">Add an MCP server</h2>
-            <p>Connect a custom tool to your personal Operator. Read-only by default.</p>
+            <p>Connect a custom tool to this workspace&apos;s Operator. Review its capabilities before use.</p>
           </div>
         </div>
         <div className="frm16">
@@ -103,12 +103,12 @@ export function DialogMcpdialog10({ v }: { v: Vals }) {
                   <b className="mono16">{interp(v.mcpUrl10)}</b>
                 </span>
                 <span className="dlg-rrow16">
-                  <span>Tools</span>
-                  <b>search_knowledge · read only</b>
+                  <span>Capabilities</span>
+                  <b>Published by this server</b>
                 </span>
                 <span className="dlg-rrow16">
                   <span>Scope</span>
-                  <b>Personal · not installed workspace-wide</b>
+                  <b>Workspace · available only here</b>
                 </span>
               </span>
             </div>

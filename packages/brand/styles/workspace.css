@@ -4460,7 +4460,7 @@ button{font-family:inherit}button .ui-icon{color:inherit}
 /* 3 · the side conversation matches the thread it sits beside. */
 .app .dock15.dock-float16{
   width:min(620px,calc(100vw - 40px));
-  max-height:min(620px,calc(100vh - 120px))}
+  max-height:calc(100vh - 16px)}
 
 /* 4 · the stamp carries its mark. */
 .app .model-fund16{
@@ -6491,6 +6491,9 @@ button{font-family:inherit}button .ui-icon{color:inherit}
 .app .dock-float16 .route-head17 .rh-acct17,.app .dock-float16 .route-head17 .rh-sep17{display:none}
 @container (max-width:430px){.app .dock-float16 .rh-model17{display:none}}
 .app .dock-float16 .composer10-tools .steer-btn18 span{display:none}
+.app .dock-float16 .dock-head15{cursor:grab;user-select:none;touch-action:none}
+.app .dock-float16 .dock-head15:active{cursor:grabbing}
+.app .dock-float16 .dock-head15 button{cursor:pointer}
 
 
 /* ------------------------------------ 10. review fixes (round 19e) -- */

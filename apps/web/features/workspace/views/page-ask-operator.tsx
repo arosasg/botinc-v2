@@ -22,7 +22,7 @@ export function PageAskOperator({ v }: { v: Vals }) {
           >
             <i />
           </button>
-          <header className="dock-head15">
+          <header className="dock-head15" onPointerDown={v.dockMove16}>
             <img className="dock-mark15" src="/assets/logo/botinc-mark.svg" alt="" />
             <div>
               <strong>Ask Operator</strong>
