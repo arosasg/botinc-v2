@@ -5,11 +5,17 @@ explicitly authorized. Production `botinc.ai` has not been switched.
 
 ## Source inventory and migration
 
-The current native credential can export BotInc, but requests for Didit, Santé,
-Hi Doctor, Personal and Santé Labs are explicitly denied because the credential
-is bound to a different workspace. Those five workspaces have not been imported.
-Use authorized workspace-scoped exports; do not bypass the denial through a
-broader host token or production database connection.
+The current Remote native credential can export BotInc, but requests for Didit,
+Santé, Hi Doctor, Personal and Santé Labs are explicitly denied because the
+credential is bound to a different workspace. Those five workspaces have not
+been imported. On 2026-09-14 the owner explicitly authorized his Mac's existing
+member CLI for this export. The bounded export is tracked in BOT-1340.
+
+The exact owner Mac dispatch failed admission with 8.8 GiB free, below the
+10 GiB floor. Its automatic Remote retry does not supply Mac filesystem access
+or broaden the Remote token. Keep the disk floor enabled; resume on the owner
+Mac when measured free space meets it and the authorized export route is
+available. No new source import or scheduler handoff is claimed from dispatch.
 
 BotInc staging import: 1,329 issues, 13,789 comments, six paused routines, two
 projects and the original member roles. A private checksummed archive contains
@@ -72,3 +78,14 @@ Latest named test execution, with original command exit status retained:
 Private exports, credentials, browser sessions and raw historical data are not
 committed or attached. This matrix distinguishes completed checks from gaps;
 passing suites do not establish that the entire product or migration is ready.
+
+
+## CI follow-up, 2026-09-14
+
+PR #2 is merged. The CI follow-up adds pull-request/main/manual checks for the
+web packages, all four Go modules and all three deployable Docker images. See
+`ci.md`. Local Go vet/build and uncached race tests passed: server 50 top-level
+(57 including subtests), runtime 27, CLI 6, integration 11. Every intended test
+ran with no skips against the task-private PostgreSQL 17 instance where needed.
+Web typecheck, lint, package tests and production build passed. These automated
+checks do not close the remaining live functionality/migration entries above.
