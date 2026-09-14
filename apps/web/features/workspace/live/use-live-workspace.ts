@@ -26,6 +26,10 @@ export function readDraft(workspace: string, conversation?: unknown): string {
 export function saveDraft(workspace: string, conversation: unknown, value: string): void {
  try{if(value)window.localStorage.setItem(draftKey(workspace,conversation),value);else window.localStorage.removeItem(draftKey(workspace,conversation))}catch{}
 }
+export function openNewChatWithDraft(logic: Pick<Logic,"setState">, workspace: string, open: () => void): void {
+ open();
+ logic.setState({draft:readDraft(workspace,null)});
+}
 function readLocal(key: string): string { try{return window.localStorage.getItem(key)||""}catch{return ""} }
 function saveLocal(key: string, value: string): void { try{if(value)window.localStorage.setItem(key,value);else window.localStorage.removeItem(key)}catch{} }
 
@@ -124,6 +128,8 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
  const routeURL=(view:string,patch:Vals={},replace=false)=>{const state:Vals={...logic.state,...patch,view};const issueRow=(state.issues||[]).find((item:Vals)=>item.id===state.activeIssue||item.uuid===state.activeIssue);const issueID=issueRow?.uuid||state.activeIssue;const route:WorkspaceRoute={workspace:ws.slug,view,...(view==="chat"&&uuid(state.activeChat)?{conversation:state.activeChat}:{}),...(["issue","thread9"].includes(view)&&issueID?{issue:issueID}:{}),...(view==="auto9"&&state.activeAuto9?{autopilot:state.activeAuto9}:{}),...(view==="settings"&&state.section?{section:state.section}:{}),...(view==="settings"&&state.section==="workflows"&&state.activeWorkflow?{workflow:state.activeWorkflow}:{})};window.history[replace?"replaceState":"pushState"]({},"",workspacePath(route))};
  const originalGo=typeof logic.go==="function"?logic.go.bind(logic):null;
  if(originalGo)bind("go",(view:string,patch:Vals={})=>{originalGo(view,patch);routeURL(view,patch)});
+ const originalNewChat=typeof logic.newChat==="function"?logic.newChat.bind(logic):null;
+ if(originalNewChat)bind("newChat",()=>openNewChatWithDraft(logic,ws.slug,originalNewChat));
  const originalAccountRoutable=typeof logic.accountRoutable14==="function"?logic.accountRoutable14.bind(logic):null;
  if(originalAccountRoutable)bind("accountRoutable14",(account:Vals)=>typeof account.runtimeRoutable==="boolean"?account.runtimeRoutable&&account.enabled!==false:originalAccountRoutable(account));
  const write=(fn:()=>Promise<void>)=>async()=>{if(disposed)return;try{await fn();if(!disposed)await hydrate()}catch(err){if(!disposed)fail(err)}};
@@ -329,7 +335,7 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
   return v;
  });
  logic.forceUpdate?.();
- const popRoute=()=>{const route=parseWorkspaceRoute(new URL(window.location.href));if(route.workspace!==ws.slug){window.location.reload();return}if(route.conversation){logic.setState({view:"chat",activeChat:route.conversation,draft:readDraft(ws.slug,route.conversation)});void hydrate().catch(fail)}else if(route.issue){logic.setState({view:route.view==="thread9"?"thread9":"issue",activeIssue:route.issue});void hydrate().catch(fail)}else{logic.setState({view:route.view,...route.autopilot?{activeAuto9:route.autopilot}:{},...route.section?{section:route.section}:{}});if(route.workflow&&typeof logic.openGraph14==="function")void logic.openGraph14(route.workflow)}};
+ const popRoute=()=>{const route=parseWorkspaceRoute(new URL(window.location.href));if(route.workspace!==ws.slug){window.location.reload();return}if(route.conversation){logic.setState({view:"chat",activeChat:route.conversation,draft:readDraft(ws.slug,route.conversation)});void hydrate().catch(fail)}else if(route.issue){logic.setState({view:route.view==="thread9"?"thread9":"issue",activeIssue:route.issue});void hydrate().catch(fail)}else{logic.setState({view:route.view,...route.view==="chat"?{activeChat:null,draft:readDraft(ws.slug,null)}:{},...route.autopilot?{activeAuto9:route.autopilot}:{},...route.section?{section:route.section}:{}});if(route.workflow&&typeof logic.openGraph14==="function")void logic.openGraph14(route.workflow)}};
  window.addEventListener("popstate",popRoute);
  return()=>{disposed=true;window.removeEventListener("popstate",popRoute);for(const[k,v]of originals){if(v===undefined)delete logic[k];else logic[k]=v}};
 }
