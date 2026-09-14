@@ -1,0 +1,10 @@
+.git
+**/node_modules
+**/.next
+**/.turbo
+**/*.log
+**/.env
+**/.env.*
+**/.verification
+proof
+design-ref

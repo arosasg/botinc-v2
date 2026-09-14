@@ -151,3 +151,5 @@ open(os.path.join(OUT, "workspace-view.tsx"), "w").write(
     'import type { Vals } from "../vals";\n' + "\n".join(imports) + "\n\n"
     f"export function WorkspaceView({{ v }}: {{ v: Vals }}) {{\n  return (\n    " + root_body.replace("\n", "\n    ") + "\n  );\n}\n")
 print("root", len(root_body), "files", len(files))
+
+subprocess.run([sys.executable,os.path.join(os.path.dirname(__file__),"workspace-product.py")],check=True)

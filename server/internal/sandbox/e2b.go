@@ -5,23 +5,22 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
-	"strings"
+	"os"
+	"os/exec"
 	"time"
 )
 
-// E2B provisions a sandbox from a template whose entrypoint starts the
-// botinc runtime. The runtime reads BOTINC_API_URL / BOTINC_RUN_ID /
-// BOTINC_RUN_TOKEN from the sandbox environment and claims its run.
+// E2B provisions a sandbox and launches its runtime through the official SDK.
 type E2B struct {
-	APIKey  string
-	BaseURL string
-	Client  *http.Client
+	APIKey   string
+	BaseURL  string
+	Client   *http.Client
+	Launcher string
 }
 
 func NewE2B(apiKey string) *E2B {
-	return &E2B{APIKey: apiKey, BaseURL: "https://api.e2b.app", Client: &http.Client{Timeout: 45 * time.Second}}
+	return &E2B{APIKey: apiKey, BaseURL: "https://api.e2b.app", Client: &http.Client{Timeout: 45 * time.Second}, Launcher: os.Getenv("BOTINC_E2B_LAUNCHER")}
 }
 
 func (e *E2B) Name() string { return "e2b" }
@@ -48,26 +47,30 @@ func (e *E2B) Provision(ctx context.Context, spec Spec) (*Sandbox, error) {
 		"envVars":               env,
 	}
 	b, _ := json.Marshal(body)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, e.BaseURL+"/sandboxes", bytes.NewReader(b))
-	if err != nil {
-		return nil, err
+	launcher := e.Launcher
+	if launcher == "" {
+		return nil, fmt.Errorf("%w: BOTINC_E2B_LAUNCHER is required", ErrUnavailable)
 	}
-	req.Header.Set("X-API-Key", e.APIKey)
-	req.Header.Set("Content-Type", "application/json")
-	res, err := e.Client.Do(req)
-	if err != nil {
-		return nil, err
+	launch, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(launch, "node", launcher)
+	cmd.Env = append(os.Environ(), "E2B_API_KEY="+e.APIKey)
+	cmd.Stdin = bytes.NewReader(b)
+	var output, diagnostic bytes.Buffer
+	cmd.Stdout = &output
+	cmd.Stderr = &diagnostic
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("e2b launch: %w", err)
 	}
-	defer res.Body.Close()
-	raw, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
-	if res.StatusCode >= 300 {
-		return nil, fmt.Errorf("e2b create: %s: %s", res.Status, strings.TrimSpace(string(raw)))
-	}
+	raw := output.Bytes()
 	var out struct {
 		SandboxID string `json:"sandboxID"`
 	}
 	if err := json.Unmarshal(raw, &out); err != nil {
 		return nil, err
+	}
+	if out.SandboxID == "" {
+		return nil, fmt.Errorf("e2b launch returned no sandbox id")
 	}
 	return &Sandbox{Provider: "e2b", ExternalID: out.SandboxID}, nil
 }

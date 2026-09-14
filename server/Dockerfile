@@ -7,8 +7,14 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/botinc-server ./cmd/server
 
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM node:22-alpine
+WORKDIR /opt/botinc
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
+COPY scripts/e2b-launch.mjs ./e2b-launch.mjs
 COPY --from=build /out/botinc-server /botinc-server
+ENV BOTINC_E2B_LAUNCHER=/opt/botinc/e2b-launch.mjs
+ENV BOTINC_ATTACHMENT_DIR=/var/lib/botinc/attachments
 EXPOSE 8080
-USER nonroot:nonroot
+USER node
 ENTRYPOINT ["/botinc-server"]

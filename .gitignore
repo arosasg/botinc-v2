@@ -16,3 +16,6 @@ proof/*.unsettled.png
 # generated during a build, not source
 apps/web/tsconfig.tsbuildinfo
 apps/web/next-env.d.ts
+
+# Task-private databases and verification logs
+.verification/

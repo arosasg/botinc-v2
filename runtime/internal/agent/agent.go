@@ -48,6 +48,11 @@ func jsonLine(line string) (Event, bool) {
 	}
 	typ, _ := obj["type"].(string)
 	switch typ {
+	case "item.completed":
+		if item, ok := obj["item"].(map[string]any); ok && item["type"] == "agent_message" {
+			return Event{Type: "result", Payload: map[string]any{"result": item["text"]}}, true
+		}
+		return Event{Type: "tool", Payload: obj}, true
 	case "assistant", "text", "message":
 		return Event{Type: "log", Payload: obj}, true
 	case "tool_use", "tool_result":
@@ -91,10 +96,14 @@ var Adapters = map[string]Adapter{
 	"openrouter": {
 		Provider: "openrouter", Binary: "claude",
 		Args: func(prompt, model string) []string {
-			return []string{"-p", prompt, "--output-format", "stream-json", "--verbose", "--permission-mode", "acceptEdits"}
+			args := []string{"-p", prompt, "--output-format", "stream-json", "--verbose", "--permission-mode", "acceptEdits"}
+			if model != "" && model != "auto" {
+				args = append(args, "--model", model)
+			}
+			return args
 		},
 		Env: func(secret string) []string {
-			return []string{"ANTHROPIC_API_KEY=" + secret, "ANTHROPIC_BASE_URL=https://openrouter.ai/api/v1"}
+			return []string{"ANTHROPIC_API_KEY=", "ANTHROPIC_AUTH_TOKEN=" + secret, "ANTHROPIC_BASE_URL=https://openrouter.ai/api"}
 		},
 		Parse: jsonLine,
 	},
@@ -112,11 +121,12 @@ func Pick(provider string) (Adapter, error) {
 }
 
 type Options struct {
-	Dir     string
-	Prompt  string
-	Model   string
-	Secret  string
-	Timeout time.Duration
+	Dir         string
+	Prompt      string
+	Model       string
+	Secret      string
+	Timeout     time.Duration
+	BudgetCents int
 	// Emit receives every event as it is parsed.
 	Emit func(Event)
 }
@@ -139,7 +149,11 @@ func Run(ctx context.Context, a Adapter, o Options) (map[string]any, error) {
 		ctx, cancel = context.WithTimeout(ctx, o.Timeout)
 		defer cancel()
 	}
-	cmd := exec.CommandContext(ctx, a.Binary, a.Args(o.Prompt, o.Model)...)
+	args := a.Args(o.Prompt, o.Model)
+	if o.BudgetCents > 0 && (a.Provider == "claude" || a.Provider == "openrouter") {
+		args = append(args, "--max-budget-usd", fmt.Sprintf("%.2f", float64(o.BudgetCents)/100))
+	}
+	cmd := exec.CommandContext(ctx, a.Binary, args...)
 	cmd.Dir = o.Dir
 	cmd.Env = append(os.Environ(), a.Env(o.Secret)...)
 	isolate(cmd)
@@ -176,6 +190,7 @@ func Run(ctx context.Context, a Adapter, o Options) (map[string]any, error) {
 			if ev.Payload == nil {
 				ev.Payload = map[string]any{}
 			}
+			ev.Payload = redact(ev.Payload, o.Secret).(map[string]any)
 			ev.Payload["stream"] = stream
 			if ev.Type == "result" {
 				mu.Lock()
@@ -206,5 +221,31 @@ func Run(ctx context.Context, a Adapter, o Options) (map[string]any, error) {
 		}
 		return result, fmt.Errorf("%s exited non-zero: %w", a.Binary, err)
 	}
+	if failed, _ := result["is_error"].(bool); failed {
+		return result, errors.New("the coding CLI reported an error result")
+	}
 	return result, nil
+}
+
+// Parse first so a secret that resembles JSON syntax cannot corrupt the event.
+func redact(value any, secret string) any {
+	if secret == "" {
+		return value
+	}
+	switch v := value.(type) {
+	case string:
+		return strings.ReplaceAll(v, secret, "[redacted]")
+	case map[string]any:
+		for k, x := range v {
+			v[k] = redact(x, secret)
+		}
+		return v
+	case []any:
+		for i, x := range v {
+			v[i] = redact(x, secret)
+		}
+		return v
+	default:
+		return value
+	}
 }

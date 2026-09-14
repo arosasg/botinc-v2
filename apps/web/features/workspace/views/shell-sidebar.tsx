@@ -24,7 +24,7 @@ export function ShellSidebar({ v }: { v: Vals }) {
       />
       <button className="workspace-button" onClick={v.workspaceMenu}>
         <img src="/assets/logo/botinc-mark.svg" alt="" />
-        <span>BotInc</span>
+        <span>{interp(v.workspaceName || "BotInc")}</span>
         <svg
           className="ui-icon use14"
           viewBox="0 0 24 24"

@@ -8,6 +8,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -20,6 +21,7 @@ import (
 	"github.com/arosasg/botinc-v2/runtime/internal/agent"
 	"github.com/arosasg/botinc-v2/runtime/internal/protocol"
 	"github.com/arosasg/botinc-v2/runtime/internal/repo"
+	"github.com/arosasg/botinc-v2/runtime/internal/workflow"
 )
 
 func main() {
@@ -62,7 +64,30 @@ func run() error {
 
 	// From here on every exit reports a status, so a run never hangs in
 	// 'running' waiting for a reconciler to give up on it.
+	heartbeatCtx, cancelHeartbeat := context.WithCancel(ctx)
+	heartbeatDone := make(chan struct{})
+	go func() {
+		defer close(heartbeatDone)
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-heartbeatCtx.Done():
+				return
+			case <-ticker.C:
+				call, cancel := context.WithTimeout(heartbeatCtx, 15*time.Second)
+				err := c.Heartbeat(call)
+				cancel()
+				if errors.Is(err, protocol.ErrUnauthorized) {
+					stop()
+					return
+				}
+			}
+		}
+	}()
 	result, workErr := execute(ctx, c, spec, workdir)
+	cancelHeartbeat()
+	<-heartbeatDone
 	finish := protocol.Finish{Status: "done", Result: result}
 	if workErr != nil {
 		finish = protocol.Finish{Status: "failed", Error: workErr.Error(), Result: result}
@@ -107,10 +132,10 @@ func runChat(ctx context.Context, c *protocol.Client, spec protocol.Spec, a agen
 	prompt := chatPrompt(spec)
 	out, err := agent.Run(ctx, a, agent.Options{
 		Dir: workdir, Prompt: prompt, Model: spec.Run.Model, Secret: spec.Credential.Secret,
-		Timeout: 20 * time.Minute, Emit: emit,
+		Timeout: 20 * time.Minute, BudgetCents: spec.Run.TaskLimitCents, Emit: emit,
 	})
 	if err != nil {
-		_ = c.Step(ctx, protocol.StepUpdate{Key: key, Status: "stuck"})
+		_ = c.Step(ctx, protocol.StepUpdate{Key: key, Status: "stuck", CostCents: resultCost(out)})
 		return nil, err
 	}
 	if text := resultText(out); text != "" {
@@ -129,7 +154,10 @@ func runBuild(ctx context.Context, c *protocol.Client, spec protocol.Spec, a age
 		return nil, errors.New("this workspace has no repository connected, so there is nothing to change")
 	}
 	target := spec.Repositories[0]
-	ghToken := strings.TrimSpace(os.Getenv("BOTINC_GITHUB_TOKEN"))
+	ghToken := target.Token
+	if ghToken == "" {
+		return nil, errors.New("repository has no authorized GitHub connection")
+	}
 	branch := branchName(spec)
 
 	_ = c.Emit(ctx, "notice", map[string]any{"text": "Checking out " + target.FullName})
@@ -138,33 +166,152 @@ func runBuild(ctx context.Context, c *protocol.Client, spec protocol.Spec, a age
 		return nil, err
 	}
 	defer checkout.Cleanup()
-
-	steps := workSteps(spec)
-	var cost int
-	for _, step := range steps {
-		if step.Kind == "approval" {
-			// The run stops here and waits for a person. Nothing merges itself.
-			_ = c.Step(ctx, protocol.StepUpdate{Key: step.Key, Status: "waiting"})
-			break
+	baseHead, err := checkout.Head(ctx)
+	if err != nil {
+		return nil, err
+	}
+	// Preserve completed step commits on this run's branch before long work.
+	checkpoint := func() error {
+		if _, err := checkout.Commit(ctx, commitMessage(spec)); err != nil {
+			return err
 		}
-		_ = c.Step(ctx, protocol.StepUpdate{Key: step.Key, Status: "running", Model: spec.Run.Model})
-		out, err := agent.Run(ctx, a, agent.Options{
-			Dir: checkout.Dir, Prompt: buildPrompt(spec, step), Model: spec.Run.Model,
-			Secret: spec.Credential.Secret, Timeout: 30 * time.Minute, Emit: emit,
-		})
-		cost += resultCost(out)
+		head, err := checkout.Head(ctx)
 		if err != nil {
-			_ = c.Step(ctx, protocol.StepUpdate{Key: step.Key, Status: "stuck"})
-			return partial(checkout, ctx), err
+			return err
 		}
-		_ = c.Step(ctx, protocol.StepUpdate{Key: step.Key, Status: "done", CostCents: resultCost(out)})
+		if head == baseHead {
+			return nil
+		}
+		return checkout.Push(ctx)
+	}
+
+	var graph workflow.Graph
+	if len(spec.Graph) > 0 {
+		if err := json.Unmarshal(spec.Graph, &graph); err != nil {
+			return nil, err
+		}
+	} else {
+		graph.Nodes = []workflow.Node{{Key: "start", Kind: "start"}}
+		previous := "start"
+		for _, step := range workSteps(spec) {
+			graph.Nodes = append(graph.Nodes, workflow.Node{Key: step.Key, Name: step.Name, Kind: step.Kind, Model: step.Model})
+			graph.Edges = append(graph.Edges, []string{previous, step.Key})
+			previous = step.Key
+		}
+		graph.Nodes = append(graph.Nodes, workflow.Node{Key: "finish", Kind: "finish"})
+		graph.Edges = append(graph.Edges, []string{previous, "finish"})
+	}
+	var cost int
+	stepCosts := map[string]int{}
+	previousOutput := ""
+	reviewedHead := ""
+	err = workflow.Execute(ctx, graph, func(node workflow.Node, attempt int) (workflow.Result, error) {
+		step := protocol.Step{Key: node.Key, Name: node.Name, Kind: node.Kind, Model: node.Model}
+		if node.Kind == "approval" {
+			err := c.Step(ctx, protocol.StepUpdate{Key: node.Key, Status: "waiting"})
+			return workflow.Result{Stop: true}, err
+		}
+		if node.Kind == "question" {
+			if err := checkpoint(); err != nil {
+				return workflow.Result{}, err
+			}
+			if err := c.Step(ctx, protocol.StepUpdate{Key: node.Key, Status: "waiting", Output: map[string]any{"question": node.Prompt}}); err != nil {
+				return workflow.Result{}, err
+			}
+			ticker := time.NewTicker(2 * time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return workflow.Result{}, ctx.Err()
+				case <-ticker.C:
+					answer, err := c.Input(ctx, node.Key)
+					if err != nil {
+						return workflow.Result{}, err
+					}
+					if answer != "" {
+						previousOutput = answer
+						return workflow.Result{}, c.Step(ctx, protocol.StepUpdate{Key: node.Key, Status: "done"})
+					}
+				}
+			}
+		}
+		if cost >= spec.Run.TaskLimitCents {
+			return workflow.Result{}, errors.New("task budget exhausted")
+		}
+		model := node.Model
+		if model == "" || model == "auto" {
+			model = spec.Run.Model
+		}
+		if err := c.Step(ctx, protocol.StepUpdate{Key: node.Key, Status: "running", Model: model}); err != nil {
+			return workflow.Result{}, err
+		}
+		prompt := buildPrompt(spec, step) + "\n\nWorkflow instructions:\n" + node.Prompt
+		if node.Key != "review" {
+			prompt += "\n\nPrevious step result:\n" + previousOutput
+		}
+		if node.Key == "review" {
+			if err := checkpoint(); err != nil {
+				return workflow.Result{}, err
+			}
+		}
+
+		if node.Kind == "condition" || node.Kind == "repeat" {
+			choices := []string{}
+			for _, e := range graph.Edges {
+				if e[0] == node.Key && len(e) == 3 {
+					choices = append(choices, e[2])
+				}
+			}
+			if len(choices) == 0 {
+				choices = []string{"true", "false"}
+			}
+			prompt += "\nThis is a decision only. Do not edit files. Respond with exactly one of: " + strings.Join(choices, ", ")
+		}
+		out, runErr := agent.Run(ctx, a, agent.Options{Dir: checkout.Dir, Prompt: prompt, Model: model, Secret: spec.Credential.Secret, Timeout: 30 * time.Minute, BudgetCents: spec.Run.TaskLimitCents - cost, Emit: emit})
+		cost += resultCost(out)
+		stepCosts[node.Key] += resultCost(out)
+		previousOutput = resultText(out)
+		if runErr == nil && node.Key == "review" {
+			dirty, err := checkout.Dirty(ctx)
+			if err != nil {
+				runErr = err
+			} else if dirty {
+				runErr = errors.New("reviewer changed files; a fresh review is required")
+			} else if !strings.HasSuffix(strings.TrimSpace(previousOutput), "REVIEW_APPROVED") {
+				runErr = errors.New("review did not approve the change")
+			} else {
+				reviewedHead, runErr = checkout.Head(ctx)
+			}
+		}
+		status := "done"
+		if runErr != nil {
+			status = "stuck"
+		}
+		if err := c.Step(ctx, protocol.StepUpdate{Key: node.Key, Status: status, CostCents: stepCosts[node.Key], Output: map[string]any{"result": previousOutput, "attempt": attempt, "reviewed_head": reviewedHead, "review_approved": node.Key == "review" && runErr == nil}}); err != nil {
+			return workflow.Result{}, err
+		}
+		if runErr == nil && node.Kind == "task" && node.Key != "review" && node.Key != "verify" {
+			runErr = checkpoint()
+		}
+		return workflow.Result{Choice: strings.TrimSpace(previousOutput)}, runErr
+	})
+	if err != nil {
+		return partial(checkout, ctx), err
 	}
 
 	committed, err := checkout.Commit(ctx, commitMessage(spec))
 	if err != nil {
 		return nil, err
 	}
-	if !committed {
+	headBeforePush, headErr := checkout.Head(ctx)
+	if headErr != nil {
+		return nil, headErr
+	}
+	if reviewedHead != "" && headBeforePush != reviewedHead {
+		return partial(checkout, ctx), errors.New("the change advanced after review; another review is required")
+	}
+	if !committed && headBeforePush == baseHead {
 		// An honest empty result beats an empty pull request.
 		return map[string]any{"changed": false, "cost_cents": cost}, errors.New("the run finished without changing any files")
 	}
@@ -179,7 +326,7 @@ func runBuild(ctx context.Context, c *protocol.Client, spec protocol.Spec, a age
 	}
 	_ = c.Emit(ctx, "notice", map[string]any{"text": "Opened " + pr.URL})
 	return map[string]any{
-		"changed": true, "branch": branch, "head": head, "diffstat": diffstat, "cost_cents": cost,
+		"changed": true, "repository": target.FullName, "branch": branch, "head": head, "diffstat": diffstat, "cost_cents": cost, "reviewed_head": reviewedHead,
 		"pull_request": map[string]any{"url": pr.URL, "number": pr.Number},
 	}, nil
 }
@@ -220,8 +367,9 @@ func branchName(spec protocol.Spec) string {
 func chatPrompt(spec protocol.Spec) string {
 	var b strings.Builder
 	b.WriteString("You are the Operator for this BotInc workspace. Answer in the fewest words that are complete and true. Say what you do not know.\n\n")
+	b.WriteString(knowledgePrompt(spec))
 	for _, m := range spec.Messages {
-		b.WriteString(strings.ToUpper(m.Role[:1]) + m.Role[1:] + ": " + m.Body + "\n")
+		b.WriteString(m.Role + ": " + m.Body + "\n")
 	}
 	if len(spec.Messages) == 0 {
 		b.WriteString("User: " + spec.Run.Prompt + "\n")
@@ -229,8 +377,17 @@ func chatPrompt(spec protocol.Spec) string {
 	return b.String()
 }
 
+func knowledgePrompt(spec protocol.Spec) string {
+	var b strings.Builder
+	for _, k := range spec.Knowledge {
+		fmt.Fprintf(&b, "\n<workspace-context kind=%q name=%q>\n%s\n</workspace-context>\n", k.Kind, k.Name, k.Body)
+	}
+	return b.String()
+}
+
 func buildPrompt(spec protocol.Spec, step protocol.Step) string {
 	var b strings.Builder
+	b.WriteString(knowledgePrompt(spec))
 	fmt.Fprintf(&b, "Step: %s.\n\n", step.Name)
 	b.WriteString(spec.Run.Prompt)
 	b.WriteString("\n\nWork in this checkout. Make the change, keep it small, and run the project's own tests. Do not commit, push or open a pull request: the runtime does that once every step is done.")
@@ -238,9 +395,9 @@ func buildPrompt(spec protocol.Spec, step protocol.Step) string {
 	case "plan":
 		b.WriteString("\n\nFor this step, read enough of the code to be sure of the cause, then state the plan. Do not edit files yet.")
 	case "review":
-		b.WriteString("\n\nFor this step, read the change you just made as an independent reviewer would and fix what is wrong.")
+		b.WriteString("\n\nYou are a separate reviewer invocation. Inspect the actual diff against the default branch and the issue requirements. Do not edit files. End with exactly REVIEW_APPROVED only if the final change is correct, otherwise end with REVIEW_CHANGES and explain the findings.")
 	case "verify":
-		b.WriteString("\n\nFor this step, run the tests and report exactly what passed and what failed. Do not claim a pass you did not see.")
+		b.WriteString("\n\nFor this step, run the tests and report exactly what passed and what failed. Do not edit source files or claim a pass you did not see.")
 	}
 	return b.String()
 }

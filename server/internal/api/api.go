@@ -25,12 +25,14 @@ import (
 )
 
 type Server struct {
-	cfg  config.Config
-	pool *pgxpool.Pool
-	auth *auth.Service
-	hub  *realtime.Hub
-	runs *runs.Service
-	log  *slog.Logger
+	stripeAPI string // test-only payment upstream
+	githubAPI string // test-injected upstream; production always uses api.github.com
+	cfg       config.Config
+	pool      *pgxpool.Pool
+	auth      *auth.Service
+	hub       *realtime.Hub
+	runs      *runs.Service
+	log       *slog.Logger
 }
 
 func New(cfg config.Config, pool *pgxpool.Pool, a *auth.Service, hub *realtime.Hub, r *runs.Service, log *slog.Logger) *Server {
@@ -59,6 +61,8 @@ func (s *Server) Router() http.Handler {
 		r.Post("/device/start", s.deviceStart)
 		r.Post("/device/poll", s.devicePoll)
 		r.With(auth.Require).Post("/device/approve", s.deviceApprove)
+		r.Get("/github/start", s.githubStart)
+		r.Get("/github/callback", s.githubCallback)
 		r.Get("/google/start", s.googleStart)
 		r.Get("/google/callback", s.googleCallback)
 	})
@@ -71,6 +75,7 @@ func (s *Server) Router() http.Handler {
 		r.Delete("/sessions/{id}", s.revokeSession)
 		r.Get("/keys", s.listKeys)
 		r.Post("/keys", s.createKey)
+		r.Patch("/keys/{id}", s.updateKey)
 		r.Delete("/keys/{id}", s.revokeKey)
 	})
 
@@ -124,6 +129,7 @@ func (s *Server) Router() http.Handler {
 		r.Get("/runs/{id}", s.getRun)
 		r.Get("/runs/{id}/events", s.runEvents)
 		r.Post("/runs/{id}/cancel", s.cancelRun)
+		r.Post("/runs/{id}/input", s.answerRun)
 
 		r.Get("/workflows", s.listWorkflows)
 		r.Post("/workflows", s.createWorkflow)
@@ -148,7 +154,19 @@ func (s *Server) Router() http.Handler {
 		r.Post("/plugins", s.connectPlugin)
 		r.Delete("/plugins/{id}", s.disconnectPlugin)
 
+		r.Get("/skills", s.listSkills)
+		r.Post("/skills", s.saveSkill)
+		r.Patch("/skills/{id}", s.saveSkill)
+		r.Delete("/skills/{id}", s.deleteSkill)
+		r.Get("/memories", s.listMemories)
+		r.Post("/memories", s.saveMemory)
+		r.Patch("/memories/{id}", s.saveMemory)
+		r.Delete("/memories/{id}", s.deleteMemory)
+		r.Get("/attachments", s.listAttachments)
+		r.Post("/attachments", s.uploadAttachment)
+		r.Get("/attachments/{id}", s.downloadAttachment)
 		r.Get("/credits", s.credits)
+		r.Post("/billing/checkout", s.createCheckout)
 		r.Get("/usage", s.usage)
 	})
 
@@ -157,6 +175,7 @@ func (s *Server) Router() http.Handler {
 		r.Use(s.runtimeScope)
 		r.Post("/claim", s.runtimeClaim)
 		r.Get("/spec", s.runtimeSpec)
+		r.Get("/inputs/{key}", s.runtimeInput)
 		r.Post("/events", s.runtimeEvents)
 		r.Post("/steps", s.runtimeStep)
 		r.Post("/messages", s.runtimeMessage)
@@ -165,12 +184,14 @@ func (s *Server) Router() http.Handler {
 
 	// Autopilot webhooks: authenticated by the autopilot's secret.
 	r.Post("/api/hooks/autopilots/{id}", s.autopilotWebhook)
+	r.Post("/api/hooks/stripe", s.stripeWebhook)
 
 	return r
 }
 
 func (s *Server) publicConfig(w http.ResponseWriter, _ *http.Request) {
 	httpx.JSON(w, 200, map[string]any{
+		"github_sign_in": s.cfg.GitHubOAuthClientID != "" && s.cfg.GitHubOAuthClientSecret != "",
 		"google_sign_in": s.cfg.GoogleClientID != "",
 		"dev_login_code": s.cfg.DevLoginCode != "" && !s.cfg.Production(),
 		"sandbox":        s.cfg.SandboxProvider,
@@ -213,6 +234,10 @@ func (s *Server) workspaceScope(next http.Handler) http.Handler {
 		}
 		if err != nil {
 			s.fail(w, err)
+			return
+		}
+		if p.KeyWorkspaceID != nil && *p.KeyWorkspaceID != sc.WorkspaceID {
+			httpx.Error(w, 403, "API key is scoped to another workspace")
 			return
 		}
 		sc.UserID = p.User.ID

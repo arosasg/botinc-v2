@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -55,8 +56,17 @@ func run(log *slog.Logger) error {
 	}
 
 	mailer := mail.New(cfg.ResendAPIKey, cfg.ResendFromEmail, log)
+	if cfg.SMTPHost != "" {
+		mailer = mail.NewSMTP(mail.SMTPConfig{Host: cfg.SMTPHost, Port: cfg.SMTPPort, Username: cfg.SMTPUsername, Password: cfg.SMTPPassword, From: cfg.SMTPFrom}, log)
+	}
 	authSvc := auth.New(database.Pool, cfg.DevLoginCode, cfg.CookieDomain, cfg.Production())
 	authSvc.SendCode = mailer.SendCode
+	if cfg.AllowedEmails != "" {
+		authSvc.AllowedEmails = map[string]bool{}
+		for _, email := range strings.Split(cfg.AllowedEmails, ",") {
+			authSvc.AllowedEmails[strings.ToLower(strings.TrimSpace(email))] = true
+		}
+	}
 
 	hub := realtime.New(log, cfg.FrontendOrigin)
 	provider, err := pickSandbox(cfg, log)

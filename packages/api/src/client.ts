@@ -6,7 +6,7 @@
 
 import type {
   Account, Autopilot, Conversation, Issue, IssueComment, Message, Overview,
-  Plugin, Project, Repository, Run, RunEvent, RunStep, User, Workflow, Workspace, WSEvent,
+  Skill, Memory, Member, Invitation, WorkflowVersion, WorkflowGraph, Plugin, Project, Repository, Run, RunEvent, RunStep, User, Workflow, Workspace, WSEvent,
 } from "./types";
 
 export class ApiError extends Error {
@@ -104,7 +104,7 @@ export class WorkspaceClient {
   // --- conversations ---
   conversations(signal?: AbortSignal) { return this.get<{ conversations: Conversation[] }>("/conversations", signal); }
   conversation(id: string, signal?: AbortSignal) {
-    return this.get<{ conversation: Conversation; messages: Message[]; run?: Run | null }>(`/conversations/${id}`, signal);
+    return this.get<{ conversation: Conversation; messages: Message[]; runs: Run[] }>(`/conversations/${id}`, signal);
   }
   createConversation(input: { message?: string; title?: string; model?: string; issue_id?: string }) {
     return this.post<{ conversation: Conversation; message: Message | null; run: Run | null }>("/conversations", input);
@@ -115,13 +115,20 @@ export class WorkspaceClient {
   queueMessage(id: string, body: string) { return this.post<void>(`/conversations/${id}/queue`, { body }); }
 
   // --- issues ---
-  issues(params?: { status?: string; assignee?: "me"; project?: string }, signal?: AbortSignal) {
+  async issues(params?: { status?: string; assignee?: "me"; project?: string }, signal?: AbortSignal) {
     const q = new URLSearchParams();
     if (params?.status) q.set("status", params.status);
     if (params?.assignee) q.set("assignee", params.assignee);
     if (params?.project) q.set("project", params.project);
-    const qs = q.toString();
-    return this.get<{ issues: Issue[] }>(`/issues${qs ? "?" + qs : ""}`, signal);
+    const issues: Issue[]=[];const seen=new Set<string>();let offset=0;
+    for(;;){
+      const qs=q.toString();
+      const page=await this.get<{issues:Issue[];has_more?:boolean;next_offset?:number}>(`/issues${qs?"?"+qs:""}`,signal);
+      for(const issue of page.issues){if(!seen.has(issue.id)){seen.add(issue.id);issues.push(issue)}}
+      if(!page.has_more)return {issues};
+      if(!page.issues.length||!Number.isInteger(page.next_offset)||page.next_offset!<=offset)throw new Error("Invalid issue pagination response");
+      offset=page.next_offset!;q.set("offset",String(offset));
+    }
   }
   issue(id: string, signal?: AbortSignal) {
     return this.get<{
@@ -153,6 +160,25 @@ export class WorkspaceClient {
   }
   cancelRun(id: string) { return this.post<void>(`/runs/${id}/cancel`); }
 
+  skills(signal?: AbortSignal) { return this.get<{skills: Skill[]}>("/skills", signal); }
+  saveSkill(input: {name?: string; body?: string; enabled?: boolean}, id?: string) { return id ? this.patch<{skill: Skill}>(`/skills/${id}`, input) : this.post<{skill: Skill}>("/skills", input); }
+  deleteSkill(id: string) { return this.del<void>(`/skills/${id}`); }
+  memories(signal?: AbortSignal) { return this.get<{memories: Memory[]}>("/memories", signal); }
+  saveMemory(input: {body?: string; scope?: string; project_id?: string; pinned?: boolean}, id?: string) { return id ? this.patch<{memory: Memory}>(`/memories/${id}`, input) : this.post<{memory: Memory}>("/memories", input); }
+  deleteMemory(id: string) { return this.del<void>(`/memories/${id}`); }
+  members(signal?: AbortSignal) { return this.get<{members: Member[]}>("/members", signal); }
+  invitations(signal?: AbortSignal) { return this.get<{invitations: Invitation[]}>("/invitations", signal); }
+  invite(email: string, role: string) { return this.post<{id: string; link: string}>("/invitations", {email, role}); }
+  revokeInvitation(id: string) { return this.del<void>(`/invitations/${id}`); }
+  setMemberRole(id: string, role: string) { return this.patch<void>(`/members/${id}`, {role}); }
+  removeMember(id: string) { return this.del<void>(`/members/${id}`); }
+  workflow(id: string, signal?: AbortSignal) { return this.get<{workflow: Workflow; versions: WorkflowVersion[]}>(`/workflows/${id}`, signal); }
+  saveWorkflow(id: string, graph: WorkflowGraph) { return this.post<{version: WorkflowVersion}>(`/workflows/${id}/versions`, {graph, activate: true}); }
+  createWorkflow(input: {name: string; graph: WorkflowGraph}) { return this.post<{workflow: Workflow}>("/workflows", input); }
+  updateConversation(id: string, input: {title?: string; archived?: boolean; shared?: boolean}) { return this.patch<void>(`/conversations/${id}`, input); }
+  saveAutopilot(input: Record<string, unknown>, id?: string) { return id ? this.patch<{autopilot: Autopilot}>(`/autopilots/${id}`,input) : this.post<{autopilot: Autopilot}>("/autopilots",input); }
+  usage(signal?: AbortSignal) { return this.get<{days: Array<{day:string; runs:number; cost_cents:number}>; providers: Array<{provider:string; runs:number; cost_cents:number}>; total_cost_cents:number; runs:number}>("/usage", signal); }
+
   // --- the rest ---
   workflows(signal?: AbortSignal) { return this.get<{ workflows: Workflow[] }>("/workflows", signal); }
   autopilots(signal?: AbortSignal) { return this.get<{ autopilots: Autopilot[] }>("/autopilots", signal); }
@@ -163,7 +189,7 @@ export class WorkspaceClient {
   projects(signal?: AbortSignal) { return this.get<{ projects: Project[] }>("/projects", signal); }
   repositories(signal?: AbortSignal) { return this.get<{ repositories: Repository[] }>("/repositories", signal); }
   credits(signal?: AbortSignal) {
-    return this.get<{ balance_cents: number; entries: Array<{ kind: string; amount_cents: number; note: string; created_at: string }> }>("/credits", signal);
+    return this.get<{ balance_cents: number; payments_enabled: boolean; payments_test_mode: boolean; entries: Array<{ kind: string; amount_cents: number; note: string; created_at: string }> }>("/credits", signal);
   }
 
   /* The realtime socket for this workspace. Reconnects with backoff, because a

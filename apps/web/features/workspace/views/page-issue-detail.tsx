@@ -648,7 +648,7 @@ export function PageIssueDetail({ v }: { v: Vals }) {
                   ) : null}
                   {v.i8HasArtifacts ? (
                     <>
-                      <div className="i8-artifact-buttons">
+                      <div className="i8-artifact-buttons">{v.liveIssueFiles ? v.liveIssueFiles.map((file: any) => <a key={file.id} className="small-button" href={file.url} target="_blank" rel="noopener noreferrer">{file.filename}</a>) : <>
                         <button className="small-button" onClick={v.i8OpenChanges}>
                           Changes
                         </button>
@@ -658,7 +658,7 @@ export function PageIssueDetail({ v }: { v: Vals }) {
                         <button className="small-button" onClick={v.openReceipt}>
                           Usage
                         </button>
-                      </div>
+                      </>}</div>
                     </>
                   ) : null}
                   {v.i8NoArtifacts ? (

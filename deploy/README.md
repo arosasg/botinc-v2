@@ -1,55 +1,47 @@
-# Deploying
+# Deployment
 
-Two images and a database. The web image is identical in every environment:
-it reads `BOTINC_API_URL` per request, so promoting `test.botinc.ai` to
-`botinc.ai` is a DNS change plus three variables, not a rebuild.
+Staging runs at `https://test.botinc.ai`. Caddy routes `/api/*` and `/healthz`
+to the API and other requests to Next.js. Both use the same origin. Keep
+`COOKIE_DOMAIN` unset so staging cookies cannot reach production.
 
-```
-web   test.botinc.ai       -> BOTINC_API_URL=https://api.test.botinc.ai
-api   api.test.botinc.ai   -> FRONTEND_ORIGIN=https://test.botinc.ai
-                              COOKIE_DOMAIN=.botinc.ai
-                              BOTINC_PUBLIC_API_URL=https://api.test.botinc.ai
-```
+The isolated CloudFormation stack `botinc-v2-staging` owns its EC2 instance,
+Elastic IP, ECR repositories, CodeBuild project, source bucket and IAM roles.
+`staging-stack.json` defines infrastructure; `buildspec.yml` builds immutable
+server/web image tags. `staging-compose.yml` runs Postgres 17, API, web and Caddy.
+The runtime runs only in a dedicated E2B template built with
+`server/scripts/build-template.mjs` and launched through the official E2B SDK.
 
-`COOKIE_DOMAIN=.botinc.ai` is what lets the session cookie reach the API from
-the web origin. Both hosts sit under the same registrable domain, so the
-cookie stays `SameSite=Lax` and no third-party cookie is involved.
+## Secrets and configuration
 
-## The variables the API needs
+The API reads `DATABASE_URL`, `BOTINC_SECRETS_KEY`, `JWT_SECRET`,
+`FRONTEND_ORIGIN`, `BOTINC_PUBLIC_API_URL`, `E2B_API_KEY`,
+`BOTINC_E2B_TEMPLATE` and `BOTINC_E2B_LAUNCHER`. The server image supplies the
+launcher path. `BOTINC_API_URL=/` configures the browser's same-origin API.
+Production refuses `BOTINC_SANDBOX_PROVIDER=local`.
 
-Required, and the server refuses to start without them:
+Email requires either `RESEND_API_KEY` or SMTP configuration. Reusing v1's
+Postmark credentials requires `SMTP_HOST=smtp.postmarkapp.com`, `SMTP_PORT=587`,
+`SMTP_USERNAME`, `SMTP_PASSWORD` and `SMTP_FROM_EMAIL`. SMTP requires TLS.
+Missing mail configuration is an error; production never logs sign-in codes.
 
-| Variable | What it is |
-|---|---|
-| `DATABASE_URL` | Postgres 17. The binary applies its own migrations at boot. |
-| `JWT_SECRET` | Required in production. |
-| `BOTINC_SECRETS_KEY` | 32 bytes of hex. Encrypts provider credentials at rest; without it the API refuses to store one rather than writing something it cannot protect. |
-| `FRONTEND_ORIGIN` | The exact web origin. CORS and the WebSocket check against it. |
-| `BOTINC_PUBLIC_API_URL` | The API's own address, used in the webhook URLs a routine hands out. |
+Google and GitHub sign-in require their respective OAuth client ID/secret
+and registered callbacks at `/api/auth/google/callback` and
+`/api/auth/github/callback` under the public API origin. Model credit runs
+require `OPENROUTER_API_KEY`. Other provider keys are encrypted in the database.
+The legacy `BOTINC_PLATFORM_SANDBOX_API_KEY` is not an E2B key and must not
+be used as one. The v1 E2B fallback is `PLATFORM_SANDBOX_API_KEY`.
 
-Remote only. `BOTINC_SANDBOX_PROVIDER=local` is a development path that runs
-the runtime as a child process, and the server refuses it when `APP_ENV` is
-production. There is no daemon on anybody's machine.
+The AWS secret `botinc-v2/staging` contains separate `api` and `postgres`
+configuration objects. `prepare-staging.py` writes owner-only raw environment
+files on the host. Never commit, print or attach these files. Do not overwrite
+existing database passwords or encryption keys during redeployment.
 
-Optional, and each one degrades honestly when absent: `RESEND_API_KEY` (no key
-means sign-in codes are logged, not sent), `GOOGLE_CLIENT_*`, `GITHUB_APP_*`,
-`OPENROUTER_API_KEY`, `STRIPE_*`, `E2B_API_KEY` and `BOTINC_E2B_TEMPLATE`.
+Staging currently restricts sign-in with `BOTINC_ALLOWED_EMAILS` to the owner's
+address while release checks remain incomplete.
 
-Names match v1 where the meaning is identical, so the same vault entries
-apply. New names are `BOTINC_*`. No `MULTICA_*` name survives, though the
-config still reads a couple of them as a fallback so an existing vault works
-unchanged.
+## Promotion gate
 
-## One machine
-
-```sh
-cd deploy
-cp .env.example .env   # fill it in
-docker compose up -d --build
-```
-
-## Before the domain moves
-
-`botinc.ai` is live on v1. v2 uses a separate database and its own stack;
-nothing in this directory writes to v1's infrastructure. Point `test.botinc.ai`
-at v2 first, exercise it, and only then move the apex.
+Read `docs/FUNCTIONALITY-MATRIX.md`. Staging health and one passing chat are
+not sufficient for production promotion. All functionality, independent review,
+data migration, backup/restore and rollback checks must pass before cutover.
+`botinc.ai` continues to serve v1. No v1 database migrations have been applied.

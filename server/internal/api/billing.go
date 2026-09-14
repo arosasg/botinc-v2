@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -43,7 +44,7 @@ func (s *Server) credits(w http.ResponseWriter, r *http.Request) {
 		}
 		entries = append(entries, e)
 	}
-	httpx.JSON(w, 200, map[string]any{"balance_cents": balance, "entries": entries})
+	httpx.JSON(w, 200, map[string]any{"balance_cents": balance, "entries": entries, "payments_enabled": s.cfg.StripeSecretKey != "" && s.cfg.StripeWebhook != "", "payments_test_mode": strings.HasPrefix(s.cfg.StripeSecretKey, "sk_test_")})
 }
 
 type usageDay struct {

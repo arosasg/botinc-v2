@@ -177,13 +177,11 @@ export type Overview = {
 };
 
 /* Realtime envelopes. The hub sends {type, workspace_id, payload, at}. */
-export type WSEvent =
-  | { type: "hello"; workspace_id: UUID; at: string }
-  | { type: "run.created" | "run.updated"; workspace_id: UUID; payload: Partial<Run> & { id: UUID }; at: string }
-  | { type: "run.event"; workspace_id: UUID; payload: { run_id: UUID; seq: number; type: string; payload: unknown }; at: string }
-  | { type: "run.step"; workspace_id: UUID; payload: { run_id: UUID; key: string; status: string }; at: string }
-  | { type: "issue.created" | "issue.updated"; workspace_id: UUID; payload: Partial<Issue> & { id: UUID }; at: string }
-  | { type: "issue.comment"; workspace_id: UUID; payload: { issue_id: UUID; comment: IssueComment }; at: string }
-  | { type: "conversation.created"; workspace_id: UUID; payload: Conversation; at: string }
-  | { type: "message.created"; workspace_id: UUID; payload: Message; at: string }
-  | { type: string; workspace_id: UUID; payload?: unknown; at: string };
+export type WSEvent = { type: string; workspace_id: UUID; at: string };
+
+export type Skill = { id: UUID; name: string; body: string; enabled: boolean; created_by: UUID; updated_at: string };
+export type Memory = { id: UUID; user_id: UUID; scope: "personal" | "workspace" | "project"; project_id: UUID | null; body: string; pinned: boolean; updated_at: string };
+export type Member = { user_id: UUID; name: string; email: string; role: "owner" | "admin" | "member"; joined_at: string };
+export type Invitation = { id: UUID; email: string; role: string; expires_at: string; created_at: string };
+export type WorkflowGraph = { nodes: Array<{ key: string; name: string; kind: string; model?: string; prompt?: string; x?: number; y?: number }>; edges: string[][]; limits?: Record<string, number> };
+export type WorkflowVersion = { id: UUID; version: number; status: string; graph: WorkflowGraph; created_at: string };

@@ -9,11 +9,13 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
 	"net"
 	"net/http"
+	"net/mail"
 	"strings"
 	"time"
 
@@ -38,17 +40,20 @@ type User struct {
 }
 
 type Principal struct {
-	User      User
-	SessionID uuid.UUID // zero for API-key callers
-	APIKeyID  uuid.UUID // zero for session callers
+	User           User
+	SessionID      uuid.UUID // zero for API-key callers
+	APIKeyID       uuid.UUID // zero for session callers
+	KeyWorkspaceID *uuid.UUID
+	KeyScopes      []string
 }
 
 type Service struct {
-	pool         *pgxpool.Pool
-	devCode      string
-	cookieDomain string
-	secure       bool
-	SendCode     func(ctx context.Context, email, code string) error
+	pool          *pgxpool.Pool
+	devCode       string
+	cookieDomain  string
+	secure        bool
+	AllowedEmails map[string]bool
+	SendCode      func(ctx context.Context, email, code string) error
 }
 
 func New(pool *pgxpool.Pool, devCode, cookieDomain string, secure bool) *Service {
@@ -79,7 +84,8 @@ func randomDigits(n int) string {
 
 func normalizeEmail(e string) (string, error) {
 	e = strings.ToLower(strings.TrimSpace(e))
-	if !strings.Contains(e, "@") || strings.HasPrefix(e, "@") || strings.HasSuffix(e, "@") || len(e) > 254 {
+	address, err := mail.ParseAddress(e)
+	if err != nil || address.Address != e || len(e) > 254 {
 		return "", errors.New("enter a valid email address")
 	}
 	return e, nil
@@ -92,8 +98,19 @@ func (s *Service) StartEmail(ctx context.Context, email string) error {
 	if err != nil {
 		return err
 	}
+	if len(s.AllowedEmails) > 0 && !s.AllowedEmails[email] {
+		return errors.New("this staging workspace is limited to its test accounts")
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `select pg_advisory_xact_lock(hashtextextended($1,0))`, "email-code:"+email); err != nil {
+		return err
+	}
 	var count int
-	if err := s.pool.QueryRow(ctx, `select count(*) from login_codes where email=$1 and created_at > now() - interval '15 minutes'`, email).Scan(&count); err != nil {
+	if err := tx.QueryRow(ctx, `select count(*) from login_codes where email=$1 and created_at > now() - interval '15 minutes'`, email).Scan(&count); err != nil {
 		return err
 	}
 	if count >= 5 {
@@ -103,11 +120,20 @@ func (s *Service) StartEmail(ctx context.Context, email string) error {
 	if code == "" {
 		code = randomDigits(6)
 	}
-	if _, err := s.pool.Exec(ctx, `insert into login_codes (email, code_hash, expires_at) values ($1,$2,$3)`, email, hash(email+":"+code), time.Now().Add(codeTTL)); err != nil {
+	if _, err := tx.Exec(ctx, `update login_codes set consumed_at=now() where email=$1 and consumed_at is null`, email); err != nil {
 		return err
 	}
-	if s.devCode != "" || s.SendCode == nil {
+	if _, err := tx.Exec(ctx, `insert into login_codes (email, code_hash, expires_at) values ($1,$2,$3)`, email, hash(email+":"+code), time.Now().Add(codeTTL)); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	if s.devCode != "" {
 		return nil
+	}
+	if s.SendCode == nil {
+		return errors.New("email delivery is not configured")
 	}
 	return s.SendCode(ctx, email, code)
 }
@@ -119,10 +145,15 @@ func (s *Service) VerifyEmail(ctx context.Context, email, code string) (User, er
 		return User{}, err
 	}
 	code = strings.TrimSpace(code)
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return User{}, err
+	}
+	defer tx.Rollback(ctx)
 	var id uuid.UUID
 	var attempts int
 	var codeHash string
-	err = s.pool.QueryRow(ctx, `select id, code_hash, attempts from login_codes where email=$1 and consumed_at is null and expires_at > now() order by created_at desc limit 1`, email).Scan(&id, &codeHash, &attempts)
+	err = tx.QueryRow(ctx, `select id, code_hash, attempts from login_codes where email=$1 and consumed_at is null and expires_at > now() order by created_at desc limit 1 for update`, email).Scan(&id, &codeHash, &attempts)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return User{}, errors.New("that code has expired; request a new one")
 	}
@@ -133,10 +164,18 @@ func (s *Service) VerifyEmail(ctx context.Context, email, code string) (User, er
 		return User{}, errors.New("too many attempts; request a new code")
 	}
 	if subtle.ConstantTimeCompare([]byte(codeHash), []byte(hash(email+":"+code))) != 1 {
-		_, _ = s.pool.Exec(ctx, `update login_codes set attempts=attempts+1 where id=$1`, id)
+		if _, err := tx.Exec(ctx, `update login_codes set attempts=attempts+1 where id=$1`, id); err != nil {
+			return User{}, err
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return User{}, err
+		}
 		return User{}, errors.New("that code is not right")
 	}
-	if _, err := s.pool.Exec(ctx, `update login_codes set consumed_at=now() where id=$1`, id); err != nil {
+	if _, err := tx.Exec(ctx, `update login_codes set consumed_at=now() where id=$1`, id); err != nil {
+		return User{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
 		return User{}, err
 	}
 	return s.upsertUser(ctx, email, "", "")
@@ -156,6 +195,9 @@ func (s *Service) UpsertOAuthUser(ctx context.Context, email, name, avatar strin
 	email, err := normalizeEmail(email)
 	if err != nil {
 		return User{}, err
+	}
+	if len(s.AllowedEmails) > 0 && !s.AllowedEmails[email] {
+		return User{}, errors.New("this staging workspace is limited to its test accounts")
 	}
 	return s.upsertUser(ctx, email, name, avatar)
 }
@@ -208,12 +250,16 @@ func (s *Service) Resolve(ctx context.Context, r *http.Request) (*Principal, err
 	}
 	if strings.HasPrefix(token, "bik_") {
 		var p Principal
-		err := s.pool.QueryRow(ctx, `select k.id, u.id, u.email, u.name, u.avatar_url, u.created_at from api_keys k join users u on u.id=k.user_id where k.token_hash=$1 and k.revoked_at is null`, hash(token)).
-			Scan(&p.APIKeyID, &p.User.ID, &p.User.Email, &p.User.Name, &p.User.AvatarURL, &p.User.CreatedAt)
+		var scopes []byte
+		err := s.pool.QueryRow(ctx, `select k.id, u.id, u.email, u.name, u.avatar_url, u.created_at, k.workspace_id, k.scopes from api_keys k join users u on u.id=k.user_id where k.token_hash=$1 and k.revoked_at is null`, hash(token)).
+			Scan(&p.APIKeyID, &p.User.ID, &p.User.Email, &p.User.Name, &p.User.AvatarURL, &p.User.CreatedAt, &p.KeyWorkspaceID, &scopes)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, errors.New("invalid API key")
 		}
 		if err != nil {
+			return nil, err
+		}
+		if err = json.Unmarshal(scopes, &p.KeyScopes); err != nil {
 			return nil, err
 		}
 		_, _ = s.pool.Exec(ctx, `update api_keys set last_used_at=now() where id=$1`, p.APIKeyID)
@@ -284,12 +330,27 @@ func (s *Service) PollDevice(ctx context.Context, deviceCode string) (token stri
 }
 
 func (s *Service) CreateAPIKey(ctx context.Context, userID, workspaceID uuid.UUID, name string) (string, error) {
+	return s.CreateScopedAPIKey(ctx, userID, workspaceID, name, []string{"read", "write"})
+}
+func (s *Service) CreateScopedAPIKey(ctx context.Context, userID, workspaceID uuid.UUID, name string, scopes []string) (string, error) {
+	if len(scopes) == 0 {
+		scopes = []string{"read"}
+	}
+	for _, scope := range scopes {
+		if scope != "read" && scope != "write" {
+			return "", errors.New("scope must be read or write")
+		}
+	}
+	raw, err := json.Marshal(scopes)
+	if err != nil {
+		return "", err
+	}
 	token := "bik_" + randomToken(32)
 	var ws any
 	if workspaceID != uuid.Nil {
 		ws = workspaceID
 	}
-	if _, err := s.pool.Exec(ctx, `insert into api_keys (user_id, workspace_id, name, prefix, token_hash) values ($1,$2,$3,$4,$5)`, userID, ws, name, token[:12], hash(token)); err != nil {
+	if _, err := s.pool.Exec(ctx, `insert into api_keys (user_id, workspace_id, name, prefix, token_hash,scopes) values ($1,$2,$3,$4,$5,$6)`, userID, ws, name, token[:12], hash(token), raw); err != nil {
 		return "", err
 	}
 	return token, nil
@@ -323,6 +384,20 @@ func (s *Service) Middleware(next http.Handler) http.Handler {
 			return
 		}
 		if p != nil {
+			if p.APIKeyID != uuid.Nil {
+				write := r.Method != "GET" && r.Method != "HEAD" && r.Method != "OPTIONS"
+				allowed := false
+				for _, scope := range p.KeyScopes {
+					if scope == "write" || (!write && scope == "read") {
+						allowed = true
+					}
+				}
+				// A workspace key cannot manage the account or mint broader credentials.
+				if !allowed || (p.KeyWorkspaceID != nil && !strings.HasPrefix(r.URL.Path, "/api/w/")) || strings.HasPrefix(r.URL.Path, "/api/me/keys") || strings.HasPrefix(r.URL.Path, "/api/auth/device/approve") {
+					http.Error(w, `{"error":"API key scope does not permit this operation"}`, 403)
+					return
+				}
+			}
 			r = r.WithContext(WithPrincipal(r.Context(), p))
 		}
 		next.ServeHTTP(w, r)

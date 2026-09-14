@@ -12,6 +12,8 @@ import (
 )
 
 type Config struct {
+	AttachmentDir  string
+	AllowedEmails  string
 	Env            string // development | test | production
 	Port           int
 	DatabaseURL    string
@@ -20,18 +22,20 @@ type Config struct {
 	CookieDomain   string
 	PublicAPIURL   string
 
-	ResendAPIKey    string
-	ResendFromEmail string
-	DevLoginCode    string // when set (non-production), every login code is this
+	SMTPHost, SMTPPort, SMTPUsername, SMTPPassword, SMTPFrom string
+	ResendAPIKey                                             string
+	ResendFromEmail                                          string
+	DevLoginCode                                             string // when set (non-production), every login code is this
 
 	GoogleClientID     string
 	GoogleClientSecret string
 	GoogleRedirectURI  string
 
-	GitHubAppID         string
-	GitHubAppPrivateKey string
-	GitHubAppSlug       string
-	GitHubWebhookSecret string
+	GitHubOAuthClientID, GitHubOAuthClientSecret string
+	GitHubAppID                                  string
+	GitHubAppPrivateKey                          string
+	GitHubAppSlug                                string
+	GitHubWebhookSecret                          string
 
 	SandboxProvider string // local | e2b
 	E2BAPIKey       string
@@ -66,25 +70,29 @@ func Load() (Config, error) {
 	port, _ := strconv.Atoi(env("PORT", env("BACKEND_PORT", "8080")))
 	ttl, _ := time.ParseDuration(env("BOTINC_RUN_TTL", "45m"))
 	c := Config{
-		Env:                 env("APP_ENV", "development"),
-		Port:                port,
-		DatabaseURL:         env("DATABASE_URL", ""),
-		JWTSecret:           env("JWT_SECRET", ""),
-		FrontendOrigin:      env("FRONTEND_ORIGIN", "http://localhost:3100"),
-		CookieDomain:        env("COOKIE_DOMAIN", ""),
-		PublicAPIURL:        env("BOTINC_PUBLIC_API_URL", "http://localhost:8080"),
+		AttachmentDir:  env("BOTINC_ATTACHMENT_DIR", "./data/attachments"),
+		Env:            env("APP_ENV", "development"),
+		Port:           port,
+		DatabaseURL:    env("DATABASE_URL", ""),
+		JWTSecret:      env("JWT_SECRET", ""),
+		FrontendOrigin: env("FRONTEND_ORIGIN", "http://localhost:3100"),
+		CookieDomain:   env("COOKIE_DOMAIN", ""),
+		PublicAPIURL:   env("BOTINC_PUBLIC_API_URL", "http://localhost:8080"),
+		SMTPHost:       env("SMTP_HOST", ""), SMTPPort: env("SMTP_PORT", "587"), SMTPUsername: env("SMTP_USERNAME", ""), SMTPPassword: env("SMTP_PASSWORD", ""), SMTPFrom: env("SMTP_FROM_EMAIL", "BotInc <hello@botinc.ai>"),
 		ResendAPIKey:        env("RESEND_API_KEY", ""),
 		ResendFromEmail:     env("RESEND_FROM_EMAIL", "BotInc <hello@botinc.ai>"),
+		AllowedEmails:       env("BOTINC_ALLOWED_EMAILS", ""),
 		DevLoginCode:        first("", "BOTINC_DEV_VERIFICATION_CODE", "MULTICA_DEV_VERIFICATION_CODE"),
 		GoogleClientID:      env("GOOGLE_CLIENT_ID", ""),
 		GoogleClientSecret:  env("GOOGLE_CLIENT_SECRET", ""),
 		GoogleRedirectURI:   env("GOOGLE_REDIRECT_URI", ""),
+		GitHubOAuthClientID: env("GITHUB_OAUTH_CLIENT_ID", ""), GitHubOAuthClientSecret: env("GITHUB_OAUTH_CLIENT_SECRET", ""),
 		GitHubAppID:         env("GITHUB_APP_ID", ""),
 		GitHubAppPrivateKey: env("GITHUB_APP_PRIVATE_KEY", ""),
 		GitHubAppSlug:       env("GITHUB_APP_SLUG", ""),
 		GitHubWebhookSecret: env("GITHUB_WEBHOOK_SECRET", ""),
 		SandboxProvider:     env("BOTINC_SANDBOX_PROVIDER", "local"),
-		E2BAPIKey:           first("", "E2B_API_KEY", "BOTINC_PLATFORM_SANDBOX_API_KEY", "PLATFORM_SANDBOX_API_KEY"),
+		E2BAPIKey:           first("", "E2B_API_KEY", "PLATFORM_SANDBOX_API_KEY"),
 		E2BTemplate:         first("", "BOTINC_E2B_TEMPLATE", "MULTICA_E2B_TEMPLATE"),
 		RuntimeImage:        env("BOTINC_RUNTIME_IMAGE", "ghcr.io/arosasg/botinc-v2-runtime:latest"),
 		RunTTL:              ttl,
@@ -102,8 +110,11 @@ func Load() (Config, error) {
 		}
 		c.JWTSecret = "dev-insecure-jwt-secret-change-me"
 	}
-	if c.DevLoginCode == "" && c.ResendAPIKey == "" && c.Env != "production" {
+	if c.DevLoginCode == "" && c.ResendAPIKey == "" && c.SMTPHost == "" && c.Env != "production" {
 		c.DevLoginCode = "000000"
+	}
+	if c.Production() && c.ResendAPIKey == "" && c.SMTPHost == "" {
+		return c, fmt.Errorf("SMTP_HOST or RESEND_API_KEY is required in production")
 	}
 	return c, nil
 }

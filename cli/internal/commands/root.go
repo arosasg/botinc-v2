@@ -92,6 +92,7 @@ agent and nothing to install on a machine of your own.`,
 		app.accountCmd(),
 		app.repoCmd(),
 		app.projectCmd(),
+		app.knowledgeCmd("skill", "skills"), app.knowledgeCmd("memory", "memories"), app.teamCmd(),
 	)
 	return root, app
 }

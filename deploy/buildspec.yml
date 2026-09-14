@@ -1,0 +1,15 @@
+version: 0.2
+phases:
+  pre_build:
+    commands:
+      - test "$IMAGE_TAG" != unset
+      - aws ecr get-login-password | docker login --username AWS --password-stdin "$REGISTRY"
+  build:
+    commands:
+      - docker build -t "$REGISTRY/botinc-v2-staging/server:$IMAGE_TAG" server
+      - docker build -t "$REGISTRY/botinc-v2-staging/web:$IMAGE_TAG" -f apps/web/Dockerfile .
+  post_build:
+    commands:
+      - test "$CODEBUILD_BUILD_SUCCEEDING" = 1
+      - docker push "$REGISTRY/botinc-v2-staging/server:$IMAGE_TAG"
+      - docker push "$REGISTRY/botinc-v2-staging/web:$IMAGE_TAG"

@@ -67,16 +67,16 @@ func (s *Server) loadSteps(ctx context.Context, runID uuid.UUID) ([]StepRow, err
 
 func (s *Server) listRuns(w http.ResponseWriter, r *http.Request) {
 	sc := scopeOf(r.Context())
-	q := `select ` + runColsPrefixed("") + ` from runs where workspace_id=$1`
-	args := []any{sc.WorkspaceID}
+	q := `select ` + runColsPrefixed("r") + ` from runs r where workspace_id=$1 and (conversation_id is null or exists(select 1 from conversations c where c.id=r.conversation_id and (c.user_id=$2 or c.shared)))`
+	args := []any{sc.WorkspaceID, sc.UserID}
 	if v := r.URL.Query().Get("issue"); v != "" {
 		if id, err := uuid.Parse(v); err == nil {
-			q += ` and issue_id=$2`
+			q += ` and issue_id=$3`
 			args = append(args, id)
 		}
 	} else if v := r.URL.Query().Get("conversation"); v != "" {
 		if id, err := uuid.Parse(v); err == nil {
-			q += ` and conversation_id=$2`
+			q += ` and conversation_id=$3`
 			args = append(args, id)
 		}
 	}
@@ -108,6 +108,13 @@ func (s *Server) loadRun(r *http.Request) (runs.Run, bool, error) {
 	rn, err := s.runs.Get(r.Context(), id)
 	if errors.Is(err, pgx.ErrNoRows) || (err == nil && rn.WorkspaceID != sc.WorkspaceID) {
 		return runs.Run{}, false, nil
+	}
+	if err == nil && rn.ConversationID != nil {
+		var allowed bool
+		err = s.pool.QueryRow(r.Context(), `select exists(select 1 from conversations where id=$1 and workspace_id=$2 and (user_id=$3 or shared))`, rn.ConversationID, sc.WorkspaceID, sc.UserID).Scan(&allowed)
+		if err != nil || !allowed {
+			return runs.Run{}, false, err
+		}
 	}
 	return rn, err == nil, err
 }
@@ -243,6 +250,14 @@ func (s *Server) runtimeSpec(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	spec := map[string]any{"run": rn, "steps": steps}
+	if rn.WorkflowVersionID != nil {
+		var graph json.RawMessage
+		if err := s.pool.QueryRow(ctx, `select v.graph from workflow_versions v join workflows w on w.id=v.workflow_id where v.id=$1 and w.workspace_id=$2`, rn.WorkflowVersionID, rn.WorkspaceID).Scan(&graph); err != nil {
+			s.fail(w, err)
+			return
+		}
+		spec["graph"] = graph
+	}
 	if rn.ConversationID != nil {
 		rows, err := s.pool.Query(ctx, `select `+msgCols+` from messages where conversation_id=$1 order by seq desc limit 40`, *rn.ConversationID)
 		if err == nil {
@@ -259,17 +274,73 @@ func (s *Server) runtimeSpec(w http.ResponseWriter, r *http.Request) {
 	}
 	if rn.IssueID != nil {
 		var is Issue
-		if err := s.pool.QueryRow(ctx, `select `+issueCols+` from issues i where i.id=$1`, *rn.IssueID).Scan(is.scan()...); err == nil {
+		if err := s.pool.QueryRow(ctx, `select `+issueCols+` from issues i where i.id=$1 and i.workspace_id=$2`, *rn.IssueID, rn.WorkspaceID).Scan(is.scan()...); err == nil {
 			spec["issue"] = is
 		}
 	}
-	// Repositories the run may touch (first project repo for now).
-	rrows, err := s.pool.Query(ctx, `select full_name, default_branch, installation_id from repositories where workspace_id=$1 order by created_at limit 5`, rn.WorkspaceID)
+	// A project run only receives that project's repositories and knowledge.
+	var projectID *uuid.UUID
+	if rn.IssueID != nil {
+		if err := s.pool.QueryRow(ctx, `select project_id from issues where id=$1 and workspace_id=$2`, *rn.IssueID, rn.WorkspaceID).Scan(&projectID); err != nil {
+			s.fail(w, err)
+			return
+		}
+	}
+	type knowledge struct {
+		Kind string `json:"kind"`
+		Name string `json:"name"`
+		Body string `json:"body"`
+	}
+	contextRows := []knowledge{}
+	skillRows, err := s.pool.Query(ctx, `select name,body from skills where workspace_id=$1 and enabled=true order by name limit 100`, rn.WorkspaceID)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	for skillRows.Next() {
+		var k knowledge
+		k.Kind = "skill"
+		if err := skillRows.Scan(&k.Name, &k.Body); err != nil {
+			skillRows.Close()
+			s.fail(w, err)
+			return
+		}
+		contextRows = append(contextRows, k)
+	}
+	skillRows.Close()
+	// Personal memory never enters shared issue work or a shared conversation.
+	var privateUser *uuid.UUID
+	if rn.ConversationID != nil {
+		if err := s.pool.QueryRow(ctx, `select case when shared=false then user_id end from conversations where id=$1`, *rn.ConversationID).Scan(&privateUser); err != nil {
+			s.fail(w, err)
+			return
+		}
+	}
+	memoryRows, err := s.pool.Query(ctx, `select scope,body from memories where workspace_id=$1 and (scope='workspace' or (scope='project' and project_id=$2) or (scope='personal' and user_id=$3)) order by pinned desc,updated_at desc limit 100`, rn.WorkspaceID, projectID, privateUser)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	for memoryRows.Next() {
+		var k knowledge
+		k.Kind = "memory"
+		if err := memoryRows.Scan(&k.Name, &k.Body); err != nil {
+			memoryRows.Close()
+			s.fail(w, err)
+			return
+		}
+		contextRows = append(contextRows, k)
+	}
+	memoryRows.Close()
+	spec["knowledge"] = contextRows
+	// Repositories the run may touch.
+	rrows, err := s.pool.Query(ctx, `select full_name, default_branch, installation_id from repositories where workspace_id=$1 and ($2::uuid is null or project_id=$2) order by created_at limit 5`, rn.WorkspaceID, projectID)
 	if err == nil {
 		type repo struct {
 			FullName       string `json:"full_name"`
 			DefaultBranch  string `json:"default_branch"`
 			InstallationID *int64 `json:"installation_id"`
+			Token          string `json:"token,omitempty"`
 		}
 		repos := []repo{}
 		for rrows.Next() {
@@ -279,6 +350,20 @@ func (s *Server) runtimeSpec(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		rrows.Close()
+		if rn.IssueID != nil && len(repos) > 0 {
+			token, err := s.githubToken(ctx, rn.WorkspaceID)
+			if err != nil {
+				httpx.Error(w, 400, err.Error())
+				return
+			}
+			for i := range repos {
+				if _, err := s.authorizedRepository(ctx, token, repos[i].FullName); err != nil {
+					httpx.Error(w, 400, err.Error())
+					return
+				}
+				repos[i].Token = token
+			}
+		}
 		spec["repositories"] = repos
 	}
 	if rn.AccountID != nil {
@@ -347,15 +432,50 @@ func (s *Server) runtimeMessage(w http.ResponseWriter, r *http.Request) {
 	if in.Role == "" {
 		in.Role = "operator"
 	}
+	if in.Role != "operator" {
+		httpx.Error(w, 400, "runtime messages must use the operator role")
+		return
+	}
 	if len(in.Meta) == 0 {
 		in.Meta = json.RawMessage(`{}`)
 	}
-	var m Message
-	if err := s.pool.QueryRow(r.Context(), `insert into messages (conversation_id, seq, role, body, meta, run_id) values ($1,(select coalesce(max(seq),0)+1 from messages where conversation_id=$1),$2,$3,$4,$5) returning `+msgCols, *rn.ConversationID, in.Role, in.Body, in.Meta, rn.ID).Scan(m.scan()...); err != nil {
+	tx, err := s.pool.Begin(r.Context())
+	if err != nil {
 		s.fail(w, err)
 		return
 	}
-	_, _ = s.pool.Exec(r.Context(), `update conversations set updated_at=now() where id=$1`, *rn.ConversationID)
+	defer tx.Rollback(r.Context())
+	var locked uuid.UUID
+	if err := tx.QueryRow(r.Context(), `select id from conversations where id=$1 for update`, *rn.ConversationID).Scan(&locked); err != nil {
+		s.fail(w, err)
+		return
+	}
+	var m Message
+	previous := tx.QueryRow(r.Context(), `select `+msgCols+` from messages where run_id=$1 and role='operator' limit 1`, rn.ID).Scan(m.scan()...)
+	if previous == nil {
+		if m.Body != in.Body {
+			httpx.Error(w, 409, "this run already posted a different answer")
+			return
+		}
+		httpx.JSON(w, 201, m)
+		return
+	}
+	if !errors.Is(previous, pgx.ErrNoRows) {
+		s.fail(w, previous)
+		return
+	}
+	if err := tx.QueryRow(r.Context(), `insert into messages (conversation_id, seq, role, body, meta, run_id) values ($1,(select coalesce(max(seq),0)+1 from messages where conversation_id=$1),$2,$3,$4,$5) returning `+msgCols, *rn.ConversationID, in.Role, in.Body, in.Meta, rn.ID).Scan(m.scan()...); err != nil {
+		s.fail(w, err)
+		return
+	}
+	if _, err := tx.Exec(r.Context(), `update conversations set updated_at=now() where id=$1`, *rn.ConversationID); err != nil {
+		s.fail(w, err)
+		return
+	}
+	if err := tx.Commit(r.Context()); err != nil {
+		s.fail(w, err)
+		return
+	}
 	s.hub.Publish(rn.WorkspaceID, "message.created", m)
 	httpx.JSON(w, 201, m)
 }

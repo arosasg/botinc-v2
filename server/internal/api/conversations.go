@@ -84,6 +84,9 @@ func (s *Server) createConversation(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, 400, err.Error())
 		return
 	}
+	if !s.referencesAllowed(w, r, map[string]*uuid.UUID{"issue": in.IssueID}) {
+		return
+	}
 	if in.Model == "" {
 		in.Model = "auto"
 	}
@@ -213,28 +216,52 @@ func (s *Server) postMessage(r *http.Request, c Conversation, body string) (Mess
 	sc := scopeOf(r.Context())
 	ctx := r.Context()
 	var m Message
-	if err := s.pool.QueryRow(ctx, `insert into messages (conversation_id, seq, role, author_user_id, body)
-		values ($1, (select coalesce(max(seq),0)+1 from messages where conversation_id=$1), 'user', $2, $3) returning `+msgCols, c.ID, sc.UserID, body).Scan(m.scan()...); err != nil {
-		return m, nil, err
-	}
-	_, _ = s.pool.Exec(ctx, `update conversations set updated_at=now() where id=$1`, c.ID)
-	s.hub.Publish(sc.WorkspaceID, "message.created", m)
-	// One run at a time per conversation: if one is active, queue the message for it.
-	var active int
-	_ = s.pool.QueryRow(ctx, `select count(*) from runs where conversation_id=$1 and status in ('queued','provisioning','running')`, c.ID).Scan(&active)
-	if active > 0 {
-		if _, err := s.pool.Exec(ctx, `insert into message_queue (conversation_id, position, body) values ($1,(select coalesce(max(position),0)+1 from message_queue where conversation_id=$1),$2)`, c.ID, body); err != nil {
-			return m, nil, err
-		}
-		return m, nil, nil
-	}
-	uid := sc.UserID
-	rn, err := s.runs.Create(ctx, runs.CreateParams{WorkspaceID: sc.WorkspaceID, ConversationID: &c.ID, IssueID: c.IssueID, Purpose: "chat", Model: c.Model, Prompt: body, CreatedBy: &uid})
+	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return m, nil, err
 	}
-	_, _ = s.pool.Exec(ctx, `update messages set run_id=$2 where id=$1`, m.ID, rn.ID)
-	return m, &rn, nil
+	defer tx.Rollback(ctx)
+	var archived bool
+	if err := tx.QueryRow(ctx, `select archived_at is not null from conversations where id=$1 for update`, c.ID).Scan(&archived); err != nil {
+		return m, nil, err
+	}
+	if archived {
+		return m, nil, errors.New("this conversation is archived")
+	}
+	if err := tx.QueryRow(ctx, `insert into messages(conversation_id,seq,role,author_user_id,body) values($1,(select coalesce(max(seq),0)+1 from messages where conversation_id=$1),'user',$2,$3) returning `+msgCols, c.ID, sc.UserID, body).Scan(m.scan()...); err != nil {
+		return m, nil, err
+	}
+	if _, err := tx.Exec(ctx, `update conversations set updated_at=now() where id=$1`, c.ID); err != nil {
+		return m, nil, err
+	}
+	var active bool
+	if err := tx.QueryRow(ctx, `select exists(select 1 from runs where conversation_id=$1 and finished_at is null)`, c.ID).Scan(&active); err != nil {
+		return m, nil, err
+	}
+	var started *runs.Run
+	if active {
+		if _, err := tx.Exec(ctx, `insert into message_queue(conversation_id,position,body) values($1,(select coalesce(max(position),0)+1 from message_queue where conversation_id=$1),$2)`, c.ID, body); err != nil {
+			return m, nil, err
+		}
+	} else {
+		rn, err := s.runs.CreateInTx(ctx, tx, runs.CreateParams{WorkspaceID: sc.WorkspaceID, ConversationID: &c.ID, IssueID: c.IssueID, Purpose: "chat", Model: c.Model, Prompt: body, CreatedBy: &sc.UserID})
+		if err != nil {
+			return m, nil, err
+		}
+		started = &rn
+		m.RunID = &rn.ID
+		if _, err := tx.Exec(ctx, `update messages set run_id=$2 where id=$1`, m.ID, rn.ID); err != nil {
+			return m, nil, err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return m, nil, err
+	}
+	s.hub.Publish(sc.WorkspaceID, "message.created", m)
+	if started != nil {
+		s.runs.Dispatch(ctx, *started)
+	}
+	return m, started, nil
 }
 
 func (s *Server) sendMessage(w http.ResponseWriter, r *http.Request) {
@@ -347,11 +374,32 @@ func (s *Server) enqueueMessage(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, 400, err.Error())
 		return
 	}
-	if in.Mode == "" {
-		in.Mode = "queue"
+	if strings.TrimSpace(in.Body) == "" || (in.Mode != "" && in.Mode != "queue") {
+		httpx.Error(w, 400, "a nonempty message and queue mode are required")
+		return
+	}
+	in.Mode = "queue"
+	tx, err := s.pool.Begin(r.Context())
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	defer tx.Rollback(r.Context())
+	var archived bool
+	if err := tx.QueryRow(r.Context(), `select archived_at is not null from conversations where id=$1 for update`, c.ID).Scan(&archived); err != nil {
+		s.fail(w, err)
+		return
+	}
+	if archived {
+		httpx.Error(w, 409, "conversation is archived")
+		return
 	}
 	var q queueRow
-	if err := s.pool.QueryRow(r.Context(), `insert into message_queue (conversation_id, position, body, mode) values ($1,(select coalesce(max(position),0)+1 from message_queue where conversation_id=$1),$2,$3) returning id, position, body, mode`, c.ID, in.Body, in.Mode).Scan(&q.ID, &q.Position, &q.Body, &q.Mode); err != nil {
+	if err := tx.QueryRow(r.Context(), `insert into message_queue (conversation_id, position, body, mode) values ($1,(select coalesce(max(position),0)+1 from message_queue where conversation_id=$1),$2,$3) returning id, position, body, mode`, c.ID, in.Body, in.Mode).Scan(&q.ID, &q.Position, &q.Body, &q.Mode); err != nil {
+		s.fail(w, err)
+		return
+	}
+	if err := tx.Commit(r.Context()); err != nil {
 		s.fail(w, err)
 		return
 	}
@@ -380,23 +428,35 @@ func (s *Server) dequeueMessage(w http.ResponseWriter, r *http.Request) {
 // drainQueue sends the next queued message once a run finishes.
 func (s *Server) drainQueue(r *http.Request, convID uuid.UUID) {
 	ctx := r.Context()
-	var qid uuid.UUID
-	var body string
-	err := s.pool.QueryRow(ctx, `select id, body from message_queue where conversation_id=$1 order by position limit 1`, convID).Scan(&qid, &body)
+	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return
 	}
-	_, _ = s.pool.Exec(ctx, `delete from message_queue where id=$1`, qid)
+	defer tx.Rollback(ctx)
 	var c Conversation
 	var wsID uuid.UUID
-	if err := s.pool.QueryRow(ctx, `select `+convCols+`, workspace_id from conversations where id=$1`, convID).Scan(append(c.scan(), &wsID)...); err != nil {
+	if err := tx.QueryRow(ctx, `select `+convCols+`,workspace_id from conversations where id=$1 for update`, convID).Scan(append(c.scan(), &wsID)...); err != nil || c.ArchivedAt != nil {
 		return
 	}
-	uid := uuid.Nil
-	if c.UserID != nil {
-		uid = *c.UserID
+	var active bool
+	if err := tx.QueryRow(ctx, `select exists(select 1 from runs where conversation_id=$1 and finished_at is null)`, convID).Scan(&active); err != nil || active {
+		return
 	}
-	if _, err := s.runs.Create(ctx, runs.CreateParams{WorkspaceID: wsID, ConversationID: &c.ID, IssueID: c.IssueID, Purpose: "chat", Model: c.Model, Prompt: body, CreatedBy: &uid}); err != nil {
-		s.log.Error("drain queue", "err", err)
+	var qid uuid.UUID
+	var body string
+	if err := tx.QueryRow(ctx, `select id,body from message_queue where conversation_id=$1 order by position limit 1`, convID).Scan(&qid, &body); err != nil {
+		return
 	}
+	rn, err := s.runs.CreateInTx(ctx, tx, runs.CreateParams{WorkspaceID: wsID, ConversationID: &c.ID, IssueID: c.IssueID, Purpose: "chat", Model: c.Model, Prompt: body, CreatedBy: c.UserID})
+	if err != nil {
+		s.log.Error("drain queue retained message", "err", err)
+		return
+	}
+	if _, err := tx.Exec(ctx, `delete from message_queue where id=$1`, qid); err != nil {
+		return
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return
+	}
+	s.runs.Dispatch(ctx, rn)
 }

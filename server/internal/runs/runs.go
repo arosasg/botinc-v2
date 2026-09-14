@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -94,17 +95,58 @@ func hashToken(t string) string {
 
 // Create records the run and dispatches it asynchronously.
 func (s *Service) Create(ctx context.Context, p CreateParams) (Run, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return Run{}, err
+	}
+	defer tx.Rollback(ctx)
+	r, err := s.CreateInTx(ctx, tx, p)
+	if err != nil {
+		return Run{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Run{}, err
+	}
+	s.Dispatch(ctx, r)
+	return r, nil
+}
+
+// CreateInTx lets a conversation atomically record its message, queue and run.
+// The caller must commit before Dispatch; failed transactions never launch work.
+func (s *Service) CreateInTx(ctx context.Context, tx pgx.Tx, p CreateParams) (Run, error) {
 	if p.Model == "" {
 		p.Model = "auto"
 	}
 	if p.TaskLimitCents == 0 {
 		p.TaskLimitCents = 200
 	}
-	accountID, funding, err := s.route(ctx, p.WorkspaceID, p.Model)
+	accountID, funding, err := s.route(ctx, tx, p.WorkspaceID, p.Model)
 	if err != nil {
 		return Run{}, err
 	}
-	row := s.pool.QueryRow(ctx, `insert into runs (workspace_id, issue_id, conversation_id, workflow_version_id, purpose, model, account_id, funding, task_limit_cents, prompt, created_by)
+	// Serialize reservations against the workspace ledger. Outstanding runs hold
+	// their unspent budget so simultaneous chats cannot spend the same credit.
+	var locked uuid.UUID
+	if err := tx.QueryRow(ctx, `select id from workspaces where id=$1 for update`, p.WorkspaceID).Scan(&locked); err != nil {
+		return Run{}, err
+	}
+	if p.TaskLimitCents < 1 {
+		return Run{}, errors.New("task budget must be positive")
+	}
+	if funding == "credits" {
+		var available int
+		err := tx.QueryRow(ctx, `select coalesce((select sum(amount_cents) from credit_ledger where workspace_id=$1),0) - coalesce((select sum(greatest(task_limit_cents-cost_cents,0)) from runs where workspace_id=$1 and funding='credits' and finished_at is null),0)`, p.WorkspaceID).Scan(&available)
+		if err != nil {
+			return Run{}, err
+		}
+		if available < 1 {
+			return Run{}, errors.New("no unreserved credit available")
+		}
+		if p.TaskLimitCents > available {
+			p.TaskLimitCents = available
+		}
+	}
+	row := tx.QueryRow(ctx, `insert into runs (workspace_id, issue_id, conversation_id, workflow_version_id, purpose, model, account_id, funding, task_limit_cents, prompt, created_by)
 		values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) returning `+runCols,
 		p.WorkspaceID, p.IssueID, p.ConversationID, p.WorkflowVersionID, p.Purpose, p.Model, accountID, funding, p.TaskLimitCents, p.Prompt, p.CreatedBy)
 	r, err := scanRun(row)
@@ -115,13 +157,16 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (Run, error) {
 		p.Steps = defaultSteps(p.Purpose)
 	}
 	for i, st := range p.Steps {
-		if _, err := s.pool.Exec(ctx, `insert into run_steps (run_id, idx, key, name, kind, model) values ($1,$2,$3,$4,$5,$6)`, r.ID, i, st.Key, st.Name, st.Kind, st.Model); err != nil {
+		if _, err := tx.Exec(ctx, `insert into run_steps (run_id, idx, key, name, kind, model) values ($1,$2,$3,$4,$5,$6)`, r.ID, i, st.Key, st.Name, st.Kind, st.Model); err != nil {
 			return Run{}, err
 		}
 	}
+
+	return r, nil
+}
+func (s *Service) Dispatch(ctx context.Context, r Run) {
 	s.hub.Publish(r.WorkspaceID, "run.created", r)
 	go s.dispatch(context.WithoutCancel(ctx), r)
-	return r, nil
 }
 
 func defaultSteps(purpose string) []StepSpec {
@@ -135,9 +180,14 @@ func defaultSteps(purpose string) []StepSpec {
 
 // route picks the model account with the most capacity left among connected
 // subscription accounts for the requested provider; falls back per policy.
-func (s *Service) route(ctx context.Context, ws uuid.UUID, model string) (*uuid.UUID, string, error) {
+type queryer interface {
+	Query(context.Context, string, ...any) (pgx.Rows, error)
+	QueryRow(context.Context, string, ...any) pgx.Row
+}
+
+func (s *Service) route(ctx context.Context, db queryer, ws uuid.UUID, model string) (*uuid.UUID, string, error) {
 	provider := providerFor(model)
-	rows, err := s.pool.Query(ctx, `select id, kind, quota from model_accounts where workspace_id=$1 and status='connected' and ($2='' or provider=$2) order by created_at`, ws, provider)
+	rows, err := db.Query(ctx, `select id, kind, quota from model_accounts where workspace_id=$1 and status='connected' and ($2='' or provider=$2) order by created_at`, ws, provider)
 	if err != nil {
 		return nil, "", err
 	}
@@ -168,7 +218,7 @@ func (s *Service) route(ctx context.Context, ws uuid.UUID, model string) (*uuid.
 	}
 	if best == nil {
 		var fallback string
-		_ = s.pool.QueryRow(ctx, `select fallback from routing_policies where workspace_id=$1`, ws).Scan(&fallback)
+		_ = db.QueryRow(ctx, `select fallback from routing_policies where workspace_id=$1`, ws).Scan(&fallback)
 		if fallback == "" {
 			fallback = "credits"
 		}
@@ -190,7 +240,7 @@ func providerFor(model string) string {
 		return ""
 	case len(model) >= 6 && model[:6] == "claude":
 		return "claude"
-	case len(model) >= 3 && (model[:3] == "gpt" || model[:5] == "codex"):
+	case strings.HasPrefix(model, "gpt") || strings.HasPrefix(model, "codex"):
 		return "codex"
 	}
 	return ""
@@ -227,8 +277,12 @@ func (s *Service) dispatch(ctx context.Context, r Run) {
 	raw := make([]byte, 32)
 	_, _ = rand.Read(raw)
 	token := "brt_" + base64.RawURLEncoding.EncodeToString(raw)
-	if _, err := s.pool.Exec(ctx, `update runs set run_token_hash=$2, status='provisioning' where id=$1`, r.ID, hashToken(token)); err != nil {
+	tag, err := s.pool.Exec(ctx, `update runs set run_token_hash=$2, status='provisioning' where id=$1 and finished_at is null and status='queued'`, r.ID, hashToken(token))
+	if err != nil {
 		s.log.Error("run token", "err", err)
+		return
+	}
+	if tag.RowsAffected() == 0 {
 		return
 	}
 	s.hub.Publish(r.WorkspaceID, "run.updated", map[string]any{"id": r.ID, "status": "provisioning"})
@@ -248,10 +302,15 @@ func (s *Service) dispatch(ctx context.Context, r Run) {
 	}
 	_, _ = s.pool.Exec(ctx, `update sandboxes set external_id=$2, status='ready' where id=$1`, sbID, sb.ExternalID)
 	_, _ = s.pool.Exec(ctx, `update runs set sandbox_id=$2 where id=$1`, r.ID, sbID)
+	// Cancellation may win while the provider is starting the sandbox.
+	current, getErr := s.Get(ctx, r.ID)
+	if getErr == nil && current.FinishedAt != nil {
+		_ = s.provider.Kill(ctx, sb.ExternalID)
+	}
 }
 
 func (s *Service) setStatus(ctx context.Context, id, ws uuid.UUID, status, errText string) {
-	_, err := s.pool.Exec(ctx, `update runs set status=$2, error=$3, finished_at=case when $2 in ('done','failed','cancelled') then now() else finished_at end where id=$1`, id, status, errText)
+	_, err := s.pool.Exec(ctx, `update runs set status=$2, error=$3, finished_at=case when $2 in ('done','failed','cancelled') then now() else finished_at end where id=$1 and finished_at is null`, id, status, errText)
 	if err != nil {
 		s.log.Error("run status", "err", err)
 	}
@@ -280,6 +339,9 @@ func (s *Service) Claim(ctx context.Context, runID uuid.UUID, token string) (Run
 func (s *Service) Authenticate(ctx context.Context, runID uuid.UUID, token string) (Run, error) {
 	r, err := scanRun(s.pool.QueryRow(ctx, `select `+runCols+` from runs where id=$1 and run_token_hash=$2`, runID, hashToken(token)))
 	if errors.Is(err, pgx.ErrNoRows) {
+		return Run{}, ErrBadToken
+	}
+	if err == nil && r.FinishedAt != nil {
 		return Run{}, ErrBadToken
 	}
 	return r, err
@@ -315,25 +377,54 @@ type StepUpdate struct {
 	Output    json.RawMessage `json:"output,omitempty"`
 }
 
+// CostCents is the cumulative provider-reported cost for this step. Replayed
+// callbacks cannot charge twice, and accounting commits with the step itself.
 func (s *Service) UpdateStep(ctx context.Context, r Run, u StepUpdate) error {
+	if u.CostCents < 0 {
+		return errors.New("cost cannot be negative")
+	}
 	if len(u.Output) == 0 {
 		u.Output = json.RawMessage(`{}`)
 	}
-	_, err := s.pool.Exec(ctx, `update run_steps set status=$3, model=case when $4<>'' then $4 else model end, effort=case when $5<>'' then $5 else effort end,
-		cost_cents=cost_cents+$6, output=output||$7::jsonb,
-		started_at=case when $3='running' and started_at is null then now() else started_at end,
-		finished_at=case when $3 in ('done','changes','skipped','stuck') then now() else finished_at end
-		where run_id=$1 and key=$2`, r.ID, u.Key, u.Status, u.Model, u.Effort, u.CostCents, u.Output)
+	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
-	if u.CostCents > 0 {
-		_, _ = s.pool.Exec(ctx, `update runs set cost_cents=cost_cents+$2 where id=$1`, r.ID, u.CostCents)
+	defer tx.Rollback(ctx)
+	var finished *time.Time
+	var funding string
+	if err := tx.QueryRow(ctx, `select finished_at, funding from runs where id=$1 for update`, r.ID).Scan(&finished, &funding); err != nil {
+		return err
 	}
-	if u.Status == "waiting" {
-		_, _ = s.pool.Exec(ctx, `update runs set status='waiting' where id=$1`, r.ID)
+	if finished != nil {
+		return errors.New("run has already finished")
 	}
-	s.hub.Publish(r.WorkspaceID, "run.step", map[string]any{"run_id": r.ID, "key": u.Key, "status": u.Status, "model": u.Model, "cost_cents": u.CostCents})
+	var previous int
+	if err := tx.QueryRow(ctx, `select cost_cents from run_steps where run_id=$1 and key=$2`, r.ID, u.Key).Scan(&previous); err != nil {
+		return err
+	}
+	cost := max(previous, u.CostCents)
+	delta := cost - previous
+	_, err = tx.Exec(ctx, `update run_steps set status=$3, model=case when $4<>'' then $4 else model end, effort=case when $5<>'' then $5 else effort end,
+		cost_cents=$6, output=output||$7::jsonb,
+		started_at=case when $3='running' and started_at is null then now() else started_at end,
+		finished_at=case when $3 in ('done','changes','skipped','stuck') then coalesce(finished_at,now()) else finished_at end
+		where run_id=$1 and key=$2`, r.ID, u.Key, u.Status, u.Model, u.Effort, cost, u.Output)
+	if err != nil {
+		return err
+	}
+	if _, err = tx.Exec(ctx, `update runs set cost_cents=cost_cents+$2, status=case when $3='waiting' then 'waiting' when $3='running' then 'running' else status end where id=$1`, r.ID, delta, u.Status); err != nil {
+		return err
+	}
+	if funding == "credits" && delta > 0 {
+		if _, err = tx.Exec(ctx, `insert into credit_ledger(workspace_id,kind,amount_cents,note,run_id) values($1,'usage',$2,$3,$4)`, r.WorkspaceID, -delta, "Run usage: "+u.Key, r.ID); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	s.hub.Publish(r.WorkspaceID, "run.step", map[string]any{"run_id": r.ID, "key": u.Key, "status": u.Status, "model": u.Model, "cost_cents": cost})
 	return nil
 }
 
@@ -350,8 +441,12 @@ func (s *Service) Finish(ctx context.Context, r Run, f Finish) error {
 	if len(f.Result) == 0 {
 		f.Result = json.RawMessage(`{}`)
 	}
-	if _, err := s.pool.Exec(ctx, `update runs set status=$2, error=$3, result=$4, finished_at=now() where id=$1`, r.ID, f.Status, f.Error, f.Result); err != nil {
+	tag, err := s.pool.Exec(ctx, `update runs set status=$2, error=$3, result=$4, finished_at=now() where id=$1 and finished_at is null`, r.ID, f.Status, f.Error, f.Result)
+	if err != nil {
 		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return errors.New("run has already finished")
 	}
 	_, _ = s.pool.Exec(ctx, `update sandboxes set status='stopped', ended_at=now() where run_id=$1`, r.ID)
 	if r.SandboxID != nil {

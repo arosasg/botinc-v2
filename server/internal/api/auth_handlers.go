@@ -189,7 +189,8 @@ func (s *Server) listKeys(w http.ResponseWriter, r *http.Request) {
 func (s *Server) createKey(w http.ResponseWriter, r *http.Request) {
 	p := auth.FromContext(r.Context())
 	var in struct {
-		Name string `json:"name"`
+		Name   string   `json:"name"`
+		Scopes []string `json:"scopes"`
 	}
 	if err := httpx.Decode(r, &in); err != nil {
 		httpx.Error(w, 400, err.Error())
@@ -198,12 +199,49 @@ func (s *Server) createKey(w http.ResponseWriter, r *http.Request) {
 	if strings.TrimSpace(in.Name) == "" {
 		in.Name = "API key"
 	}
-	token, err := s.auth.CreateAPIKey(r.Context(), p.User.ID, uuid.Nil, in.Name)
+	token, err := s.auth.CreateScopedAPIKey(r.Context(), p.User.ID, uuid.Nil, in.Name, in.Scopes)
+	if err != nil {
+		httpx.Error(w, 400, err.Error())
+		return
+	}
+	httpx.JSON(w, 201, map[string]any{"token": token, "prefix": token[:12], "name": in.Name})
+}
+
+func (s *Server) updateKey(w http.ResponseWriter, r *http.Request) {
+	p := auth.FromContext(r.Context())
+	id, ok := idParam(r, "id")
+	if !ok {
+		httpx.Error(w, 400, "bad id")
+		return
+	}
+	var in struct {
+		Scopes []string `json:"scopes"`
+	}
+	if err := httpx.Decode(r, &in); err != nil {
+		httpx.Error(w, 400, err.Error())
+		return
+	}
+	if len(in.Scopes) == 0 {
+		httpx.Error(w, 400, "choose at least one scope")
+		return
+	}
+	for _, scope := range in.Scopes {
+		if scope != "read" && scope != "write" {
+			httpx.Error(w, 400, "scope must be read or write")
+			return
+		}
+	}
+	raw, _ := json.Marshal(in.Scopes)
+	tag, err := s.pool.Exec(r.Context(), `update api_keys set scopes=$1 where id=$2 and user_id=$3 and revoked_at is null`, raw, id, p.User.ID)
 	if err != nil {
 		s.fail(w, err)
 		return
 	}
-	httpx.JSON(w, 201, map[string]any{"token": token, "prefix": token[:12], "name": in.Name})
+	if tag.RowsAffected() != 1 {
+		httpx.Error(w, 404, "key not found")
+		return
+	}
+	httpx.JSON(w, 200, map[string]bool{"ok": true})
 }
 
 func (s *Server) revokeKey(w http.ResponseWriter, r *http.Request) {
