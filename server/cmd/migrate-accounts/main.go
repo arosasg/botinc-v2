@@ -103,7 +103,14 @@ func run(ctx context.Context) error {
 			a.label, a.email, a.plan, a.credential_kind, a.credential_encrypted,
 			a.refresh_encrypted, a.expires_at, a.refresh_error, a.enabled,
 			a.created_at, a.updated_at,
-			coalesce(snapshot.limits, '[]'::jsonb), snapshot.usage_captured_at,
+			case
+				when coalesce(jsonb_array_length(snapshot.limits), 0) > 0 then snapshot.limits
+				else coalesce(a.usage_limits, '[]'::jsonb)
+			end,
+			case
+				when coalesce(jsonb_array_length(snapshot.limits), 0) > 0 then snapshot.usage_captured_at
+				else a.usage_captured_at
+			end,
 			coalesce(snapshot.status, ''), coalesce(snapshot.limit_reason, ''), snapshot.limited_until
 		from agent_account a join "user" u on u.id=a.owner_id
 		left join latest_snapshot snapshot
