@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { openNewChatWithDraft, routineTrigger, saveDraft } from "./use-live-workspace";
+import { openNewChatWithDraft, routineTrigger, saveDraft, threadInspectorPatch } from "./use-live-workspace";
 
 describe("new conversation drafts", () => {
   const values = new Map<string, string>();
@@ -48,5 +48,21 @@ describe("routine triggers", () => {
     expect(routineTrigger({ kind: "schedule", cadence: "Every 10 minutes", cron: "*/10 * * * *", zone: "UTC" })).toEqual({
       kind: "schedule", cron: "*/10 * * * *", tz: "UTC",
     });
+  });
+});
+
+describe("work conversation layout", () => {
+  it("opens the Workspace v19 issue inspector on desktop deep links", () => {
+    expect(threadInspectorPatch(true)).toEqual({
+      inspector10: true,
+      mobileInspector10: false,
+      inspectorTab10: "issue",
+      paneWidth11: 400,
+      paneRestore11: 400,
+    });
+  });
+
+  it("leaves the mobile conversation full width", () => {
+    expect(threadInspectorPatch(false)).toEqual({});
   });
 });

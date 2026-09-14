@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { Account, Attachment, Autopilot, Conversation, Issue, Message, User, WorkflowVersion } from "@botinc/api";
-import { mapAccount, mapAutopilot, mapConversation, mapIssue, mapWorkflowSteps, type PeopleIndex } from "./map";
+import type { Account, Attachment, Autopilot, Conversation, Issue, IssueComment, Message, Run, User, WorkflowVersion } from "@botinc/api";
+import { mapAccount, mapAutopilot, mapConversation, mapIssue, mapIssueTimeline, mapWorkflowSteps, type PeopleIndex } from "./map";
 
 /* The workspace logic does not treat status as free text: it groups the
    sidebar by comparing against a fixed set of sentences, and anything outside
@@ -124,6 +124,35 @@ describe("mapAccount", () => {
     const row = mapAccount(account({ status: "disconnected" }));
     expect(row.enabled).toBe(false);
     expect(row.active).toBe(false);
+  });
+});
+
+describe("mapIssueTimeline", () => {
+  const comments: IssueComment[] = [
+    { id: "c2", author_user_id: null, author_kind: "system", body: "Fixed in [PR #42](https://github.com/acme/app/pull/42).", created_at: "2026-09-13T10:03:00Z" },
+    { id: "c1", author_user_id: "u1", author_kind: "user", body: "Please verify the exact failure.", created_at: "2026-09-13T10:01:00Z" },
+  ];
+  const runs: Run[] = [{
+    id: "r1", workspace_id: "w1", issue_id: issue().id, conversation_id: null,
+    purpose: "implementation", status: "done", model: "GPT-6 Astra", funding: "subscription",
+    task_limit_cents: 200, cost_cents: 16, error: "", queued_at: "2026-09-13T10:02:00Z",
+    started_at: "2026-09-13T10:02:01Z", finished_at: "2026-09-13T10:02:30Z",
+  }];
+
+  it("turns real issue history into the rich design timeline in chronological order", () => {
+    const rows = mapIssueTimeline(issue(), comments, runs, people, "Alejandro Rosas");
+
+    expect(rows.map((row) => row.id)).toEqual([
+      `issue:${issue().id}`, "comment:c1", "run:r1", "comment:c2",
+    ]);
+    expect(rows[0]).toMatchObject({ plain17: true, human: true, who: "Original request", text: issue().description });
+    expect(rows[1]).toMatchObject({ plain17: true, human: true, who: "Alejandro Rosas" });
+    expect(rows[2]).toMatchObject({ route17: true, cls: "route-entry17", logo: "/assets/brands-v12/codex.svg" });
+    expect(rows[3]).toMatchObject({ plain17: true, operator: true, who: "Operator" });
+  });
+
+  it("shows no designed history when the API has no history", () => {
+    expect(mapIssueTimeline(issue({ description: "" }), [], [], people, "Alejandro Rosas")).toEqual([]);
   });
 });
 
