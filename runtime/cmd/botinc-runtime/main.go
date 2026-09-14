@@ -57,13 +57,11 @@ func run() error {
 	if _, err := c.Claim(ctx); err != nil {
 		return fmt.Errorf("claim: %w", err)
 	}
-	spec, err := c.Spec(ctx)
-	if err != nil {
-		return fmt.Errorf("spec: %w", err)
-	}
 
-	// From here on every exit reports a status, so a run never hangs in
-	// 'running' waiting for a reconciler to give up on it.
+	// From the moment the run is claimed, every exit reports a status. Spec
+	// loading can fail too (for example when an account expires between queue
+	// selection and sandbox startup), and that must not leave the UI stuck in
+	// 'running' waiting for the reconciler.
 	heartbeatCtx, cancelHeartbeat := context.WithCancel(ctx)
 	heartbeatDone := make(chan struct{})
 	go func() {
@@ -85,7 +83,13 @@ func run() error {
 			}
 		}
 	}()
-	result, workErr := execute(ctx, c, spec, workdir)
+	var result map[string]any
+	spec, workErr := c.Spec(ctx)
+	if workErr != nil {
+		workErr = fmt.Errorf("spec: %w", workErr)
+	} else {
+		result, workErr = execute(ctx, c, spec, workdir)
+	}
 	cancelHeartbeat()
 	<-heartbeatDone
 	finish := protocol.Finish{Status: "done", Result: result}
