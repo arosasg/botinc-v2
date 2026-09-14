@@ -1165,6 +1165,31 @@ export function PageConversationInspector({ v }: { v: Vals }) {
             ) : null}
             {v.prPane12 ? (
               <>
+                {v.livePrPane19 ? (
+                  <div className="live-pr19">
+                    <img className="brand12 mono12" src="/assets/brands-v12/github.svg" alt="GitHub" />
+                    {v.livePrURL19 ? (
+                      <>
+                        <span className="n9-overline">{interp(v.livePrRepository19)}</span>
+                        <h2>Pull request {interp(v.livePrNumber19)}</h2>
+                        <p>This link was recovered from the migrated conversation. Open GitHub for its current checks, reviews, and merge state.</p>
+                        <a className="small-button primary" href={v.livePrURL19} target="_blank" rel="noreferrer noopener">
+                          Open in GitHub
+                          <svg className="ui-icon use14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <use href="/i15.svg#arrow-up-right" />
+                          </svg>
+                        </a>
+                      </>
+                    ) : (
+                      <>
+                        <span className="n9-overline">GitHub</span>
+                        <h2>No pull request linked</h2>
+                        <p>No GitHub pull request URL was found in this work conversation. Links in migrated messages remain available in the timeline.</p>
+                      </>
+                    )}
+                  </div>
+                ) : (
+                  <>
                 <button type="button" className="text-button prl-back16" onClick={v.prCloseDetail16}>
                   <svg
                     className="ui-icon use14"
@@ -1546,6 +1571,8 @@ export function PageConversationInspector({ v }: { v: Vals }) {
                   </>
                 ) : null}
                 <p className="preview-note12">Pull-request activity from the connected repository</p>
+                  </>
+                )}
               </>
             ) : null}
             {v.wfPane18 ? (
@@ -1663,6 +1690,25 @@ export function PageConversationInspector({ v }: { v: Vals }) {
             ) : null}
             {v.runsPane12 ? (
               <>
+                {v.livePrPane19 ? (
+                  <div className="live-runs19">
+                    <div className="pane-section-heading11">
+                      <span className="n9-overline">{interp(v.inspectorId10)}</span>
+                      <h2>Runs</h2>
+                      <p>{interp(v.workflowRunSummary12)}</p>
+                    </div>
+                    {(v.liveRunRows19 ?? []).map((run: any) => (
+                      <article className="live-run19" key={run.id}>
+                        <header><strong>{interp(run.purpose)}</strong><span>{interp(run.status)}</span></header>
+                        <p>{interp(run.model)} · {interp(run.cost)}</p>
+                        <time>{interp(run.when)}</time>
+                        {run.error ? <small>{interp(run.error)}</small> : null}
+                      </article>
+                    ))}
+                    {!v.liveRunRows19?.length ? <p className="fine">No v2 execution has been recorded for this work yet.</p> : null}
+                  </div>
+                ) : (
+                  <>
                 {!v.runThreadOpen16 ? (
                   <>
                     <div className="rl16">
@@ -2954,6 +3000,8 @@ export function PageConversationInspector({ v }: { v: Vals }) {
                     </div>
                   </>
                 ) : null}
+                  </>
+                )}
               </>
             ) : null}
             {v.filesPane12 ? (

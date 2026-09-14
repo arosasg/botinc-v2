@@ -355,6 +355,18 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
   v.i8PeopleNote="Issue history is shared with workspace members.";
   v.i8NoArtifactCopy=migrated?"No files attached to this imported issue.":"No output files have been recorded.";
   v.i8SourceLabel=migrated?"Imported from v1":currentIssue.source;
+  if(s.view==="thread9"){
+   const activeInspector=["issue","workflow","pr","runs"].includes(String(s.inspectorTab10))?String(s.inspectorTab10):"issue";
+   const tabs=[["issue","Issue","circle-dot"],["workflow","Workflow","git-branch"],["pr","Pull requests","git-pull-request"],["runs","Runs","play"]];
+   v.inspectorTabs12=tabs.map(([id,label,icon])=>({label,icon19:`/i15.svg#${icon}`,cls:activeInspector===id?"selected":"",pick:()=>logic.setState({inspectorTab10:id})}));
+   v.issuePane12=activeInspector==="issue";v.wfPane18=activeInspector==="workflow";v.prPane12=activeInspector==="pr";v.runsPane12=activeInspector==="runs";
+   v.filesPane12=false;v.usagePane12=false;v.outputPane12=false;v.activityPane12=false;v.conversationPane12=false;v.routineRunPane16=false;
+   const prText=[...(detail?.comments||[]).map((comment:Vals)=>String(comment.body||"")),...(detail?.runs||[]).map((run:Vals)=>JSON.stringify(run.result||{}))].join("\n");
+   const prMatch=/https:\/\/github\.com\/([^/\s]+)\/([^/\s)]+)\/pull\/(\d+)/i.exec(prText);
+   v.livePrPane19=true;v.livePrURL19=prMatch?.[0]||"";v.livePrRepository19=prMatch?`${prMatch[1]}/${prMatch[2]}`:"";v.livePrNumber19=prMatch?`#${prMatch[3]}`:"";
+   v.liveRunRows19=(detail?.runs||[]).map((run:Vals)=>({id:run.id,status:titleCase(String(run.status||"recorded")),purpose:titleCase(String(run.purpose||"work")),model:run.model||"Model not recorded",cost:logic.cash(Number(run.cost_cents||0)/100),when:timestamp(run.created_at),error:run.error||""}));
+   v.workflowRunSummary12=v.liveRunRows19.length?`${v.liveRunRows19.length} recorded ${v.liveRunRows19.length===1?"run":"runs"}`:"No runs recorded";
+  }
   if(issueWorkflow&&workflowVersion){
    const workflowID=String(issueWorkflow.workflow.id);const openIndex=Number(s.liveIssueWorkflowOpen??-1);
    v.issueWorkflow17=issueWorkflow.workflow.name;v.issueWorkflowTitle17=`Uses ${issueWorkflow.workflow.name}. Open it in the editor.`;
@@ -365,6 +377,10 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
    v.wfNowHasAction18=false;v.wfSteps18=mapWorkflowSteps(workflowVersion,openIndex,(index)=>logic.setState({liveIssueWorkflowOpen:index===openIndex?-1:index}));
    v.wfSpend18=`${detail?.runs?.length||0} runs · ${logic.cash((detail?.runs||[]).reduce((sum:number,run:Vals)=>sum+run.cost_cents,0)/100)} used`;
    v.openIssueWorkflow17=()=>{void logic.openGraph14(workflowID)};
+  }else{
+   v.wfPaneVersion18="";v.wfPaneName18="No workflow linked";v.wfPaneLede18="This work can be continued directly with Operator, or linked to a workspace workflow.";
+   v.wfLiveTone18="";v.wfNowEyebrow18="Ready";v.wfNowTitle18="No workflow is attached";v.wfNowCopy18="Choose a workflow from workspace settings when this work needs a repeatable execution path.";
+   v.wfNowHasAction18=false;v.wfSteps18=[];v.wfSpend18="No workflow runs";v.openIssueWorkflow17=()=>{logic.setState({view:"settings",section:"workflows"});routeURL("settings",{section:"workflows"})};
   }
 
   v.i8PrimaryLabel=activeRun?"Cancel run":"Start work";v.i8HasSecondary=false;
