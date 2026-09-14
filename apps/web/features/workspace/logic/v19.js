@@ -834,9 +834,13 @@ class Component extends window.BotincMotionWorkspace19(window.BotincFlowWorkspac
     const start = box.getBoundingClientRect();
     const x0 = event.clientX, y0 = event.clientY;
     const move = (e) => {
+      const width = Math.max(320, Math.min(720, Math.round(start.width + (x0 - e.clientX))));
+      const height = Math.max(320, Math.min(Math.round(window.innerHeight - 40), Math.round(start.height + (y0 - e.clientY))));
       this.setState({
-        dockW16: Math.max(320, Math.min(720, Math.round(start.width + (x0 - e.clientX)))),
-        dockH16: Math.max(320, Math.min(Math.round(window.innerHeight - 80), Math.round(start.height + (y0 - e.clientY)))),
+        dockW16: width,
+        dockH16: height,
+        dockX16: Math.max(8, Math.min(window.innerWidth - width - 8, Math.round(start.right - width))),
+        dockY16: Math.max(8, Math.min(window.innerHeight - height - 8, Math.round(start.bottom - height))),
       });
     };
     const up = () => {
@@ -845,6 +849,31 @@ class Component extends window.BotincMotionWorkspace19(window.BotincFlowWorkspac
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
+    if (event.preventDefault) event.preventDefault();
+  }
+
+  // The header is a window title bar. It can move the conversation anywhere
+  // in the viewport while its buttons remain ordinary buttons.
+  dockMove16(event) {
+    if (event.button !== undefined && event.button !== 0) return;
+    if (event.target.closest("button,input,textarea,a")) return;
+    const box = event.currentTarget.closest("aside");
+    if (!box) return;
+    const start = box.getBoundingClientRect();
+    const dx = event.clientX - start.left;
+    const dy = event.clientY - start.top;
+    const move = (e) => this.setState({
+      dockX16: Math.max(8, Math.min(window.innerWidth - start.width - 8, Math.round(e.clientX - dx))),
+      dockY16: Math.max(8, Math.min(window.innerHeight - start.height - 8, Math.round(e.clientY - dy))),
+    });
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
     if (event.preventDefault) event.preventDefault();
   }
 
@@ -1467,7 +1496,11 @@ class Component extends window.BotincMotionWorkspace19(window.BotincFlowWorkspac
     v.launchIntro16 = this._launchSeen16 ? "" : "launch-intro16";
     v.dockCornerDrag16 = (e) => this.dockCornerDrag16(e);
     v.dockCornerKey16 = (e) => this.dockCornerKey16(e);
-    v.dockFloatStyle16 = "width:" + (this.state.dockW16 || 392) + "px;height:" + (this.state.dockH16 || 520) + "px";
+    v.dockMove16 = (e) => this.dockMove16(e);
+    v.dockFloatStyle16 = "width:" + (this.state.dockW16 || 392) + "px;height:" + (this.state.dockH16 || 520) + "px" +
+      (Number.isFinite(this.state.dockX16) && Number.isFinite(this.state.dockY16)
+        ? ";left:" + this.state.dockX16 + "px;top:" + this.state.dockY16 + "px;right:auto;bottom:auto"
+        : "");
 
     // --- 1 · every status filter carries the colour of its state, and the
     // work that needs a person is one of those states.

@@ -136,6 +136,7 @@ import { MessageText } from "../message-text";
 for name, fslug, jsx in files:
     body = pretty(jsx)
     body = body.replace('<p>{interp(m.text)}</p>', '<MessageText text={String(m.text ?? "")} />')
+    body = body.replace('<header className="dock-head15">', '<header className="dock-head15" onPointerDown={v.dockMove16}>')
     body = body.replace('onKeyDown={v.composerKey12}', 'onKeyDown={v.composerKey12} onPaste={v.composerPaste}')
     body = re.sub(
         r'(<button\s+className=\{`send-button[^>]+type="submit"[^>]+disabled=\{v\.composerEmpty11\})',
