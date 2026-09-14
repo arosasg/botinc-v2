@@ -217,6 +217,9 @@ export class WorkspaceClient {
   triggerAutopilot(id: string) { return this.post<{ run: Run }>(`/autopilots/${id}/trigger`); }
   setAutopilotEnabled(id: string, enabled: boolean) { return this.patch<{ autopilot: Autopilot }>(`/autopilots/${id}`, { enabled }); }
   accounts(signal?: AbortSignal) { return this.get<{ accounts: Account[] }>("/accounts", signal); }
+  routing(signal?: AbortSignal) {
+    return this.get<{ order: string[]; fallback: string; default_task_limit_cents: number }>("/routing", signal);
+  }
   plugins(signal?: AbortSignal) { return this.get<{ plugins: Plugin[] }>("/plugins", signal); }
   projects(signal?: AbortSignal) { return this.get<{ projects: Project[] }>("/projects", signal); }
   repositories(signal?: AbortSignal) { return this.get<{ repositories: Repository[] }>("/repositories", signal); }

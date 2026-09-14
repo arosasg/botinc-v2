@@ -97,13 +97,17 @@ describe("mapIssue", () => {
 describe("mapAccount", () => {
   function account(over: Partial<Account> = {}): Account {
     return {
-      id: "a1", provider: "claude", label: "Team key", plan: "max",
+      id: "a1", provider: "claude", label: "Team key", email: "owner@example.test", plan: "max",
       kind: "subscription", status: "connected", quota: [], has_secret: true, ...over,
     };
   }
 
   it("draws no capacity meter when the provider reported no quota", () => {
-    expect(mapAccount(account({ quota: [] })).limits).toEqual([]);
+    const row = mapAccount(account({ quota: [] }));
+    expect(row.limits).toEqual([]);
+    expect(row.capturedAgo).toBeNull();
+    expect(row.runtimeRoutable).toBe(true);
+    expect(row.identity).toBe("owner@example.test");
   });
 
   it("turns a reported window into a percentage", () => {

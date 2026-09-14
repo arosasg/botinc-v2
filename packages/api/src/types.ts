@@ -152,6 +152,7 @@ export type Account = {
   id: UUID;
   provider: string;
   label: string;
+  email: string;
   plan: string;
   kind: "subscription" | "api_key" | "credits";
   status: "connected" | "limited" | "disconnected";
