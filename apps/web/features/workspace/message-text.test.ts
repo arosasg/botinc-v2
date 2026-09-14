@@ -16,5 +16,7 @@ describe("parseMessageBlocks", () => {
   it("removes the migration file directive without removing its link", () => {
     expect(parseMessageBlocks("!file [review.zip](https://api.botinc.ai/review.zip)"))
       .toEqual([{ type: "paragraph", text: "[review.zip](https://api.botinc.ai/review.zip)" }]);
+    expect(parseMessageBlocks("!filereview-evidence.zip"))
+      .toEqual([{ type: "paragraph", text: "review-evidence.zip" }]);
   });
 });

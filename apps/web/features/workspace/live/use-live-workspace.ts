@@ -24,6 +24,13 @@ const dockDraftKey = (workspace: string) => `botinc:dock-draft:v2:${workspace}`;
 export function threadInspectorPatch(isDesktop: boolean): Vals {
  return isDesktop?{inspector10:true,mobileInspector10:false,inspectorTab10:"issue",paneWidth11:400,paneRestore11:400}:{};
 }
+export function livePersonaDefaults(member: string): Vals {
+ const patch:Vals={chats:{[member]:[]}};
+ for(const key of ["connections","agentPrefs","funding","memoryByMember","skillGrants","modelAccounts","preferencesBy10","fallbackPolicies10"]){
+  patch[key]={[member]:{}};
+ }
+ return patch;
+}
 export function hydrationIssueKey(activeIssue: unknown, routeIssue: string | undefined, hydrated: boolean): unknown {
  return !hydrated&&routeIssue?routeIssue:activeIssue;
 }
@@ -74,9 +81,8 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
      ]);
      if(!alive)return;
      for(const p of members.members)people.set(p.user_id,{name:p.name,email:p.email});
-     const previous=String(logic.state.member??"");const patch:Vals={};
+     const previous=String(logic.state.member??"");const patch:Vals=livePersonaDefaults(member);
      // Empty defaults replace every persona-keyed fixture before changing the key.
-     for(const k of ["connections","agentPrefs","funding","memoryByMember","skillGrants","modelAccounts","preferencesBy10","fallbackPolicies10"]){patch[k]={[member]:{}};}
      patch.liveWorkspaces=workspaces;patch.workspace16=overview.workspace.name;patch.member=member;patch.signed=true;patch.workspaceName=overview.workspace.name;
      patch.issues=issues.issues.map(i=>mapIssue(i,people));
      // On a cold deep link the design logic has not copied the route into
@@ -163,6 +169,7 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
    if(initialRoute.view==="thread9"&&uuid(initialRoute.issue)){
     bootIssueDetail=await ws.issue(initialRoute.issue,abort.signal);if(!alive)return;
     logic.setState({
+     ...livePersonaDefaults(member),
      liveWorkspaces:workspaces,workspace16:first.name,workspaceName:first.name,member,signed:true,
      issues:[mapIssue(bootIssueDetail.issue,people)],activeIssue:bootIssueDetail.issue.id,view:"thread9",
      liveIssueDetail:bootIssueDetail,threadDraft9:readDraft(ws.slug,bootIssueDetail.issue.id),

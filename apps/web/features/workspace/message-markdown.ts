@@ -24,7 +24,7 @@ export function parseMessageBlocks(text: string): MessageBlock[] {
   };
 
   for (const sourceLine of lines) {
-    const line = sourceLine.trim() === "!file" ? "" : sourceLine.replace(/^!file\s+/, "");
+    const line = sourceLine.replace(/^!file\s*/, "");
     if (line.startsWith("```")) {
       flushParagraph();
       flushList();

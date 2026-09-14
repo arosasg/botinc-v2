@@ -4,6 +4,7 @@
 import { Fragment } from "react";
 import type { Vals } from "../vals";
 import { interp } from "@/lib/dc/interp";
+import { MessageText } from "../message-text";
 
 export function PageWorkDetails({ v }: { v: Vals }) {
   return (
@@ -65,7 +66,7 @@ export function PageWorkDetails({ v }: { v: Vals }) {
                   <dd>BotInc workspace</dd>
                 </dl>
                 <h3 className="subheading">Original request</h3>
-                <p className="prose">{interp(v.issue?.description)}</p>
+              <MessageText text={String(v.issue?.description ?? "")} />
                 <div className="info-box">
                   <h3>One issue, one history.</h3>
                   <p>{interp(v.origin?.mapping)}</p>

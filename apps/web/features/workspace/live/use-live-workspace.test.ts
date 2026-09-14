@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { hydrationIssueKey, openNewChatWithDraft, readDraft, routineTrigger, saveDraft, threadInspectorPatch } from "./use-live-workspace";
+import { hydrationIssueKey, livePersonaDefaults, openNewChatWithDraft, readDraft, routineTrigger, saveDraft, threadInspectorPatch } from "./use-live-workspace";
 
 describe("new conversation drafts", () => {
   const values = new Map<string, string>();
@@ -83,6 +83,20 @@ describe("work conversation layout", () => {
     expect(hydrationIssueKey(undefined, "issue-from-route", false)).toBe("issue-from-route");
     expect(hydrationIssueKey("stale-sample-issue", "issue-from-route", false)).toBe("issue-from-route");
     expect(hydrationIssueKey("active-issue", "stale-route", true)).toBe("active-issue");
+  });
+
+  it("seeds every member-scoped collection before showing a cold deep link", () => {
+    expect(livePersonaDefaults("Route Member")).toEqual({
+      chats: { "Route Member": [] },
+      connections: { "Route Member": {} },
+      agentPrefs: { "Route Member": {} },
+      funding: { "Route Member": {} },
+      memoryByMember: { "Route Member": {} },
+      skillGrants: { "Route Member": {} },
+      modelAccounts: { "Route Member": {} },
+      preferencesBy10: { "Route Member": {} },
+      fallbackPolicies10: { "Route Member": {} },
+    });
   });
 
   it("opens the Workspace v19 issue inspector on desktop deep links", () => {

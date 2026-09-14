@@ -5,6 +5,7 @@ import { Fragment } from "react";
 import type { Vals } from "../vals";
 import { css } from "@/lib/dc/css";
 import { interp } from "@/lib/dc/interp";
+import { MessageText } from "../message-text";
 
 export function PageConversationInspector({ v }: { v: Vals }) {
   return (
@@ -847,7 +848,7 @@ export function PageConversationInspector({ v }: { v: Vals }) {
                   </div>
                   <section className="pane-section13">
                     <h3>About this work</h3>
-                    <p>{interp(v.inspectorDescription10)}</p>
+                    <MessageText text={String(v.inspectorDescription10 ?? "")} />
                     <details className="criteria13">
                       <summary>
                         Acceptance criteria <span>{interp(v.criteriaCount13)}</span>
