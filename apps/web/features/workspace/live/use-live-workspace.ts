@@ -317,6 +317,16 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
   const hasGitHubConnection=(s.livePlugins||[]).some((plugin:Vals)=>pluginKey(plugin.kind)==="github"&&plugin.status==="connected");
   if(selectedRepository){v.repoName14=selectedRepository.full;v.repoMeta14=`Default branch ${selectedRepository.branch}`;v.repoState14=hasGitHubConnection?"Connected":"Needs reconnection";v.repoTone14=hasGitHubConnection?"ok14":"bad14";v.repoConnected14=hasGitHubConnection;v.repoHealth14=[{title:"GitHub connection",detail:hasGitHubConnection?"Available to this workspace":"Reconnect GitHub before starting repository work",tone:hasGitHubConnection?"ok14":"bad14",icon:"/i15.svg#"+(hasGitHubConnection?"circle-check":"circle-alert"),when:""},{title:"Default branch",detail:selectedRepository.branch,tone:"ok14",icon:"/i15.svg#git-branch",when:""}];}
   v.repoConfigAvailable14=false;v.repoConnectLabel14=hasGitHubConnection?"Manage connection":"Reconnect";v.repoConnect14=()=>logic.showPlugin10("GitHub");
+  const designProject="https://claude.ai/design/p/3409ba65-04b6-44b3-af90-d9eac984e5ec";
+  const openDesign=(file:string)=>window.open(`${designProject}?file=${encodeURIComponent(file)}`,"_blank","noopener,noreferrer");
+  const hasFigmaConnection=(s.livePlugins||[]).some((plugin:Vals)=>pluginKey(plugin.kind)==="figma"&&plugin.status==="connected");
+  v.dsName15="BotInc product design";v.dsMeta15="Workspace v19 · Landing v4 · Claude Design";v.dsOpen15=()=>openDesign("Workspace v19.dc.html");
+  v.designRows16=[
+   {title:"Workspace v19",copy:"Workspace shell, chat, work, routines, settings, and responsive behavior.",kind16:"Claude Design",updated16:"Current",state:"Active",tone:"ok14",hasLogo16:true,logo16:"/assets/brands-v12/claude.svg",logoCls16:"has-logo16",editLabel:"Source",action:"Open",edit:()=>openDesign("Workspace v19.dc.html"),open:()=>openDesign("Workspace v19.dc.html")},
+   {title:"Landing v4",copy:"Public product, pricing, model routing, and responsive landing experience.",kind16:"Claude Design",updated16:"Current",state:"Active",tone:"ok14",hasLogo16:true,logo16:"/assets/brands-v12/claude.svg",logoCls16:"has-logo16",editLabel:"Source",action:"Open",edit:()=>openDesign("Landing v4.dc.html"),open:()=>openDesign("Landing v4.dc.html")},
+   {title:"Figma connection",copy:"Design files and components available to Operator through the migrated plugin.",kind16:"Plugin",updated16:"Connected account",state:hasFigmaConnection?"Connected":"Not connected",tone:hasFigmaConnection?"ok14":"warn14",hasLogo16:true,logo16:"/assets/brands-v12/figma.svg",logoCls16:"has-logo16",editLabel:"Manage",action:hasFigmaConnection?"Use":"Connect",edit:()=>logic.showPlugin10("Figma"),open:()=>logic.showPlugin10("Figma")},
+  ];
+  v.dsAdd15=()=>logic.showPlugin10("Figma");
   v.pfWeeks15=[];v.pfMonths15=[];v.pfStats15=[];v.pfActivitySummary15="Repository activity appears after connected repositories report it.";v.pfFoot15="No repository contribution activity has been reported yet.";
   if(Array.isArray(v.conversationGroups12))v.conversationGroups12=v.conversationGroups12.map((group:Vals)=>({...group,rows:(group.rows||[]).map((row:Vals)=>{
    const id=String(row.id||"");
