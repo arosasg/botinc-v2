@@ -6542,3 +6542,47 @@ button{font-family:inherit}button .ui-icon{color:inherit}
 .app .live-run19>header span{font:400 9.5px var(--mono14,var(--mono));text-transform:uppercase;color:var(--muted)}
 .app .live-run19 p,.app .live-run19 time,.app .live-run19 small{font-size:10.5px;line-height:1.5;color:var(--muted);margin:0}
 .app .live-run19 small{color:var(--danger);overflow-wrap:anywhere}
+
+/* A conversation must be readable on the first frame. Long migrated threads
+   can contain dozens of rows, so staggering every row briefly blanks the
+   newest messages after the scroller anchors to the bottom. */
+.app-v19 .t9-inner>*,.app-v19 .conversation-log13>*{animation:none!important}
+
+/* Mobile Work is a readable two-track list. The late desktop column pinning
+   above must not strand hidden metadata in off-screen grid tracks. */
+@media(max-width:760px){
+  .app-v19 main.work-v9>.v7-page-heading{display:grid;grid-template-columns:minmax(0,1fr);gap:14px}
+  .app-v19 main.work-v9>.v7-page-heading>.head-actions14{
+    display:flex;align-items:center;justify-content:flex-start;gap:8px;min-width:0;flex-wrap:wrap}
+  .app-v19 main.work-v9>.v7-page-heading>.head-actions14>.small-button{min-height:35px}
+  .app-v19 main.work-v9>.w8-find16>.w8-controls{align-items:stretch}
+  .app-v19 main.work-v9 .w8-search{flex:1 1 100%;min-width:0}
+  .app-v19 main.work-v9 .w8-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));width:100%}
+  .app-v19 main.work-v9 .w8-field{min-width:0}
+  .app-v19 main.work-v9 .w8-field>.sel14{width:100%;min-width:0}
+  .app-v19 main.work-v9 .w8-nav16{max-width:100%;overflow-x:auto;overflow-y:hidden;flex-wrap:nowrap;scrollbar-width:none}
+  .app-v19 main.work-v9 .w8-nav16::-webkit-scrollbar{display:none}
+  .app-v19 main.work-v9 .w8-nav16>button{flex:none;white-space:nowrap}
+  .app-v19 main.work-v9 .w8-row{
+    grid-template-columns:18px minmax(0,1fr)!important;gap:10px;min-height:64px;padding:12px 2px;align-items:start}
+  .app-v19 main.work-v9 .w8-row>.w8-state{display:inline-flex;grid-column:1!important;grid-row:1;margin-top:2px}
+  .app-v19 main.work-v9 .w8-row>.w8-title{display:block;grid-column:2!important;grid-row:1;min-width:0}
+  .app-v19 main.work-v9 .w8-row>.w8-title>strong{display:block;white-space:normal;overflow-wrap:anywhere}
+  .app-v19 main.work-v9 .w8-row>.w8-title>.w8-inline-meta{display:block;white-space:normal;overflow-wrap:anywhere}
+  .app-v19 main.work-v9 .w8-row>:is(.w8-id,.w8-prio,.w8-project,.w8-source,.w8-ownercell16,.w8-updated){display:none!important}
+  .app-v19 main.work-v9 .w8-group-head{grid-template-columns:18px minmax(0,1fr)!important;gap:10px}
+  .app-v19 main.work-v9 .w8-group-head>.w8-group-icon{grid-column:1!important}
+  .app-v19 main.work-v9 .w8-group-head>.w8-gname16{grid-column:2!important;min-width:0}
+}
+
+/* A split pane only works when both sides remain useful. On compact desktop
+   and tablet widths the inspector becomes a closeable overlay, leaving the
+   conversation its full column. Wide screens retain the draggable divider. */
+@media(min-width:761px) and (max-width:1359px){
+  .app-v19 .workspace-body{position:relative}
+  .app-v19 .inspector10.inspector11{
+    position:absolute;inset:0 0 0 auto;z-index:180;width:min(520px,100%)!important;
+    min-width:0;max-width:100%;flex:0 0 auto!important;background:var(--bg);
+    box-shadow:-18px 0 48px rgb(0 0 0 / 8%)}
+  .app-v19 .inspector11 .pane-divider11{display:none}
+}

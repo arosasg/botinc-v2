@@ -43,14 +43,11 @@ export function WorkspaceApp() {
   const [Logic, setLogic] = useState<LogicClass | null>(null);
   useEffect(() => {
     let alive = true;
-    // Wait for the webfonts (capped) so the first layout, and the logic's
-    // scroll-to-latest on mount, use final text metrics.
-    const fonts =
-      typeof document !== "undefined" && document.fonts
-        ? Promise.all([document.fonts.load('400 14px "Instrument Sans"'), document.fonts.load('400 12px "IBM Plex Mono"')]).then(() => document.fonts.ready)
-        : Promise.resolve();
-    const cap = new Promise<void>((r) => setTimeout(r, 3000));
-    Promise.all([import("./logic/v19.js"), Promise.race([fonts, cap])]).then(([m]) => {
+    // Render as soon as the workspace logic is available. Waiting for remote
+    // fonts could leave the entire product blank for up to three seconds on a
+    // cold connection. The conversation ResizeObserver corrects its bottom
+    // anchor if final font metrics change after the first paint.
+    import("./logic/v19.js").then((m) => {
       if (alive) setLogic(() => m.makeWorkspaceLogic(DCLogic) as LogicClass);
     });
     return () => {
