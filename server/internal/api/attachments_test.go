@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestAttachmentsPersistAndRespectConversationPrivacy(t *testing.T) {
@@ -48,6 +49,30 @@ func TestAttachmentsPersistAndRespectConversationPrivacy(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(h.server.cfg.AttachmentDir, out.Attachment.ID.String())); err != nil {
 		t.Fatal(err)
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for len(h.box.seen()) == 0 && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	specs := h.box.seen()
+	if len(specs) == 0 {
+		t.Fatal("message did not queue a sandbox run")
+	}
+	runPath := "/api/runtime/runs/" + specs[0].RunID
+	specRec := runtimeCall(h, "GET", runPath+"/spec", specs[0].RunToken, nil)
+	if specRec.Code != 200 {
+		t.Fatalf("runtime spec failed: %d %s", specRec.Code, specRec.Body.String())
+	}
+	var runtimeSpec struct {
+		Attachments []attachmentRow `json:"attachments"`
+	}
+	h.decode(specRec, &runtimeSpec)
+	if len(runtimeSpec.Attachments) != 1 || runtimeSpec.Attachments[0].ID != out.Attachment.ID {
+		t.Fatalf("runtime did not receive the message attachment metadata: %+v", runtimeSpec.Attachments)
+	}
+	runtimeDownload := runtimeCall(h, "GET", runPath+"/attachments/"+out.Attachment.ID.String(), specs[0].RunToken, nil)
+	if runtimeDownload.Code != 200 || runtimeDownload.Body.String() != "<script>alert('no inline html')</script>" {
+		t.Fatalf("runtime attachment download failed: %d %s", runtimeDownload.Code, runtimeDownload.Body.String())
 	}
 	downloaded := h.do("GET", out.Attachment.URL, nil, 200)
 	if downloaded.Header().Get("Content-Disposition") != "attachment; filename=proof.html" {

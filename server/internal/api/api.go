@@ -175,6 +175,7 @@ func (s *Server) Router() http.Handler {
 		r.Use(s.runtimeScope)
 		r.Post("/claim", s.runtimeClaim)
 		r.Get("/spec", s.runtimeSpec)
+		r.Get("/attachments/{id}", s.runtimeDownloadAttachment)
 		r.Get("/inputs/{key}", s.runtimeInput)
 		r.Post("/events", s.runtimeEvents)
 		r.Post("/steps", s.runtimeStep)

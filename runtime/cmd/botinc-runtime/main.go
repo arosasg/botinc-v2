@@ -117,6 +117,9 @@ func execute(ctx context.Context, c *protocol.Client, spec protocol.Spec, workdi
 	if err != nil {
 		return nil, err
 	}
+	if err := materializeAttachments(ctx, c, &spec, workdir); err != nil {
+		return nil, fmt.Errorf("prepare attachments: %w", err)
+	}
 	emit := func(ev agent.Event) {
 		_ = c.Emit(context.WithoutCancel(ctx), ev.Type, ev.Payload)
 	}
@@ -127,6 +130,47 @@ func execute(ctx context.Context, c *protocol.Client, spec protocol.Spec, workdi
 	default:
 		return runBuild(ctx, c, spec, adapter, workdir, emit)
 	}
+}
+
+func materializeAttachments(ctx context.Context, c *protocol.Client, spec *protocol.Spec, workdir string) error {
+	if len(spec.Attachments) == 0 {
+		return nil
+	}
+	dir := filepath.Join(workdir, "attachments")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	for i := range spec.Attachments {
+		attachment := &spec.Attachments[i]
+		name := filepath.Base(strings.ReplaceAll(attachment.Filename, "\\", "/"))
+		if name == "" || name == "." {
+			name = "attachment"
+		}
+		path := filepath.Join(dir, attachment.ID+"-"+name)
+		partial := path + ".partial"
+		file, err := os.OpenFile(partial, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+		if err != nil {
+			return err
+		}
+		written, downloadErr := c.DownloadAttachment(ctx, attachment.ID, file)
+		closeErr := file.Close()
+		if downloadErr != nil || closeErr != nil || written != attachment.SizeBytes {
+			_ = os.Remove(partial)
+			if downloadErr != nil {
+				return downloadErr
+			}
+			if closeErr != nil {
+				return closeErr
+			}
+			return fmt.Errorf("attachment %s size was %d, expected %d", attachment.ID, written, attachment.SizeBytes)
+		}
+		if err := os.Rename(partial, path); err != nil {
+			_ = os.Remove(partial)
+			return err
+		}
+		attachment.Path = path
+	}
+	return nil
 }
 
 // runChat answers in the conversation. No repository, no branch, no PR.
@@ -376,6 +420,11 @@ func chatPrompt(spec protocol.Spec) string {
 	b.WriteString(knowledgePrompt(spec))
 	for _, m := range spec.Messages {
 		b.WriteString(m.Role + ": " + m.Body + "\n")
+		for _, attachment := range spec.Attachments {
+			if attachment.MessageID == m.ID {
+				fmt.Fprintf(&b, "Attachment %q (%s, %d bytes) is available at %s. Inspect it when it is relevant to the request.\n", attachment.Filename, attachment.ContentType, attachment.SizeBytes, attachment.Path)
+			}
+		}
 	}
 	if len(spec.Messages) == 0 {
 		b.WriteString("User: " + spec.Run.Prompt + "\n")
@@ -396,6 +445,9 @@ func buildPrompt(spec protocol.Spec, step protocol.Step) string {
 	b.WriteString(knowledgePrompt(spec))
 	fmt.Fprintf(&b, "Step: %s.\n\n", step.Name)
 	b.WriteString(spec.Run.Prompt)
+	for _, attachment := range spec.Attachments {
+		fmt.Fprintf(&b, "\nAttachment %q (%s, %d bytes) is available at %s. Inspect it when it is relevant to the request.", attachment.Filename, attachment.ContentType, attachment.SizeBytes, attachment.Path)
+	}
 	b.WriteString("\n\nWork in this checkout. Make the change, keep it small, and run the project's own tests. Do not commit, push or open a pull request: the runtime does that once every step is done.")
 	switch step.Key {
 	case "plan":

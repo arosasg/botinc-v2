@@ -284,6 +284,12 @@ func (s *Server) runtimeSpec(w http.ResponseWriter, r *http.Request) {
 			spec["issue"] = is
 		}
 	}
+	attachments, err := s.runtimeAttachments(ctx, rn)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	spec["attachments"] = attachments
 	// A project run only receives that project's repositories and knowledge.
 	var projectID *uuid.UUID
 	if rn.IssueID != nil {
@@ -395,6 +401,42 @@ func (s *Server) runtimeSpec(w http.ResponseWriter, r *http.Request) {
 		spec["credential"] = map[string]any{"provider": "openrouter", "kind": "credits", "secret": s.cfg.OpenRouterAPIKey}
 	}
 	httpx.JSON(w, 200, spec)
+}
+
+func (s *Server) runtimeAttachments(ctx context.Context, rn runs.Run) ([]attachmentRow, error) {
+	query := ""
+	var target uuid.UUID
+	if rn.ConversationID != nil {
+		target = *rn.ConversationID
+		query = `select a.id,a.issue_id,a.conversation_id,a.message_id,a.comment_id,a.filename,a.content_type,a.size_bytes
+			from attachments a
+			where a.workspace_id=$1 and a.conversation_id=$2 and a.message_id in
+				(select id from messages where conversation_id=$2 order by seq desc limit 40)
+			order by a.created_at,a.id`
+	} else if rn.IssueID != nil {
+		target = *rn.IssueID
+		query = `select a.id,a.issue_id,a.conversation_id,a.message_id,a.comment_id,a.filename,a.content_type,a.size_bytes
+			from attachments a
+			where a.workspace_id=$1 and (a.issue_id=$2 or a.comment_id in
+				(select id from issue_comments where issue_id=$2))
+			order by a.created_at,a.id`
+	} else {
+		return []attachmentRow{}, nil
+	}
+	rows, err := s.pool.Query(ctx, query, rn.WorkspaceID, target)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	attachments := []attachmentRow{}
+	for rows.Next() {
+		var attachment attachmentRow
+		if err := rows.Scan(&attachment.ID, &attachment.IssueID, &attachment.ConversationID, &attachment.MessageID, &attachment.CommentID, &attachment.Filename, &attachment.ContentType, &attachment.Size); err != nil {
+			return nil, err
+		}
+		attachments = append(attachments, attachment)
+	}
+	return attachments, rows.Err()
 }
 
 func (s *Server) runtimeEvents(w http.ResponseWriter, r *http.Request) {
