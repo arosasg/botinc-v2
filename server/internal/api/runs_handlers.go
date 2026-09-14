@@ -18,7 +18,7 @@ import (
 )
 
 func runColsPrefixed(p string) string {
-	cols := []string{"id", "workspace_id", "issue_id", "conversation_id", "workflow_version_id", "purpose", "status", "model", "account_id", "funding", "task_limit_cents", "cost_cents", "prompt", "result", "error", "sandbox_id", "parent_run_id", "queued_at", "started_at", "finished_at"}
+	cols := []string{"id", "workspace_id", "issue_id", "conversation_id", "workflow_version_id", "purpose", "status", "model", "effort", "account_id", "funding", "task_limit_cents", "cost_cents", "prompt", "result", "error", "sandbox_id", "parent_run_id", "queued_at", "started_at", "finished_at"}
 	if p != "" {
 		for i := range cols {
 			cols[i] = p + "." + cols[i]
@@ -29,7 +29,7 @@ func runColsPrefixed(p string) string {
 
 func scanRunRows(rows pgx.Rows) (runs.Run, error) {
 	var r runs.Run
-	err := rows.Scan(&r.ID, &r.WorkspaceID, &r.IssueID, &r.ConversationID, &r.WorkflowVersionID, &r.Purpose, &r.Status, &r.Model, &r.AccountID, &r.Funding, &r.TaskLimitCents, &r.CostCents, &r.Prompt, &r.Result, &r.Error, &r.SandboxID, &r.ParentRunID, &r.QueuedAt, &r.StartedAt, &r.FinishedAt)
+	err := rows.Scan(&r.ID, &r.WorkspaceID, &r.IssueID, &r.ConversationID, &r.WorkflowVersionID, &r.Purpose, &r.Status, &r.Model, &r.Effort, &r.AccountID, &r.Funding, &r.TaskLimitCents, &r.CostCents, &r.Prompt, &r.Result, &r.Error, &r.SandboxID, &r.ParentRunID, &r.QueuedAt, &r.StartedAt, &r.FinishedAt)
 	return r, err
 }
 
@@ -250,7 +250,7 @@ func (s *Server) runtimeSpec(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	spec := map[string]any{"run": rn, "steps": steps}
-	if mcpConfig, err := s.runtimeMCPConfig(ctx, rn.WorkspaceID); err != nil {
+	if mcpConfig, err := s.runtimeMCPConfig(ctx, rn.WorkspaceID, rn.ID); err != nil {
 		s.fail(w, err)
 		return
 	} else if len(mcpConfig) > 0 {

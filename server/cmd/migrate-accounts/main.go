@@ -32,6 +32,24 @@ type sourceAccount struct {
 	expiresAt                                                             *time.Time
 	enabled                                                               bool
 	createdAt, updatedAt                                                  time.Time
+	limits                                                                json.RawMessage
+	usageCapturedAt                                                       *time.Time
+	runtimeStatus, limitReason                                            string
+	limitedUntil                                                          *time.Time
+}
+
+type sourceLimit struct {
+	Label    string  `json:"label"`
+	Percent  float64 `json:"percent"`
+	ResetsAt *string `json:"resets_at"`
+}
+
+type targetLimit struct {
+	Window     string  `json:"window"`
+	Used       float64 `json:"used"`
+	Limit      float64 `json:"limit"`
+	ResetsAt   string  `json:"resets_at,omitempty"`
+	ObservedAt string  `json:"observed_at,omitempty"`
 }
 
 func main() {
@@ -72,8 +90,18 @@ func run(ctx context.Context) error {
 		select a.id::text, a.workspace_id::text, u.email, a.provider, a.account_key,
 			a.label, a.email, a.plan, a.credential_kind, a.credential_encrypted,
 			a.refresh_encrypted, a.expires_at, a.refresh_error, a.enabled,
-			a.created_at, a.updated_at
+			a.created_at, a.updated_at,
+			coalesce(snapshot.limits, '[]'::jsonb), snapshot.usage_captured_at,
+			coalesce(snapshot.status, ''), coalesce(snapshot.limit_reason, ''), snapshot.limited_until
 		from agent_account a join "user" u on u.id=a.owner_id
+		left join lateral (
+			select ra.limits, ra.usage_captured_at, ra.status, ra.limit_reason, ra.limited_until
+			from runtime_account ra
+			join agent_runtime runtime on runtime.id=ra.runtime_id
+			where runtime.workspace_id=a.workspace_id and ra.account_key=a.account_key
+			order by coalesce(ra.usage_captured_at,ra.last_reported_at) desc
+			limit 1
+		) snapshot on true
 		where a.workspace_id = any($1::uuid[])
 		order by a.workspace_id, a.provider, a.account_key`, workspaceIDs)
 	if err != nil {
@@ -86,7 +114,8 @@ func run(ctx context.Context) error {
 		if err := rows.Scan(&account.id, &account.workspaceID, &account.ownerEmail, &account.provider,
 			&account.accountKey, &account.label, &account.email, &account.plan, &account.credentialKind,
 			&account.credentialEncrypted, &account.refreshEncrypted, &account.expiresAt, &account.refreshError,
-			&account.enabled, &account.createdAt, &account.updatedAt); err != nil {
+			&account.enabled, &account.createdAt, &account.updatedAt, &account.limits, &account.usageCapturedAt,
+			&account.runtimeStatus, &account.limitReason, &account.limitedUntil); err != nil {
 			return err
 		}
 		accounts = append(accounts, account)
@@ -144,27 +173,36 @@ func run(ctx context.Context) error {
 			kind = "subscription"
 		}
 		status := "connected"
-		if !account.enabled || refreshError != "" {
+		if !account.enabled || refreshError != "" || account.runtimeStatus == "limited" {
 			status = "limited"
+		}
+		quota, err := convertQuota(account.limits, account.usageCapturedAt)
+		if err != nil {
+			return fmt.Errorf("convert quota for account %s: %w", account.id, err)
+		}
+		provider := account.provider
+		if provider == "dsh" {
+			provider = "deepseek"
 		}
 		_, err = tx.Exec(ctx, `insert into model_accounts
 			(id, workspace_id, user_id, provider, account_key, label, email, plan, kind,
-			 credential_kind, status, secret_ref, refresh_ref, expires_at, refresh_error, created_at, updated_at)
-			values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+			 credential_kind, status, quota, secret_ref, refresh_ref, expires_at, refresh_error, created_at, updated_at)
+			values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
 			on conflict (id) do update set workspace_id=excluded.workspace_id, user_id=excluded.user_id,
-			 provider=excluded.provider, account_key=excluded.account_key, label=excluded.label,
-			 email=excluded.email, plan=excluded.plan, kind=excluded.kind,
-			 credential_kind=excluded.credential_kind, status=excluded.status,
-			 secret_ref=excluded.secret_ref, refresh_ref=excluded.refresh_ref,
-			 expires_at=excluded.expires_at, refresh_error=excluded.refresh_error,
-			 updated_at=excluded.updated_at`, account.id, targetWorkspace, targetUser, account.provider,
+				provider=excluded.provider, account_key=excluded.account_key, label=excluded.label,
+				email=excluded.email, plan=excluded.plan, kind=excluded.kind,
+				credential_kind=excluded.credential_kind, status=excluded.status,
+				quota=excluded.quota,
+				secret_ref=excluded.secret_ref, refresh_ref=excluded.refresh_ref,
+				expires_at=excluded.expires_at, refresh_error=excluded.refresh_error,
+				updated_at=excluded.updated_at`, account.id, targetWorkspace, targetUser, provider,
 			account.accountKey, account.label, account.email, account.plan, kind, account.credentialKind,
-			status, credentialRef, refreshRef, account.expiresAt, refreshError,
+			status, quota, credentialRef, refreshRef, account.expiresAt, refreshError,
 			account.createdAt, account.updatedAt)
 		if err != nil {
 			return fmt.Errorf("insert target account %s: %w", account.id, err)
 		}
-		counts[account.provider]++
+		counts[provider]++
 	}
 	pluginCount, err := migrateWorkspaceConnectors(ctx, sourcePool, tx, targetAEAD, workspaceIDs)
 	if err != nil {
@@ -184,6 +222,31 @@ func run(ctx context.Context) error {
 	}
 	fmt.Printf(" mcp_connectors=%d\n", pluginCount)
 	return nil
+}
+
+func convertQuota(raw json.RawMessage, observedAt *time.Time) (json.RawMessage, error) {
+	var source []sourceLimit
+	if len(raw) == 0 {
+		return json.RawMessage(`[]`), nil
+	}
+	if err := json.Unmarshal(raw, &source); err != nil {
+		return nil, err
+	}
+	out := make([]targetLimit, 0, len(source))
+	for _, window := range source {
+		if strings.TrimSpace(window.Label) == "" || window.Percent < 0 {
+			continue
+		}
+		target := targetLimit{Window: strings.ToLower(strings.TrimSpace(window.Label)), Used: window.Percent, Limit: 100}
+		if window.ResetsAt != nil {
+			target.ResetsAt = *window.ResetsAt
+		}
+		if observedAt != nil {
+			target.ObservedAt = observedAt.UTC().Format(time.RFC3339)
+		}
+		out = append(out, target)
+	}
+	return json.Marshal(out)
 }
 
 func migrateWorkspaceConnectors(ctx context.Context, source *pgxpool.Pool, target pgx.Tx, aead cipher.AEAD, workspaceIDs []string) (int, error) {
@@ -237,7 +300,7 @@ func targetIdentity(ctx context.Context, tx pgx.Tx, sourceWorkspace, email strin
 	}
 	var workspaceID, userID uuid.UUID
 	err := tx.QueryRow(ctx, `select w.id, u.id from workspaces w join members m on m.workspace_id=w.id
-		join users u on u.id=m.user_id where w.slug=$1 and lower(u.email)=lower($2)`, "v1-"+prefix, email).
+		join users u on u.id=m.user_id where (w.slug=$1 or exists(select 1 from workspace_slug_aliases alias where alias.workspace_id=w.id and alias.slug=$1)) and lower(u.email)=lower($2)`, "v1-"+prefix, email).
 		Scan(&workspaceID, &userID)
 	if err != nil {
 		return uuid.Nil, uuid.Nil, fmt.Errorf("target identity for source workspace %s: %w", sourceWorkspace, err)
@@ -252,7 +315,7 @@ func targetWorkspaceOwner(ctx context.Context, tx pgx.Tx, sourceWorkspace string
 	}
 	var workspaceID, userID uuid.UUID
 	err := tx.QueryRow(ctx, `select w.id, m.user_id from workspaces w join members m on m.workspace_id=w.id
-		where w.slug=$1 and m.role='owner' order by m.created_at limit 1`, "v1-"+prefix).Scan(&workspaceID, &userID)
+		where (w.slug=$1 or exists(select 1 from workspace_slug_aliases alias where alias.workspace_id=w.id and alias.slug=$1)) and m.role='owner' order by m.created_at limit 1`, "v1-"+prefix).Scan(&workspaceID, &userID)
 	if err != nil {
 		return uuid.Nil, uuid.Nil, fmt.Errorf("target owner for source workspace %s: %w", sourceWorkspace, err)
 	}

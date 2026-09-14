@@ -29,6 +29,7 @@ type Workspace struct {
 	IssuePrefix string    `json:"issue_prefix"`
 	CreatedAt   time.Time `json:"created_at"`
 	Role        string    `json:"role,omitempty"`
+	Aliases     []string  `json:"aliases,omitempty"`
 }
 
 const workspaceCols = `w.id, w.slug, w.name, w.plan, w.issue_prefix, w.created_at`
@@ -152,6 +153,26 @@ func (s *Server) listWorkspaces(w http.ResponseWriter, r *http.Request) {
 			s.fail(w, err)
 			return
 		}
+		aliasRows, err := s.pool.Query(r.Context(), `select slug from workspace_slug_aliases where workspace_id=$1 order by created_at,slug`, ws.ID)
+		if err != nil {
+			s.fail(w, err)
+			return
+		}
+		for aliasRows.Next() {
+			var alias string
+			if err := aliasRows.Scan(&alias); err != nil {
+				aliasRows.Close()
+				s.fail(w, err)
+				return
+			}
+			ws.Aliases = append(ws.Aliases, alias)
+		}
+		if err := aliasRows.Err(); err != nil {
+			aliasRows.Close()
+			s.fail(w, err)
+			return
+		}
+		aliasRows.Close()
 		out = append(out, ws)
 	}
 	httpx.JSON(w, 200, map[string]any{"workspaces": out})

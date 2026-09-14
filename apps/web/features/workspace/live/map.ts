@@ -276,6 +276,7 @@ export function mapAutopilot(a: Autopilot) {
     lastRun: a.last_run_at,
     nextRun: a.next_run_at,
     model: a.model === "auto" ? "Auto" : a.model,
+    pluginIds: a.plugin_ids ?? [],
   };
 }
 
@@ -332,6 +333,8 @@ function describeNextRun(enabled: boolean, nextRun: string | null, zone: string)
    nothing is a made-up figure, and the design says a figure with no receipt
    does not ship. */
 export function mapAccount(a: Account) {
+	const observedTimes=(a.quota??[]).map((window)=>window.observed_at?Date.parse(window.observed_at):NaN).filter(Number.isFinite);
+	const capturedAgo=observedTimes.length?Math.max(0,Math.floor((Date.now()-Math.max(...observedTimes))/60000)):null;
   return {
     id: a.id,
     provider: a.provider,
@@ -344,7 +347,7 @@ export function mapAccount(a: Account) {
     enabled: a.status === "connected",
     active: a.status === "connected",
     status: a.status === "connected" ? "ok" : a.status,
-    runtimeRoutable: a.status === "connected" && ["claude", "codex", "openrouter"].includes(a.provider),
+    runtimeRoutable: a.status === "connected" && ["claude", "codex", "openrouter", "deepseek"].includes(a.provider),
     limits: (a.quota ?? [])
       .filter((w) => w && w.limit > 0)
       .map((w) => ({
@@ -352,7 +355,7 @@ export function mapAccount(a: Account) {
         percent: Math.round((w.used / w.limit) * 100),
         resets: w.resets_at ?? "",
       })),
-    capturedAgo: a.quota?.length ? 0 : null,
+    capturedAgo,
     limitReason: "",
     limitedUntil: "",
   };

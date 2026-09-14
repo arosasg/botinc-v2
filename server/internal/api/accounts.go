@@ -44,7 +44,8 @@ func (a *Account) scan() []any {
 
 var accountProviders = map[string]bool{
 	"claude": true, "codex": true, "cursor": true, "copilot": true,
-	"gemini": true, "openrouter": true, "api": true,
+	"deepseek": true, "gemini": true, "hermes": true, "opencode": true,
+	"openrouter": true, "api": true,
 }
 
 var accountKinds = map[string]bool{"subscription": true, "api_key": true, "credits": true}

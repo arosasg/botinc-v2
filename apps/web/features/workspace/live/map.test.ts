@@ -115,6 +115,12 @@ describe("mapAccount", () => {
     expect(row.limits).toEqual([{ label: "WEEK", percent: 63, resets: "Mon 00:00" }]);
   });
 
+  it("keeps the provider observation age instead of presenting stale usage as fresh", () => {
+    const observed = new Date(Date.now() - 17 * 60_000).toISOString();
+    const row = mapAccount(account({ quota: [{ window: "session", used: 25, limit: 100, observed_at: observed }] }));
+    expect(row.capturedAgo).toBeGreaterThanOrEqual(17);
+  });
+
   it("ignores a window with no limit rather than dividing by zero", () => {
     const row = mapAccount(account({ quota: [{ window: "session", used: 5, limit: 0 }] }));
     expect(row.limits).toEqual([]);
@@ -134,7 +140,7 @@ describe("mapIssueTimeline", () => {
   ];
   const runs: Run[] = [{
     id: "r1", workspace_id: "w1", issue_id: issue().id, conversation_id: null,
-    purpose: "implementation", status: "done", model: "GPT-6 Astra", funding: "subscription",
+    purpose: "implementation", status: "done", model: "GPT-6 Astra", effort: "high", funding: "subscription",
     task_limit_cents: 200, cost_cents: 16, error: "", queued_at: "2026-09-13T10:02:00Z",
     started_at: "2026-09-13T10:02:01Z", finished_at: "2026-09-13T10:02:30Z",
   }];
@@ -221,7 +227,7 @@ describe("mapAutopilot", () => {
     const a: Autopilot = {
       id: "r1", name: "Morning triage", description: "", prompt: "Triage.",
       trigger: { kind: "schedule", cron: "0 9 * * *", tz: "Europe/Madrid" },
-      workflow_id: null, model: "auto", enabled: true,
+      workflow_id: null, plugin_ids: [], model: "auto", enabled: true,
       last_run_at: null, next_run_at: "2026-09-14T07:00:00Z",
     };
     const row = mapAutopilot(a);
@@ -243,7 +249,7 @@ describe("mapAutopilot", () => {
     const a: Autopilot = {
       id: "r2", name: "Merge Warden", description: "", prompt: "Merge.",
       trigger: { kind: "schedule", cron: "*/10 * * * *", tz: "Europe/Madrid" },
-      workflow_id: null, model: "auto", enabled: false,
+      workflow_id: null, plugin_ids: [], model: "auto", enabled: false,
       last_run_at: null, next_run_at: null,
     };
 

@@ -14,6 +14,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/robfig/cron/v3"
 
 	"github.com/arosasg/botinc-v2/server/internal/httpx"
@@ -35,6 +36,7 @@ type Autopilot struct {
 	CreatedAt   time.Time       `json:"created_at"`
 	UpdatedAt   time.Time       `json:"updated_at"`
 	WebhookURL  string          `json:"webhook_url,omitempty"`
+	PluginIDs   []uuid.UUID     `json:"plugin_ids"`
 }
 
 const autopilotCols = `id, name, description, trigger, workflow_id, prompt, model, funding, enabled, last_run_at, next_run_at, created_at, updated_at`
@@ -104,6 +106,11 @@ func (s *Server) listAutopilots(w http.ResponseWriter, r *http.Request) {
 			s.fail(w, err)
 			return
 		}
+		a.PluginIDs, err = s.autopilotPluginIDs(r.Context(), a.ID)
+		if err != nil {
+			s.fail(w, err)
+			return
+		}
 		out = append(out, a)
 	}
 	httpx.JSON(w, 200, map[string]any{"autopilots": out})
@@ -119,6 +126,7 @@ func (s *Server) createAutopilot(w http.ResponseWriter, r *http.Request) {
 		Prompt      string          `json:"prompt"`
 		Model       string          `json:"model"`
 		Enabled     *bool           `json:"enabled"`
+		PluginIDs   []uuid.UUID     `json:"plugin_ids"`
 	}
 	if err := httpx.Decode(r, &in); err != nil {
 		httpx.Error(w, 400, err.Error())
@@ -147,18 +155,37 @@ func (s *Server) createAutopilot(w http.ResponseWriter, r *http.Request) {
 	if in.Model == "" {
 		in.Model = "auto"
 	}
+	ctx := r.Context()
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	defer tx.Rollback(ctx)
+	if err := validateAutopilotPlugins(ctx, tx, sc.WorkspaceID, in.PluginIDs); err != nil {
+		httpx.ErrorCode(w, 400, "invalid_connectors", err.Error())
+		return
+	}
 	enabled := true
 	if in.Enabled != nil {
 		enabled = *in.Enabled
 	}
-	ctx := r.Context()
 	var a Autopilot
-	if err := s.pool.QueryRow(ctx, `insert into autopilots (workspace_id, name, description, trigger, workflow_id, prompt, model, enabled, next_run_at, created_by)
+	if err := tx.QueryRow(ctx, `insert into autopilots (workspace_id, name, description, trigger, workflow_id, prompt, model, enabled, next_run_at, created_by)
 		values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning `+autopilotCols,
 		sc.WorkspaceID, in.Name, in.Description, in.Trigger, in.WorkflowID, in.Prompt, in.Model, enabled, next, sc.UserID).Scan(a.scan()...); err != nil {
 		s.fail(w, err)
 		return
 	}
+	if err := replaceAutopilotPlugins(ctx, tx, a.ID, in.PluginIDs); err != nil {
+		s.fail(w, err)
+		return
+	}
+	if err := tx.Commit(ctx); err != nil {
+		s.fail(w, err)
+		return
+	}
+	a.PluginIDs = uniquePluginIDs(in.PluginIDs)
 	if t.Kind == "webhook" {
 		// The secret is shown once, here, and only its hash is kept.
 		secret, err := s.rotateWebhookSecret(ctx, sc.WorkspaceID, a.ID)
@@ -196,6 +223,10 @@ func (s *Server) loadAutopilot(r *http.Request) (Autopilot, bool, error) {
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Autopilot{}, false, nil
 	}
+	if err != nil {
+		return a, false, err
+	}
+	a.PluginIDs, err = s.autopilotPluginIDs(r.Context(), a.ID)
 	return a, err == nil, err
 }
 
@@ -236,6 +267,7 @@ func (s *Server) updateAutopilot(w http.ResponseWriter, r *http.Request) {
 		Prompt      *string         `json:"prompt"`
 		Model       *string         `json:"model"`
 		Enabled     *bool           `json:"enabled"`
+		PluginIDs   *[]uuid.UUID    `json:"plugin_ids"`
 	}
 	if err := httpx.Decode(r, &in); err != nil {
 		httpx.Error(w, 400, err.Error())
@@ -250,12 +282,42 @@ func (s *Server) updateAutopilot(w http.ResponseWriter, r *http.Request) {
 			next = n
 		}
 	}
-	err = s.pool.QueryRow(r.Context(), `update autopilots set name=coalesce($3,name), description=coalesce($4,description),
+	ctx := r.Context()
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	defer tx.Rollback(ctx)
+	if in.PluginIDs != nil {
+		if err := validateAutopilotPlugins(ctx, tx, sc.WorkspaceID, *in.PluginIDs); err != nil {
+			httpx.ErrorCode(w, 400, "invalid_connectors", err.Error())
+			return
+		}
+	}
+	err = tx.QueryRow(ctx, `update autopilots set name=coalesce($3,name), description=coalesce($4,description),
 		trigger=coalesce($5,trigger), workflow_id=coalesce($6,workflow_id), prompt=coalesce($7,prompt), model=coalesce($8,model),
 		enabled=coalesce($9,enabled), next_run_at=case when $5 is not null then $10 else next_run_at end, updated_at=now()
 		where id=$1 and workspace_id=$2 returning `+autopilotCols,
 		a.ID, sc.WorkspaceID, in.Name, in.Description, in.Trigger, in.WorkflowID, in.Prompt, in.Model, in.Enabled, next).Scan(a.scan()...)
 	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	if in.PluginIDs != nil {
+		if err := replaceAutopilotPlugins(ctx, tx, a.ID, *in.PluginIDs); err != nil {
+			s.fail(w, err)
+			return
+		}
+		a.PluginIDs = uniquePluginIDs(*in.PluginIDs)
+	} else {
+		a.PluginIDs, err = autopilotPluginIDs(ctx, tx, a.ID)
+		if err != nil {
+			s.fail(w, err)
+			return
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
 		s.fail(w, err)
 		return
 	}
@@ -303,7 +365,7 @@ func (s *Server) FireAutopilot(ctx context.Context, ws uuid.UUID, a Autopilot, b
 	}
 	rn, err := s.runs.Create(ctx, runs.CreateParams{
 		WorkspaceID: ws, WorkflowVersionID: versionID, Purpose: "autopilot",
-		Model: a.Model, Prompt: prompt, TaskLimitCents: limit, CreatedBy: by, Steps: steps,
+		Model: a.Model, Prompt: prompt, TaskLimitCents: limit, CreatedBy: by, Steps: steps, PluginIDs: a.PluginIDs,
 	})
 	if err != nil {
 		return runs.Run{}, err
@@ -395,6 +457,11 @@ func (s *Server) autopilotWebhook(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
+	a.PluginIDs, err = s.autopilotPluginIDs(ctx, a.ID)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
 	var t struct {
 		Kind      string `json:"kind"`
 		SecretRef string `json:"secret_ref"`
@@ -442,12 +509,87 @@ func (s *Server) FireDue(ctx context.Context, ws, id uuid.UUID) error {
 	if err := s.pool.QueryRow(ctx, `select `+autopilotCols+` from autopilots where id=$1 and workspace_id=$2`, id, ws).Scan(a.scan()...); err != nil {
 		return err
 	}
+	var err error
+	a.PluginIDs, err = s.autopilotPluginIDs(ctx, a.ID)
+	if err != nil {
+		return err
+	}
 	if !a.Enabled {
 		return nil
 	}
-	_, err := s.FireAutopilot(ctx, ws, a, nil, "")
+	_, err = s.FireAutopilot(ctx, ws, a, nil, "")
 	return err
 }
 
 // Reconcile hands the scheduler's tick to the run service.
 func (s *Server) Reconcile(ctx context.Context) { s.runs.Reconcile(ctx) }
+
+type autopilotPluginQuery interface {
+	Query(context.Context, string, ...any) (pgx.Rows, error)
+	QueryRow(context.Context, string, ...any) pgx.Row
+	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
+}
+
+func uniquePluginIDs(values []uuid.UUID) []uuid.UUID {
+	seen := make(map[uuid.UUID]struct{}, len(values))
+	out := make([]uuid.UUID, 0, len(values))
+	for _, value := range values {
+		if value == uuid.Nil {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	return out
+}
+
+func validateAutopilotPlugins(ctx context.Context, db autopilotPluginQuery, workspaceID uuid.UUID, values []uuid.UUID) error {
+	ids := uniquePluginIDs(values)
+	if len(ids) == 0 {
+		return nil
+	}
+	var count int
+	if err := db.QueryRow(ctx, `select count(*) from plugins where workspace_id=$1 and status='connected' and id=any($2)`, workspaceID, ids).Scan(&count); err != nil {
+		return err
+	}
+	if count != len(ids) {
+		return errors.New("one or more selected connectors are unavailable")
+	}
+	return nil
+}
+
+func replaceAutopilotPlugins(ctx context.Context, db autopilotPluginQuery, autopilotID uuid.UUID, values []uuid.UUID) error {
+	if _, err := db.Exec(ctx, `delete from autopilot_plugins where autopilot_id=$1`, autopilotID); err != nil {
+		return err
+	}
+	ids := uniquePluginIDs(values)
+	if len(ids) == 0 {
+		return nil
+	}
+	_, err := db.Exec(ctx, `insert into autopilot_plugins(autopilot_id,plugin_id) select $1,unnest($2::uuid[])`, autopilotID, ids)
+	return err
+}
+
+func autopilotPluginIDs(ctx context.Context, db autopilotPluginQuery, autopilotID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := db.Query(ctx, `select plugin_id from autopilot_plugins where autopilot_id=$1 order by plugin_id`, autopilotID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []uuid.UUID{}
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
+func (s *Server) autopilotPluginIDs(ctx context.Context, autopilotID uuid.UUID) ([]uuid.UUID, error) {
+	return autopilotPluginIDs(ctx, s.pool, autopilotID)
+}

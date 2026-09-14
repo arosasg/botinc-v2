@@ -60,7 +60,7 @@ replacements={
   "No call in this sample":"No call recorded",
  },
  "apps/web/features/workspace/views/page-schedule.tsx":{
-  "Sample routines and recorded activity. Nothing runs from this design.":"Routines stay paused until you enable them. Activity is recorded after each run.",
+  "Sample routines and recorded activity. Nothing runs from this design.":"Enabled routines run on their schedule. Activity and skipped runs are recorded here.",
  },
  "apps/web/features/workspace/views/dialog-voicestartdialog10.tsx":{
   "Simulated voice and actions. No microphone, live models, or charges.":"Voice calls are not available on this deployment yet.",

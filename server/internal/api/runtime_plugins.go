@@ -11,9 +11,9 @@ import (
 // runtimeMCPConfig reconstructs the standard Claude-style MCP document from
 // individually encrypted connector entries. The plaintext exists only in the
 // task-scoped runtime response and never in a list or workspace response.
-func (s *Server) runtimeMCPConfig(ctx context.Context, workspaceID uuid.UUID) (json.RawMessage, error) {
-	rows, err := s.pool.Query(ctx, `select kind, secret_ref from plugins
-		where workspace_id=$1 and status='connected' and kind like 'mcp:%' order by kind`, workspaceID)
+func (s *Server) runtimeMCPConfig(ctx context.Context, workspaceID, runID uuid.UUID) (json.RawMessage, error) {
+	rows, err := s.pool.Query(ctx, `select p.kind, p.secret_ref from run_plugins rp join plugins p on p.id=rp.plugin_id
+		where rp.run_id=$1 and p.workspace_id=$2 and p.status='connected' and p.kind like 'mcp:%' order by p.kind`, runID, workspaceID)
 	if err != nil {
 		return nil, err
 	}

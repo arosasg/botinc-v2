@@ -244,7 +244,9 @@ func (s *Server) workspaceScope(next http.Handler) http.Handler {
 		if id, perr := uuid.Parse(key); perr == nil {
 			err = s.pool.QueryRow(r.Context(), `select w.id, w.slug, m.role from workspaces w join members m on m.workspace_id=w.id where w.id=$1 and m.user_id=$2`, id, p.User.ID).Scan(&sc.WorkspaceID, &sc.Slug, &sc.Role)
 		} else {
-			err = s.pool.QueryRow(r.Context(), `select w.id, w.slug, m.role from workspaces w join members m on m.workspace_id=w.id where w.slug=$1 and m.user_id=$2`, key, p.User.ID).Scan(&sc.WorkspaceID, &sc.Slug, &sc.Role)
+			err = s.pool.QueryRow(r.Context(), `select w.id, w.slug, m.role
+				from workspaces w join members m on m.workspace_id=w.id
+				where (w.slug=$1 or w.id=(select workspace_id from workspace_slug_aliases where slug=$1)) and m.user_id=$2`, key, p.User.ID).Scan(&sc.WorkspaceID, &sc.Slug, &sc.Role)
 		}
 		if errors.Is(err, pgx.ErrNoRows) {
 			httpx.ErrorCode(w, 404, "workspace_not_found", "workspace not found")

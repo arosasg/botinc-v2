@@ -6540,6 +6540,7 @@ button{font-family:inherit}button .ui-icon{color:inherit}
    reading axis. The optional 290px context peek sits beside that axis and
    never stretches the messages or the composer. */
 .app-v19 .chat10-scroll{padding:24px 32px}
+.app-v19 .chat10-scroll{scrollbar-gutter:stable both-edges}
 .app-v19 .chat10-scroll>.t9-cols15{box-sizing:border-box;margin-left:auto;margin-right:auto}
 .app-v19 .chat10-scroll>.t9-cols15:not(:has(>.side-col15)){max-width:790px}
 .app-v19 .chat10-scroll>.t9-cols15:has(>.side-col15){max-width:1102px}
@@ -6552,6 +6553,8 @@ button{font-family:inherit}button .ui-icon{color:inherit}
   margin:0 auto 14px!important;padding:0!important}
 .app-v19 .thread9>.jump-row13{
   box-sizing:border-box;width:100%;max-width:790px;margin-left:auto;margin-right:auto;padding-left:32px;padding-right:32px}
+.app-v19 .af-connectnote19{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:10px 0 0;padding-left:168px}
+.app-v19 .af-connectnote19 .text-button{flex:none;color:var(--blue)}
 @media(min-width:1181px){
   .app-v19 .chat10-scroll>.t9-cols15:has(>.side-col15)>.chat10-col15{margin-left:0;margin-right:0}
   .app-v19 .chat10:has(.chat10-scroll .side-col15)>.composer10-wrap{
@@ -6560,6 +6563,7 @@ button{font-family:inherit}button .ui-icon{color:inherit}
   .app-v19 .chat10-scroll{padding:20px 18px}
   .app-v19 .chat10>.composer10-wrap{width:calc(100% - 24px);margin-bottom:7px!important}
   .app-v19 .thread9>.jump-row13{padding-left:17px;padding-right:17px}}
+@media(max-width:760px){.app-v19 .af-connectnote19{align-items:flex-start;flex-direction:column;padding-left:0;gap:8px}}
 .app .live-pr19,.app .live-runs19{display:grid;gap:14px}
 .app .live-pr19>.brand12{width:24px;height:24px}
 .app .live-pr19 h2{font-size:19px;line-height:1.35;font-weight:500;margin:0}

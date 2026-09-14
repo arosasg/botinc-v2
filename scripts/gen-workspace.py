@@ -15,6 +15,12 @@ OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "apps", "we
 os.makedirs(OUT, exist_ok=True)
 
 src = open(os.path.join(D, "Workspace v19.dc.html")).read()
+CONNECTOR_SECTION = '''<section class="af-group16"><header><h3>Connectors</h3><span>Choose exactly which workspace tools this routine may use</span></header><div class="frm16"><div class="frm-row16"><span>Available to runs</span><button type="button" class="sel14 field" aria-haspopup="listbox" aria-label="Connectors available to this routine" onClick="{{ afConnectorMenu19 }}"><span class="af-repolabel16"><svg class="ui-icon use14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="i15.svg#plug"></use></svg>{{ afConnectorSummary19 }}</span><svg class="ui-icon use14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="i15.svg#chevron-down"></use></svg></button></div><p class="fine af-connectnote19">{{ afConnectorNote19 }} <button type="button" class="text-button" onClick="{{ afConnectorManage19 }}">Manage connectors</button></p></div></section>'''
+REPOSITORY_SECTION = '<section class="af-group16"><header><h3>Repository and result</h3>'
+if CONNECTOR_SECTION not in src:
+    src = src.replace(REPOSITORY_SECTION, CONNECTOR_SECTION + REPOSITORY_SECTION, 1)
+if '<dt>Connectors</dt>' not in src:
+    src = src.replace('<dt>Repository</dt>', '<dt>Connectors</dt><dd>{{ afConnectorSummary19 }}</dd><dt>Repository</dt>', 1)
 s = src.find("</helmet>") + len("</helmet>"); e = src.find('<script type="text/x-dc"')
 p = dc2jsx.P(); p.feed(src[s:e])
 root = [k for k in p.root.kids if not isinstance(k, dc2jsx.Text)][0]
