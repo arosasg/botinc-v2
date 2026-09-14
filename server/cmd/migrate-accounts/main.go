@@ -48,7 +48,12 @@ func run(ctx context.Context) error {
 	if sourceURL == "" || targetURL == "" || workspaceCSV == "" {
 		return errors.New("SOURCE_DATABASE_URL, TARGET_DATABASE_URL and SOURCE_WORKSPACE_IDS are required")
 	}
-	sourceAEAD, err := sourceCipher(os.Getenv("SOURCE_SECRETS_KEY"))
+	sourcePool, err := pgxpool.New(ctx, sourceURL)
+	if err != nil {
+		return err
+	}
+	defer sourcePool.Close()
+	sourceAEAD, err := sourceCipher(ctx, sourcePool, os.Getenv("SOURCE_SECRETS_KEY"))
 	if err != nil {
 		return err
 	}
@@ -56,11 +61,6 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	sourcePool, err := pgxpool.New(ctx, sourceURL)
-	if err != nil {
-		return err
-	}
-	defer sourcePool.Close()
 	targetPool, err := pgxpool.New(ctx, targetURL)
 	if err != nil {
 		return err
@@ -109,9 +109,20 @@ func run(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		credential, err := openSource(sourceAEAD, account.credentialEncrypted)
-		if err != nil {
-			return fmt.Errorf("decrypt credential for account %s: %w", account.id, err)
+		credential := []byte("{}")
+		refreshError := account.refreshError
+		hasCredential := strings.TrimSpace(account.credentialEncrypted) != ""
+		if hasCredential {
+			credential, err = openSource(sourceAEAD, account.credentialEncrypted)
+			if err != nil {
+				return fmt.Errorf("decrypt credential for account %s: %w", account.id, err)
+			}
+		} else {
+			// Legacy harness profiles referenced credentials installed on the old
+			// daemon instead of storing a per-account secret. Preserve the account
+			// and make its unavailable state explicit rather than dropping it or
+			// pretending that it can be routed in v2.
+			refreshError = "Legacy shared-credential profile requires reconnection"
 		}
 		credentialRef, err := insertTargetSecret(ctx, tx, targetAEAD, targetWorkspace, credential)
 		if err != nil {
@@ -133,7 +144,7 @@ func run(ctx context.Context) error {
 			kind = "subscription"
 		}
 		status := "connected"
-		if !account.enabled || account.refreshError != "" {
+		if !account.enabled || refreshError != "" {
 			status = "limited"
 		}
 		_, err = tx.Exec(ctx, `insert into model_accounts
@@ -148,7 +159,7 @@ func run(ctx context.Context) error {
 			 expires_at=excluded.expires_at, refresh_error=excluded.refresh_error,
 			 updated_at=excluded.updated_at`, account.id, targetWorkspace, targetUser, account.provider,
 			account.accountKey, account.label, account.email, account.plan, kind, account.credentialKind,
-			status, credentialRef, refreshRef, account.expiresAt, account.refreshError,
+			status, credentialRef, refreshRef, account.expiresAt, refreshError,
 			account.createdAt, account.updatedAt)
 		if err != nil {
 			return fmt.Errorf("insert target account %s: %w", account.id, err)
@@ -248,10 +259,21 @@ func targetWorkspaceOwner(ctx context.Context, tx pgx.Tx, sourceWorkspace string
 	return workspaceID, userID, nil
 }
 
-func sourceCipher(raw string) (cipher.AEAD, error) {
-	key, err := base64.StdEncoding.DecodeString(strings.TrimSpace(raw))
-	if err != nil || len(key) != 32 {
-		return nil, errors.New("SOURCE_SECRETS_KEY must be a base64-encoded 32-byte key")
+func sourceCipher(ctx context.Context, pool *pgxpool.Pool, raw string) (cipher.AEAD, error) {
+	var key []byte
+	if encoded := strings.TrimSpace(raw); encoded != "" {
+		decoded, err := base64.StdEncoding.DecodeString(encoded)
+		if err != nil || len(decoded) != 32 {
+			return nil, errors.New("SOURCE_SECRETS_KEY must be a base64-encoded 32-byte key")
+		}
+		key = decoded
+	} else {
+		if err := pool.QueryRow(ctx, `select value from server_secret where name='agent_account_secret_key'`).Scan(&key); err != nil {
+			return nil, fmt.Errorf("read source managed agent-account key: %w", err)
+		}
+		if len(key) != 32 {
+			return nil, fmt.Errorf("source managed agent-account key is %d bytes, expected 32", len(key))
+		}
 	}
 	block, err := aes.NewCipher(key)
 	if err != nil {
