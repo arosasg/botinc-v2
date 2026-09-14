@@ -1,8 +1,10 @@
 # Deployment
 
-Staging runs at `https://test.botinc.ai`. Caddy routes `/api/*` and `/healthz`
-to the API and other requests to Next.js. Both use the same origin. Keep
-`COOKIE_DOMAIN` unset so staging cookies cannot reach production.
+Production runs at `https://botinc.ai`, and the same deployment remains available at `https://test.botinc.ai` for compatibility checks.
+Caddy routes `/api/*` and `/healthz` to the API and other requests to Next.js.
+Both domains use the same-origin API.
+Keep `COOKIE_DOMAIN` unset so cookies remain host scoped.
+Legacy `/<workspace>/chat?session=<uuid>` routes for all six imported workspace slugs redirect to `/w` with the matching v2 workspace and stable conversation ID.
 
 The isolated CloudFormation stack `botinc-v2-staging` owns its EC2 instance,
 Elastic IP, ECR repositories, CodeBuild project, source bucket and IAM roles.
@@ -39,9 +41,9 @@ existing database passwords or encryption keys during redeployment.
 Staging currently restricts sign-in with `BOTINC_ALLOWED_EMAILS` to the owner's
 address while release checks remain incomplete.
 
-## Promotion gate
+## Cutover and rollback
 
-Read `docs/FUNCTIONALITY-MATRIX.md`. Staging health and one passing chat are
-not sufficient for production promotion. All functionality, independent review,
-data migration, backup/restore and rollback checks must pass before cutover.
-`botinc.ai` continues to serve v1. No v1 database migrations have been applied.
+Read `docs/FUNCTIONALITY-MATRIX.md` for the evidence captured before and after the 2026-09-14 cutover.
+The v2 database backup and Route 53 zone snapshot are stored in the encrypted migration prefix before any production switch.
+Rollback restores the previous Route 53 records and the pre-migration v2 database backup.
+Never apply v2 schema migrations to the v1 database.

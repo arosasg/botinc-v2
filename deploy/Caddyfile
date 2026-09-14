@@ -1,11 +1,30 @@
-test.botinc.ai {
-  handle /api/* {
-    reverse_proxy api:8080
-  }
-  handle /healthz {
-    reverse_proxy api:8080
-  }
-  handle {
-    reverse_proxy web:3000
-  }
+test.botinc.ai, botinc.ai {
+	@legacyBotIncChat {
+		path /botinc/chat
+	}
+	redir @legacyBotIncChat /w?workspace=v1-44148312&conversation={query.session} 302
+	@legacyDiditChat path /didit/chat
+	redir @legacyDiditChat /w?workspace=v1-27722ac2&conversation={query.session} 302
+	@legacyHiDoctorChat path /hi-doctor/chat
+	redir @legacyHiDoctorChat /w?workspace=v1-bd5914e9&conversation={query.session} 302
+	@legacyPersonalChat path /personal/chat
+	redir @legacyPersonalChat /w?workspace=v1-1836dd37&conversation={query.session} 302
+	@legacySanteChat path /sante/chat
+	redir @legacySanteChat /w?workspace=v1-fd6a672c&conversation={query.session} 302
+	@legacySanteLabsChat path /sante-labs/chat
+	redir @legacySanteLabsChat /w?workspace=v1-a2ee8b89&conversation={query.session} 302
+
+	handle /api/* {
+		reverse_proxy api:8080
+	}
+	handle /healthz {
+		reverse_proxy api:8080
+	}
+	handle {
+		reverse_proxy web:3000
+	}
+}
+
+api.botinc.ai {
+	reverse_proxy api:8080
 }

@@ -15,6 +15,13 @@ import (
 )
 
 func row(v map[string]any) Row { var r Row; _ = json.Unmarshal(raw(v), &r); return r }
+
+func TestLegacyMergedDevStatusIsComplete(t *testing.T) {
+	if got := statuses["merged_dev"]; got != "done" {
+		t.Fatalf("merged_dev maps to %q, want done", got)
+	}
+}
+
 func TestImportRollbackReplayAndRelationships(t *testing.T) {
 	url := os.Getenv("TEST_DATABASE_URL")
 	if url == "" {

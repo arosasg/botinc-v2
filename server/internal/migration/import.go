@@ -117,7 +117,7 @@ func Load(dir string) (*Snapshot, error) {
 	return s, nil
 }
 
-var statuses = map[string]string{"backlog": "todo", "todo": "todo", "in_progress": "blocked", "in_review": "in_review", "blocked": "blocked", "done": "done", "cancelled": "cancelled"}
+var statuses = map[string]string{"backlog": "todo", "todo": "todo", "in_progress": "blocked", "in_review": "in_review", "merged_dev": "done", "blocked": "blocked", "done": "done", "cancelled": "cancelled"}
 var priorities = map[string]string{"urgent": "urgent", "high": "high", "medium": "normal", "normal": "normal", "low": "low", "none": "low"}
 
 func Apply(ctx context.Context, pool *pgxpool.Pool, s *Snapshot, ownerEmail string, apply bool) (Report, error) {
