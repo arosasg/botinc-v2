@@ -90,12 +90,12 @@ describe("work conversation layout", () => {
       chats: { "Route Member": [] },
       connections: { "Route Member": {} },
       agentPrefs: { "Route Member": {} },
-      funding: { "Route Member": {} },
+      funding: { "Route Member": "credits" },
       memoryByMember: { "Route Member": {} },
       skillGrants: { "Route Member": {} },
-      modelAccounts: { "Route Member": {} },
-      preferencesBy10: { "Route Member": {} },
-      fallbackPolicies10: { "Route Member": {} },
+      modelAccounts: { "Route Member": [] },
+      preferencesBy10: { "Route Member": "" },
+      fallbackPolicies10: { "Route Member": "ask" },
     });
   });
 
