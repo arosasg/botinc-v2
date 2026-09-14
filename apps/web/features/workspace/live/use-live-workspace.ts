@@ -5,7 +5,8 @@
 import { useEffect, useRef } from "react";
 import { Client, type User, type WorkspaceClient, type WorkflowGraph } from "@botinc/api";
 import type { Vals } from "../vals";
-import { mapAccount, mapAutopilot, mapConversation, mapIssue, mapRun, type PeopleIndex } from "./map";
+import { mapAccount, mapAutopilot, mapConversation, mapIssue, mapMessage, mapRun, type PeopleIndex } from "./map";
+import { parseWorkspaceRoute, workspacePath, type WorkspaceRoute } from "./routes";
 
 export type LiveStatus = "off" | "connecting" | "live" | "signed-out" | "error";
 export type Logic = Vals & { state: Vals; setState: (patch: Vals) => void; renderVals: () => Vals };
@@ -17,12 +18,16 @@ const catalogPluginKeys = new Set(["github","slack","gmail","google-drive","noti
 const uuid = (s: unknown): s is string => typeof s === "string" && /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(s);
 const phaseFor = (s?: string) => s && ["queued", "provisioning", "running"].includes(s) ? "working" : s === "waiting" ? "paused" : "done";
 const draftKey = (workspace: string, conversation?: unknown) => `botinc:draft:v2:${workspace}:${uuid(conversation) ? conversation : "new"}`;
+const dockConversationKey = (workspace: string) => `botinc:dock-conversation:v2:${workspace}`;
+const dockDraftKey = (workspace: string) => `botinc:dock-draft:v2:${workspace}`;
 export function readDraft(workspace: string, conversation?: unknown): string {
  try{return window.localStorage.getItem(draftKey(workspace,conversation))||""}catch{return ""}
 }
 export function saveDraft(workspace: string, conversation: unknown, value: string): void {
  try{if(value)window.localStorage.setItem(draftKey(workspace,conversation),value);else window.localStorage.removeItem(draftKey(workspace,conversation))}catch{}
 }
+function readLocal(key: string): string { try{return window.localStorage.getItem(key)||""}catch{return ""} }
+function saveLocal(key: string, value: string): void { try{if(value)window.localStorage.setItem(key,value);else window.localStorage.removeItem(key)}catch{} }
 
 export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus, detail?: string) => void) {
  const statusRef = useRef(onStatus);
@@ -36,7 +41,8 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
   const api=new Client({baseURL,onUnauthenticated:()=>report("signed-out")});
   void (async()=>{
    const me=(await api.me(abort.signal)).user;
-   const {workspaces}=await api.workspaces(abort.signal);const selected=new URLSearchParams(window.location.search).get("workspace");const first=workspaces.find(w=>w.slug===selected)||workspaces[0];if(!first)throw new Error("This account has no workspace");
+   const initialRoute=parseWorkspaceRoute(new URL(window.location.href));
+   const {workspaces}=await api.workspaces(abort.signal);const first=workspaces.find(w=>w.slug===initialRoute.workspace)||workspaces[0];if(!first)throw new Error("This account has no workspace");
    const ws=api.workspace(first.slug);const people:PeopleIndex=new Map();const member=me.name.trim()||me.email.split("@")[0]||"You";
    let refreshing=false,again=false;
    const hydrate=async()=>{
@@ -68,6 +74,19 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
       patch.phase=phase;
       if(run?.error)patch.error=run.error;
      }
+     const dockConversation=String(logic.state.dockConversationID||readLocal(dockConversationKey(ws.slug)));
+     patch.dockLiveDraft=logic.state.dockLiveDraft??readLocal(dockDraftKey(ws.slug));
+     if(uuid(dockConversation)&&chats.conversations.some(c=>c.id===dockConversation)){
+      const dock=await ws.conversation(dockConversation,abort.signal);if(!alive)return;
+      const apiOrigin=new URL(api.baseURL||"/",window.location.origin);
+      const attachments=dock.attachments.map(a=>({...a,url:new URL(a.url,apiOrigin).toString()}));
+      const dockRun=dock.runs.at(-1);
+      patch.dockConversationID=dockConversation;
+      patch.dockLiveMessages=dock.messages.map(m=>mapMessage(m,me,people,attachments));
+      patch.dockLiveRun=dockRun||null;
+      patch.dockLivePhase=phaseFor(dockRun?.status);
+      patch.dockLiveCost=dock.runs.reduce((sum,r)=>sum+r.cost_cents,0)/100;
+     }else if(dockConversation){saveLocal(dockConversationKey(ws.slug),"");patch.dockConversationID="";patch.dockLiveMessages=[];patch.dockLiveRun=null;patch.dockLivePhase="done";}
      patch.autopilots9=autos.autopilots.map(a=>({...mapAutopilot(a),owner:member,kind:a.trigger.kind,status:a.enabled?"active":"paused",history:[],limit:2,daily:20}));
      patch.accounts10=accounts.accounts.map(mapAccount);patch.modelAccounts={[member]:patch.accounts10};
      patch.connections={[member]:Object.fromEntries(plugins.plugins.map(p=>[titleCase(p.kind.replace(/^mcp:/,"")),p.status==="connected"]))};
@@ -84,12 +103,12 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
      patch.workflows14=workflows.workflows.map(w=>({id:w.id,name:w.name,meta:w.description,icon:"git-branch",state:w.active_version_id?"Active":"Draft",tone:w.active_version_id?"ok14":""}));
      patch.profileByMember15={[member]:{...(logic.state.profileByMember15?.[previous]||{}),name:me.name||member,email:me.email}};
      patch.sec19={...(logic.state.sec19||{}),twoStep:false,sms:false,codes:[],codesLeft:0,codesWhen:"Never",sessions:sessions.sessions.map(d=>({id:d.id,name:d.current?"Current browser":"Browser session",short:"browser",icon:"monitor",meta:d.user_agent,where:d.location||"",ip:d.ip,when:new Date(d.last_seen_at).toLocaleString(),current:d.current})),keys:keys.keys.map(k=>({id:k.id,name:k.name,prefix:k.prefix,scope:k.scopes.includes("write")?"Full access":"Read only",created:new Date(k.created_at).toLocaleDateString(),used:k.last_used_at?new Date(k.last_used_at).toLocaleString():"Never"}))};
-     const initialURL=new URL(window.location.href);const params=initialURL.searchParams;
-     logic.setState(patch);if(!hydrated){if(previous!==member){logic.newChat();window.history.replaceState({},"",initialURL)}const conversation=params.get("conversation");const issue=params.get("issue");const requestedView=params.get("view");if(conversation&&chats.conversations.some(c=>c.id===conversation)){logic.setState({activeChat:conversation,view:"chat",draft:readDraft(ws.slug,conversation)});again=true}else if(issue&&issues.issues.some(i=>i.id===issue||i.identifier===issue)){logic.setState({activeIssue:issue,view:requestedView==="thread9"?"thread9":"issue"});again=true}else if(requestedView){logic.setState({view:requestedView,...params.get("autopilot")?{activeAuto9:params.get("autopilot")}:{},...params.get("section")?{section:params.get("section")}:{},draft:readDraft(ws.slug,null)})}else{logic.setState({draft:readDraft(ws.slug,null)})}}hydrated=true;report("live");
+     logic.setState(patch);if(!hydrated){if(previous!==member)logic.newChat();const conversation=initialRoute.conversation;const issue=initialRoute.issue;const requestedView=initialRoute.view;if(conversation&&chats.conversations.some(c=>c.id===conversation)){logic.setState({activeChat:conversation,view:"chat",draft:readDraft(ws.slug,conversation)});again=true}else if(issue&&issues.issues.some(i=>i.id===issue||i.identifier===issue)){logic.setState({activeIssue:issue,view:requestedView==="thread9"?"thread9":"issue"});again=true}else{logic.setState({view:requestedView,...initialRoute.autopilot?{activeAuto9:initialRoute.autopilot}:{},...initialRoute.section?{section:initialRoute.section}:{},draft:readDraft(ws.slug,null)})}const canonicalIssue=issue?issues.issues.find(i=>i.id===issue||i.identifier===issue)?.id:undefined;window.history.replaceState({},"",workspacePath({...initialRoute,workspace:ws.slug,...canonicalIssue?{issue:canonicalIssue}:{}}))}hydrated=true;report("live");
     }finally{refreshing=false;if(again&&alive){again=false;void hydrate().catch(fail)}}
    };
    restore=installActions(logic,ws,api,me,people,hydrate,fail);
    await hydrate();if(!alive)return;
+   if(initialRoute.workflow&&typeof logic.openGraph14==="function")await logic.openGraph14(initialRoute.workflow);
    disconnect=ws.connect(e=>{if(e.type==="hello")return;if(timer)clearTimeout(timer);timer=setTimeout(()=>{void hydrate().catch(fail)},100)},up=>{if(up)void hydrate().catch(fail)});
   })().catch(err=>{if(err?.status===401)report("signed-out");else fail(err)});
   return()=>{alive=false;abort.abort();if(timer)clearTimeout(timer);disconnect?.();restore?.()};
@@ -100,8 +119,9 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
 export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User,people:PeopleIndex,hydrate:()=>Promise<void>,fail:(err:unknown)=>void){
  const originals=new Map<string,unknown>();let disposed=false;
  const pendingFiles=new Map<string,File>();
+ let fileTarget:"main"|"dock"="main";
  const bind=(name:string,fn:unknown)=>{if(!originals.has(name))originals.set(name,logic[name]);logic[name]=fn};
- const routeURL=(view:string,patch:Vals={},replace=false)=>{const url=new URL(window.location.href);url.pathname="/w";url.searchParams.set("workspace",ws.slug);url.searchParams.set("view",view);for(const key of ["conversation","issue","autopilot","section","workflow"])url.searchParams.delete(key);const state:Vals={...logic.state,...patch,view};if(view==="chat"&&uuid(state.activeChat))url.searchParams.set("conversation",state.activeChat);if(["issue","thread9"].includes(view)&&state.activeIssue)url.searchParams.set("issue",state.activeIssue);if(view==="auto9"&&state.activeAuto9)url.searchParams.set("autopilot",state.activeAuto9);if(view==="settings14"&&state.section)url.searchParams.set("section",state.section);window.history[replace?"replaceState":"pushState"]({},"",url)};
+ const routeURL=(view:string,patch:Vals={},replace=false)=>{const state:Vals={...logic.state,...patch,view};const issueRow=(state.issues||[]).find((item:Vals)=>item.id===state.activeIssue||item.uuid===state.activeIssue);const issueID=issueRow?.uuid||state.activeIssue;const route:WorkspaceRoute={workspace:ws.slug,view,...(view==="chat"&&uuid(state.activeChat)?{conversation:state.activeChat}:{}),...(["issue","thread9"].includes(view)&&issueID?{issue:issueID}:{}),...(view==="auto9"&&state.activeAuto9?{autopilot:state.activeAuto9}:{}),...(view==="settings"&&state.section?{section:state.section}:{}),...(view==="settings"&&state.section==="workflows"&&state.activeWorkflow?{workflow:state.activeWorkflow}:{})};window.history[replace?"replaceState":"pushState"]({},"",workspacePath(route))};
  const originalGo=typeof logic.go==="function"?logic.go.bind(logic):null;
  if(originalGo)bind("go",(view:string,patch:Vals={})=>{originalGo(view,patch);routeURL(view,patch)});
  const originalAccountRoutable=typeof logic.accountRoutable14==="function"?logic.accountRoutable14.bind(logic):null;
@@ -112,7 +132,7 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
   e?.preventDefault();if(sending||disposed)return;let draft=String(logic.state.draft||"").trim();const queued=[...(logic.state.attachments11||[])].filter((a:Vals)=>pendingFiles.has(a.id));if(!draft&&!queued.length)return;if(!draft)draft="Review the attached files.";sending=true;
   try{
    let active=logic.state.activeChat;
-   if(!uuid(active)){const out=await ws.createConversation({title:draft.slice(0,72),model:String(logic.state.model||"auto").toLowerCase()==="auto"?"auto":String(logic.state.model)});if(disposed)return;active=out.conversation.id;logic.setState({activeChat:active,view:"chat"})}
+   if(!uuid(active)){const out=await ws.createConversation({title:draft.slice(0,72),model:String(logic.state.model||"auto").toLowerCase()==="auto"?"auto":String(logic.state.model)});if(disposed)return;active=out.conversation.id;logic.setState({activeChat:active,view:"chat"});routeURL("chat",{activeChat:active})}
    const attachmentIDs:string[]=[];
    for(const item of queued){const file=pendingFiles.get(item.id);if(!file)continue;const out=await ws.uploadConversationAttachment(active,file);attachmentIDs.push(out.attachment.id)}
    await ws.sendMessage(active,draft,attachmentIDs);
@@ -122,15 +142,35 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
   }catch(err){if(!disposed)fail(err)}finally{sending=false}
  };
  bind("send",send);
- bind("openIssue",(id:string)=>{logic.go("issue",{activeIssue:id,issueComment:"",liveIssueDetail:null,liveIssueFiles:[]});void hydrate().catch(fail)});
+ let dockSending=false;
+ const sendDock=async(e?:{preventDefault:()=>void},suggested?:string)=>{
+  e?.preventDefault();if(dockSending||disposed)return;
+  let draft=String(suggested??logic.state.dockLiveDraft??"").trim();
+  const queued=[...(logic.state.dockAttachmentsLive||[])].filter((a:Vals)=>pendingFiles.has(a.id));
+  if(!draft&&!queued.length)return;if(!draft)draft="Review the attached files.";dockSending=true;
+  try{
+   let active=String(logic.state.dockConversationID||readLocal(dockConversationKey(ws.slug)));
+   if(!uuid(active)){
+    const out=await ws.createConversation({title:"Ask Operator",model:String(logic.state.model||"auto").toLowerCase()==="auto"?"auto":String(logic.state.model)});
+    if(disposed)return;active=out.conversation.id;saveLocal(dockConversationKey(ws.slug),active);logic.setState({dockConversationID:active});
+   }
+   const attachmentIDs:string[]=[];
+   for(const item of queued){const file=pendingFiles.get(item.id);if(!file)continue;const out=await ws.uploadConversationAttachment(active,file);attachmentIDs.push(out.attachment.id)}
+   await ws.sendMessage(active,draft,attachmentIDs);
+   saveLocal(dockDraftKey(ws.slug),"");
+   for(const item of queued){pendingFiles.delete(item.id);if(String(item.url||"").startsWith("blob:"))URL.revokeObjectURL(item.url)}
+   if(!disposed){logic.setState({dockLiveDraft:"",dockAttachmentsLive:[]});await hydrate()}
+  }catch(err){if(!disposed)fail(err)}finally{dockSending=false}
+ };
+ bind("openIssue",(id:string)=>{logic.go("thread9",{activeIssue:id,issueComment:"",liveIssueDetail:null,liveIssueFiles:[]});void hydrate().catch(fail)});
  bind("issue",()=>logic.state.issues.find((i:Vals)=>i.id===logic.state.activeIssue||i.uuid===logic.state.activeIssue)||{id:"",title:"Select an issue",description:"",status:"Incoming",events:[]});
  // The prototype has several generations of composer handlers. All route here.
  for(const name of ["sendComposer10","sendComposer11","sendThreadMessage9"])bind(name,send);
- bind("workspaceMenu16",(event:Event)=>logic.openMenu14(null,event,[...(logic.state.liveWorkspaces||[]).map((w:Vals)=>({label:w.name,hint:w.role,on:w.slug===ws.slug,run:()=>window.location.assign("/w?workspace="+encodeURIComponent(w.slug))})),{label:"New workspace",run:()=>logic.newWorkspace16()}],"Workspaces"));
- bind("createWorkspace16",write(async()=>{const name=String(logic.state.nwName16||"").trim();if(!name)throw new Error("Enter a workspace name");const created=await api.request<{slug:string}>("POST","/api/workspaces",{name});window.location.assign("/w?workspace="+encodeURIComponent(created.slug))}));
+ bind("workspaceMenu16",(event:Event)=>logic.openMenu14(null,event,[...(logic.state.liveWorkspaces||[]).map((w:Vals)=>({label:w.name,hint:w.role,on:w.slug===ws.slug,run:()=>window.location.assign(workspacePath({workspace:w.slug,view:"chat"}))})),{label:"New workspace",run:()=>logic.newWorkspace16()}],"Workspaces"));
+ bind("createWorkspace16",write(async()=>{const name=String(logic.state.nwName16||"").trim();if(!name)throw new Error("Enter a workspace name");const created=await api.request<{slug:string}>("POST","/api/workspaces",{name});window.location.assign(workspacePath({workspace:created.slug,view:"chat"}))}));
  bind("commitRename16",write(async()=>{const s=logic.state;const title=String(s.renameDraft16||"").trim();if(!title)throw new Error("Enter a name");if(uuid(s.renameId16))await ws.updateConversation(s.renameId16,{title});else await api.request("PATCH",`/api/w/${ws.slug}/issues/${s.renameId16}`,{title});logic.setState({renameId16:null})}));
  bind("archiveRow16",(id:string)=>write(async()=>{if(!uuid(id))throw new Error("Open the issue to change its status");await ws.updateConversation(id,{archived:true});if(logic.state.activeChat===id)logic.newChat()})());
- bind("shareRow16",(row:Vals)=>write(async()=>{const url=new URL("/w",window.location.origin);url.searchParams.set("workspace",ws.slug);if(uuid(row.id)){await ws.updateConversation(row.id,{shared:true});url.searchParams.set("view","chat");url.searchParams.set("conversation",row.id)}else{const issue=row.uuid||row.issueId||String(row.id||"").replace(/^issue:/,"");if(!issue)throw new Error("Open a record before sharing it");url.searchParams.set("view","issue");url.searchParams.set("issue",issue)}await navigator.clipboard.writeText(url.toString());logic.toast("Workspace link copied")})());
+ bind("shareRow16",(row:Vals)=>write(async()=>{let path:string;if(uuid(row.id)){await ws.updateConversation(row.id,{shared:true});path=workspacePath({workspace:ws.slug,view:"chat",conversation:row.id})}else{const issue=row.uuid||row.issueId||String(row.id||"").replace(/^issue:/,"");if(!issue)throw new Error("Open a record before sharing it");path=workspacePath({workspace:ws.slug,view:"issue",issue})}await navigator.clipboard.writeText(new URL(path,window.location.origin).toString());logic.toast("Workspace link copied")})());
  bind("pluginConnected10",(name:string)=>(logic.state.livePlugins||[]).some((p:Vals)=>pluginKey(p.kind)===pluginKey(name)&&p.status==="connected"));
  bind("connect",(name:string)=>logic.showPlugin10(name));
  bind("submitMcp10",write(async()=>{
@@ -156,7 +196,7 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
  bind("revokeInvite14",(id:string)=>write(async()=>{await ws.revokeInvitation(id)})());
  bind("setMemberRole14",(id:string,role:string)=>write(async()=>{await ws.setMemberRole(id,role.toLowerCase())})());
  bind("sendInvites14",write(async()=>{const s=logic.state;const emails=String(s.inviteEmails14||"").split(/[\s,;]+/).filter(Boolean);if(!emails.length)throw new Error("Add an email address");const links=[];for(const email of emails){const invite=await ws.invite(email,String(s.inviteRole14||"member").toLowerCase());links.push(invite.link)}logic.generic("Invitation links","Share each link with the invited person",[],{genericText:links.join("\n")});logic.setState({inviteEmails14:""})}));
- bind("openGraph14",(id:string)=>write(async()=>{const out=await ws.workflow(id);const v=out.versions.find(v=>v.id===out.workflow.active_version_id)||out.versions[0];if(!v)throw new Error("This workflow has no version");const graph={id:out.workflow.id,name:out.workflow.name,version:v.version,nodes:v.graph.nodes.map((n,i)=>({id:n.key,type:n.kind,label:n.name,model:n.model||"Auto",prompt:n.prompt||"",x:n.x??i*220,y:n.y??120})),edges:v.graph.edges.map((e,i)=>({id:"e"+i,from:e[0],to:e[1],label:""}))};logic.setState({graph14:graph,graphSaved14:structuredClone(graph),graphVersions14:out.versions.map(v=>({id:v.id,name:"Version "+v.version,meta:v.created_at,state:titleCase(v.status)})),graphId14:id,overlay14:"graph",graphSide14:"node",graphSel14:graph.nodes[0]?.id})})());
+ bind("openGraph14",(id:string)=>write(async()=>{const out=await ws.workflow(id);const v=out.versions.find(v=>v.id===out.workflow.active_version_id)||out.versions[0];if(!v)throw new Error("This workflow has no version");const graph={id:out.workflow.id,name:out.workflow.name,version:v.version,nodes:v.graph.nodes.map((n,i)=>({id:n.key,type:n.kind,label:n.name,model:n.model||"Auto",prompt:n.prompt||"",x:n.x??i*220,y:n.y??120})),edges:v.graph.edges.map((e,i)=>({id:"e"+i,from:e[0],to:e[1],label:""}))};logic.setState({view:"settings",section:"workflows",activeWorkflow:id,graph14:graph,graphSaved14:structuredClone(graph),graphVersions14:out.versions.map(v=>({id:v.id,name:"Version "+v.version,meta:v.created_at,state:titleCase(v.status)})),graphId14:id,overlay14:"graph",graphSide14:"node",graphSel14:graph.nodes[0]?.id});routeURL("settings",{section:"workflows",activeWorkflow:id})})());
  bind("saveGraph14",write(async()=>{const g=logic.state.graph14;const graph:WorkflowGraph={nodes:g.nodes.map((n:Vals)=>({key:n.id,name:n.label,kind:n.type,model:n.model==="Auto"?"auto":n.model,prompt:n.prompt||"",x:n.x,y:n.y})),edges:g.edges.map((e:Vals)=>[e.from,e.to])};const out=uuid(g.id)?await ws.saveWorkflow(g.id,graph):await ws.createWorkflow({name:g.name,graph});const id="workflow" in out?out.workflow.id:g.id;await logic.openGraph14(id)}));
  const render=logic.renderVals;
  bind("renderVals",()=>{
@@ -174,12 +214,12 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
   const migrated=sourceIssue?.source?.kind==="migration";
   const timestamp=(value?:string)=>value?new Date(value).toLocaleString():"Unavailable";
   v.i8Created=timestamp(sourceIssue?.created_at);v.i8Updated=timestamp(sourceIssue?.updated_at);
-  v.i8RunState=latestRun?titleCase(latestRun.status):"Not run in v2";v.i8RunTone="";
+  v.i8RunState=latestRun?titleCase(latestRun.status):migrated?"Ready to continue":"Ready";v.i8RunTone="";
   v.i8ActionState=sourceIssue?titleCase(sourceIssue.status.replaceAll("_"," ")):"Loading";
-  v.i8ActionTitle=latestRun?`Latest run: ${latestRun.status}`:"No v2 execution recorded";
-  v.i8ActionCopy=latestRun?.error||(migrated?"Imported from v1. Historical execution records are preserved in the migration archive.":"Start work to create a remote execution record.");
+  v.i8ActionTitle=latestRun?`Latest run: ${titleCase(latestRun.status)}`:migrated?"Continue this work":"Ready for Operator";
+  v.i8ActionCopy=latestRun?.error||(migrated?"This work and its original discussion were imported successfully. Start when you are ready to continue.":"Start work when you are ready.");
   v.i8Model=latestRun?.model||"Not selected";v.i8Funding=latestRun?.funding||"Not charged";
-  v.i8Credit=logic.cash((detail?.runs||[]).reduce((sum:number,r:Vals)=>sum+r.cost_cents,0)/100)+" used in v2";
+  v.i8Credit=logic.cash((detail?.runs||[]).reduce((sum:number,r:Vals)=>sum+r.cost_cents,0)/100)+" used";
   v.i8FundingWarn=false;v.thinkingLabel=latestRun?.effort||"Not recorded";
   v.i8Owner=currentIssue.owner||"Unassigned";v.i8OwnerInitial=currentIssue.ownerInitial||"?";
   v.i8Reporter=people.get(sourceIssue?.created_by)?.name||"Preserved in source record";
@@ -190,7 +230,7 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
   v.i8PrimaryLabel=activeRun?"Cancel run":"Start work";v.i8HasSecondary=false;
   v.i8Primary=write(async()=>{if(activeRun)await ws.cancelRun(activeRun.id);else await ws.work(currentIssue.uuid||currentIssue.id)});
   v.chooseComputer=()=>logic.toast("All work runs on remote computers");
-  v.openReceipt=()=>logic.generic("Run usage","Provider-reported usage for this issue",[],{genericText:(detail?.runs||[]).map((r:Vals)=>`${r.purpose}: ${r.status} · ${logic.cash(r.cost_cents/100)}`).join("\n")||"No v2 usage has been charged for this issue. Historical execution records are preserved in the migration archive."});
+  v.openReceipt=()=>logic.generic("Run usage","Provider-reported usage for this issue",[],{genericText:(detail?.runs||[]).map((r:Vals)=>`${r.purpose}: ${r.status} · ${logic.cash(r.cost_cents/100)}`).join("\n")||"No usage has been charged for this issue."});
   v.runActivity=v.openReceipt;
   v.sourceDetail=()=>logic.generic("Issue source",v.i8SourceLabel,[],{genericText:migrated?"Original issue identifiers and source records are preserved in the migration archive.":currentIssue.url||"Created in this workspace."});
   v.saveI8Title=write(async()=>{const title=String(s.titleDraft||"").trim();if(!title)throw new Error("Enter an issue title");await ws.updateIssue(currentIssue.uuid||currentIssue.id,{title});logic.setState({titleEditing:false})});
@@ -220,19 +260,45 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
   const chat=logic.currentChat();
   v.conversationCost10=logic.cash(chat?.cost||0);v.routeCostShort17=v.conversationCost10;
   v.routeLimit17=logic.cash(chat?.taskLimit||0);
+  const dockMessages=(s.dockLiveMessages||[]).map((message:Vals)=>{
+   const mine=String(message.cls||"").includes("user-message");
+   return{...message,cls:mine?"mine":"operator",hasAvatar:!mine,avatar:"/assets/logo/botinc-mark.svg",author:mine?(me.name||me.email||"You"):(message.author||"Operator"),hasAttachments11:!!message.attachments11?.length,isOperator11:!mine,copy11:()=>navigator.clipboard?.writeText(String(message.text||"")),quote11:()=>{const value=String(message.text||"");logic.setState({dockLiveDraft:value});saveLocal(dockDraftKey(ws.slug),value)}};
+  });
+  const dockRun=s.dockLiveRun;const isDockRunning=s.dockLivePhase==="working"||s.dockLivePhase==="paused";
+  v.dockRows15=dockMessages;v.dockNoLog15=!dockMessages.length;
+  v.dockRunning15=isDockRunning;v.dockRunCopy15=s.dockLivePhase==="paused"?"Operator is waiting for your input.":"Operator is working. Your next message will be queued safely.";
+  v.dockQueued15=false;v.dockQueueRows15=[];
+  v.dockDraft15=s.dockLiveDraft||"";v.editDockDraft15=(event:Event)=>{const value=(event.target as HTMLTextAreaElement).value;logic.setState({dockLiveDraft:value});saveLocal(dockDraftKey(ws.slug),value)};
+  v.dockEmpty15=!String(s.dockLiveDraft||"").trim()&&!(s.dockAttachmentsLive||[]).length;
+  v.dockSend15=(event?:Event)=>{void sendDock(event as Event&{preventDefault:()=>void})};
+  v.dockKey15=(event:KeyboardEvent)=>{if(event.key==="Enter"&&!event.shiftKey&&!event.isComposing){event.preventDefault();void sendDock(event)}};
+  v.dockSuggestions15=(v.dockSuggestions15||[]).map((item:Vals)=>({...item,ask:()=>{void sendDock(undefined,String(item.label||""))}}));
+  v.dockExpand15=()=>{const id=String(s.dockConversationID||"");if(uuid(id))void openChat(id);else{logic.setState({dock15:"closed"});logic.newChat()}};
+  v.dockStop15=()=>{if(dockRun?.id)void write(async()=>{await ws.cancelRun(dockRun.id)})()};
+  v.dockFoot15="Private conversation in this workspace. Messages, files, and drafts are saved.";
+  v.dockSendLabel15=isDockRunning?"Queue this message":"Send message";
+  v.dockHasCost19=!!s.dockConversationID;v.conversationCost10=logic.cash(s.dockLiveCost||0);
+  v.dockDictate15=()=>logic.toast("Voice dictation is not available in this browser yet.");
+  v.accountsNote15="Connected accounts are scoped to this workspace. Secrets are encrypted, and provider usage is reported without converting quota into a dollar amount.";
+  v.pfWeeks15=[];v.pfMonths15=[];v.pfStats15=[];v.pfActivitySummary15="Repository activity appears after connected repositories report it.";v.pfFoot15="No repository contribution activity has been reported yet.";
   if(Array.isArray(v.conversationGroups12))v.conversationGroups12=v.conversationGroups12.map((group:Vals)=>({...group,rows:(group.rows||[]).map((row:Vals)=>{
    const id=String(row.id||"");
    if(id.startsWith("chat:")&&uuid(id.slice(5)))return{...row,open:()=>{void openChat(id.slice(5))}};
-   if(id.startsWith("issue:")){const issue=id.slice(6);return{...row,open:()=>{logic.setState({activeIssue:issue,view:"issue",issueComment:"",liveIssueDetail:null,liveIssueFiles:[]});routeURL("issue",{activeIssue:issue});void hydrate().catch(fail)}}}
+   if(id.startsWith("issue:")){const issue=id.slice(6);return{...row,open:()=>{logic.setState({activeIssue:issue,view:"thread9",issueComment:"",liveIssueDetail:null,liveIssueFiles:[]});routeURL("thread9",{activeIssue:issue});void hydrate().catch(fail)}}}
    return row;
   })}));
   for(const key of ["sendMessage","sendComposer10","sendComposer11","sendThreadMessage9"])v[key]=send;
   v.editComposer10=(event:Event)=>{const value=(event.target as HTMLTextAreaElement).value;logic.setState({draft:value});saveDraft(ws.slug,s.activeChat,value)};
   v.composerKey12=(event:KeyboardEvent)=>{if(event.key==="Enter"&&!event.shiftKey&&!event.isComposing){event.preventDefault();void send(event)}};
-  const addFiles=(files:File[])=>{const rows=files.filter(file=>file.size<=64*1024*1024).map(file=>{const id=`upload-${Date.now()}-${crypto.randomUUID()}`;pendingFiles.set(id,file);return{id,name:file.webkitRelativePath||file.name,image:file.type.startsWith("image/"),url:file.type.startsWith("image/")?URL.createObjectURL(file):"",size:file.size,meta:`${Math.max(1,Math.ceil(file.size/1024))} KB · ${file.type.startsWith("image/")?"Image":"File"}`,remove:()=>{pendingFiles.delete(id);logic.setState({attachments11:(logic.state.attachments11||[]).filter((a:Vals)=>a.id!==id)})}}});if(rows.length!==files.length)logic.setState({composerError10:"Choose files smaller than 64 MB."});if(rows.length)logic.setState({attachments11:[...(logic.state.attachments11||[]),...rows],composerError10:""})};
-  const changed=(event:Event)=>{const input=event.target as HTMLInputElement;addFiles(Array.from(input.files||[]));input.value=""};
+  const addFiles=(files:File[],target:"main"|"dock"=fileTarget)=>{const stateKey=target==="dock"?"dockAttachmentsLive":"attachments11";const rows=files.filter(file=>file.size<=64*1024*1024).map(file=>{const id=`upload-${Date.now()}-${crypto.randomUUID()}`;pendingFiles.set(id,file);return{id,name:file.webkitRelativePath||file.name,image:file.type.startsWith("image/"),url:file.type.startsWith("image/")?URL.createObjectURL(file):"",size:file.size,meta:`${Math.max(1,Math.ceil(file.size/1024))} KB · ${file.type.startsWith("image/")?"Image":"File"}`,remove:()=>{pendingFiles.delete(id);logic.setState({[stateKey]:(logic.state[stateKey]||[]).filter((a:Vals)=>a.id!==id)})}}});if(rows.length!==files.length)logic.setState({composerError10:"Choose files smaller than 64 MB."});if(rows.length)logic.setState({[stateKey]:[...(logic.state[stateKey]||[]),...rows],composerError10:""})};
+  const changed=(event:Event)=>{const input=event.target as HTMLInputElement;addFiles(Array.from(input.files||[]),fileTarget);input.value="";fileTarget="main"};
   v.filesChanged11=changed;v.filesChanged15=changed;
   v.composerPaste=(event:ClipboardEvent)=>{const files=Array.from(event.clipboardData?.items||[]).filter(item=>item.kind==="file").map(item=>item.getAsFile()).filter((file):file is File=>!!file);if(files.length){event.preventDefault();addFiles(files)}};
+  v.dockPaste=(event:ClipboardEvent)=>{const files=Array.from(event.clipboardData?.items||[]).filter(item=>item.kind==="file").map(item=>item.getAsFile()).filter((file):file is File=>!!file);if(files.length){event.preventDefault();addFiles(files,"dock")}};
+  v.dockHasAttach15=!!(s.dockAttachmentsLive||[]).length;
+  v.dockAttachRows19=(s.dockAttachmentsLive||[]).map((item:Vals)=>({...item,removeLabel:`Remove ${item.name}`,open:()=>{}}));
+  v.dockPlusMenu15=(event:Event)=>logic.openMenu14(null,event,[{label:"Attach files",icon:"paperclip",run:()=>{fileTarget="dock";document.getElementById("attachments11")?.click()}},{label:"Use this page as context",icon:"layout-dashboard",on:true,run:()=>{}}],"Add to message");
+  v.context11=(event:Event)=>{fileTarget="main";logic.plusMenu15(event,"main")};
   v.createIssue=write(async()=>{const title=String(s.newIssueTitle||"").trim();if(!title)throw new Error("Give the issue a title");const out=await ws.createIssue({title,description:s.newIssueDescription,priority:String(s.newIssuePriority||"normal").toLowerCase().replace(" priority","")});await hydrate();logic.openIssue(out.issue.identifier);logic.setState({dialog:null})});
   v.pauseChat=write(async()=>{const c=logic.currentChat();if(c?.runId)await ws.cancelRun(c.runId)});
   v.signOut=write(async()=>{await api.logout();window.location.assign("/")});
@@ -263,7 +329,7 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
   return v;
  });
  logic.forceUpdate?.();
- const popRoute=()=>{const params=new URLSearchParams(window.location.search);const conversation=params.get("conversation");const issue=params.get("issue");const view=params.get("view");if(conversation){logic.setState({view:"chat",activeChat:conversation,draft:readDraft(ws.slug,conversation)});void hydrate().catch(fail)}else if(issue){logic.setState({view:view==="thread9"?"thread9":"issue",activeIssue:issue});void hydrate().catch(fail)}else if(view){logic.setState({view,...params.get("autopilot")?{activeAuto9:params.get("autopilot")}:{},...params.get("section")?{section:params.get("section")}:{}})}};
+ const popRoute=()=>{const route=parseWorkspaceRoute(new URL(window.location.href));if(route.workspace!==ws.slug){window.location.reload();return}if(route.conversation){logic.setState({view:"chat",activeChat:route.conversation,draft:readDraft(ws.slug,route.conversation)});void hydrate().catch(fail)}else if(route.issue){logic.setState({view:route.view==="thread9"?"thread9":"issue",activeIssue:route.issue});void hydrate().catch(fail)}else{logic.setState({view:route.view,...route.autopilot?{activeAuto9:route.autopilot}:{},...route.section?{section:route.section}:{}});if(route.workflow&&typeof logic.openGraph14==="function")void logic.openGraph14(route.workflow)}};
  window.addEventListener("popstate",popRoute);
  return()=>{disposed=true;window.removeEventListener("popstate",popRoute);for(const[k,v]of originals){if(v===undefined)delete logic[k];else logic[k]=v}};
 }

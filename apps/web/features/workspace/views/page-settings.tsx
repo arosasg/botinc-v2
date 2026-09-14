@@ -422,8 +422,7 @@ export function PageSettings({ v }: { v: Vals }) {
                   </>
                 ) : null}
                 <p className="settings-footnote">
-                  Sample accounts with simulated authorization. No password, key, or session is requested here. Usage
-                  percentages come from the provider and are never converted into a dollar amount.
+                  {interp(v.accountsNote15)}
                 </p>
               </>
             ) : null}
@@ -714,7 +713,7 @@ export function PageSettings({ v }: { v: Vals }) {
                         </>
                       ) : null}
                     </div>
-                    <p className="fine">Invitations are sample records. Nothing is emailed and no account is created.</p>
+                    <p className="fine">Invitations are emailed after you confirm them.</p>
                   </>
                 ) : null}
                 {v.rolesTab14 ? (
@@ -1302,7 +1301,7 @@ export function PageSettings({ v }: { v: Vals }) {
                         </>
                       ) : null}
                     </div>
-                    <p className="fine">Sample records. No live billing runs from this design.</p>
+                    <p className="fine">Usage entries come from completed workspace runs.</p>
                   </>
                 ) : null}
                 {v.invoiceTab14 ? (
@@ -1347,7 +1346,7 @@ export function PageSettings({ v }: { v: Vals }) {
                         </>
                       ) : null}
                     </div>
-                    <p className="fine">Sample invoices. No payment method is charged and no document is issued.</p>
+                    <p className="fine">Invoices appear after a completed payment.</p>
                   </>
                 ) : null}
               </>
@@ -1433,7 +1432,7 @@ export function PageSettings({ v }: { v: Vals }) {
                     ))}
                   </div>
                   <p className="fine">
-                    Shortcuts are shown for the design preview. Rebinding is a product setting that is not simulated here.
+                    Keyboard shortcuts are available throughout the workspace.
                   </p>
                 </section>
               </>

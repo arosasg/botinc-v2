@@ -9,12 +9,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/arosasg/botinc-v2/server/internal/api"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -38,6 +41,7 @@ type Snapshot struct {
 	Files                     map[string]json.RawMessage
 	Workspace                 Row
 	Members, Projects, Issues []Row
+	Repositories              []Row
 	Routines                  []struct {
 		Autopilot Row   `json:"autopilot"`
 		Triggers  []Row `json:"triggers"`
@@ -49,6 +53,7 @@ type Report struct {
 	Issues        int       `json:"issues"`
 	Comments      int       `json:"comments"`
 	Routines      int       `json:"routines"`
+	Repositories  int       `json:"repositories"`
 	ArchivedFiles int       `json:"archived_files"`
 	Applied       bool      `json:"applied"`
 	Replayed      bool      `json:"replayed"`
@@ -88,6 +93,11 @@ func Load(dir string) (*Snapshot, error) {
 			return nil, fmt.Errorf("%s: %w", name, err)
 		}
 	}
+	if payload := s.Workspace["repos"]; len(payload) > 0 {
+		if err := json.Unmarshal(payload, &s.Repositories); err != nil {
+			return nil, fmt.Errorf("workspace.json repos: %w", err)
+		}
+	}
 	if s.Workspace.ID("id") != s.Manifest.WorkspaceID || len(s.Issues) != s.Manifest.IssueCount || len(s.Routines) != s.Manifest.RoutineCount {
 		return nil, errors.New("manifest counts or workspace mismatch")
 	}
@@ -119,6 +129,38 @@ func Load(dir string) (*Snapshot, error) {
 
 var statuses = map[string]string{"backlog": "todo", "todo": "todo", "in_progress": "blocked", "in_review": "in_review", "merged_dev": "done", "blocked": "blocked", "done": "done", "cancelled": "cancelled"}
 var priorities = map[string]string{"urgent": "urgent", "high": "high", "medium": "normal", "normal": "normal", "low": "low", "none": "low"}
+var repositoryPart = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
+
+func githubRepositoryName(rawURL string) (string, error) {
+	u, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil || u.Scheme != "https" || !strings.EqualFold(u.Hostname(), "github.com") || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		return "", fmt.Errorf("unsupported repository URL %q", rawURL)
+	}
+	parts := strings.Split(strings.Trim(strings.TrimSuffix(u.Path, ".git"), "/"), "/")
+	if len(parts) != 2 || !repositoryPart.MatchString(parts[0]) || !repositoryPart.MatchString(parts[1]) {
+		return "", fmt.Errorf("unsupported repository URL %q", rawURL)
+	}
+	return parts[0] + "/" + parts[1], nil
+}
+
+func importRepositories(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID, rows []Row) (int, error) {
+	seen := map[string]bool{}
+	for _, row := range rows {
+		name, err := githubRepositoryName(row.Text("url"))
+		if err != nil {
+			return 0, err
+		}
+		if seen[strings.ToLower(name)] {
+			continue
+		}
+		seen[strings.ToLower(name)] = true
+		if _, err := tx.Exec(ctx, `insert into repositories(workspace_id,full_name,default_branch)
+			values($1,$2,'main') on conflict(workspace_id,full_name) do nothing`, workspaceID, name); err != nil {
+			return 0, err
+		}
+	}
+	return len(seen), nil
+}
 
 func Apply(ctx context.Context, pool *pgxpool.Pool, s *Snapshot, ownerEmail string, apply bool) (Report, error) {
 	ws := s.Manifest.WorkspaceID
@@ -151,6 +193,18 @@ func Apply(ctx context.Context, pool *pgxpool.Pool, s *Snapshot, ownerEmail stri
 		}
 		if err := tx.QueryRow(ctx, `select count(*) from autopilots where workspace_id=$1`, ws).Scan(&report.Routines); err != nil {
 			return report, err
+		}
+		if _, err := importRepositories(ctx, tx, ws, s.Repositories); err != nil {
+			return report, err
+		}
+		if err := tx.QueryRow(ctx, `select count(*) from repositories where workspace_id=$1`, ws).Scan(&report.Repositories); err != nil {
+			return report, err
+		}
+		if apply {
+			if err := tx.Commit(ctx); err != nil {
+				return report, err
+			}
+			report.Applied = true
 		}
 		return report, nil
 	}
@@ -217,6 +271,11 @@ func Apply(ctx context.Context, pool *pgxpool.Pool, s *Snapshot, ownerEmail stri
 			return report, err
 		}
 	}
+	repositoryCount, err := importRepositories(ctx, tx, ws, s.Repositories)
+	if err != nil {
+		return report, err
+	}
+	report.Repositories = repositoryCount
 	for _, i := range s.Issues {
 		var project, author, assignee any
 		if id := i.ID("project_id"); id != uuid.Nil {

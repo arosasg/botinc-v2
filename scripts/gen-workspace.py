@@ -10,7 +10,7 @@ import os, re, sys, json, subprocess, html
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import dc2jsx
 
-D = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "design-ref")
+D = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "design-ref")
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "apps", "web", "features", "workspace", "views")
 os.makedirs(OUT, exist_ok=True)
 
@@ -112,8 +112,10 @@ root_attrs = " ".join(x for x in (dc2jsx.jsx_attr(ak, av, set()) for ak, av in r
 root_jsx = f"<div {root_attrs}>" + "".join(root_parts) + "</div>"
 
 def pretty(jsx):
-    open("/tmp/gen.jsx", "w").write(jsx)
-    r = subprocess.run(["npx", "--yes", "prettier@3", "--parser", "babel-ts", "--print-width", "120", "/tmp/gen.jsx"], capture_output=True, text=True)
+    temp_path = f"/tmp/botinc-workspace-gen-{os.getpid()}.jsx"
+    open(temp_path, "w").write(jsx)
+    r = subprocess.run(["npx", "--yes", "prettier@3", "--parser", "babel-ts", "--print-width", "120", temp_path], capture_output=True, text=True)
+    os.unlink(temp_path)
     if r.returncode:
         sys.exit("prettier failed: " + r.stderr[-1500:])
     out = r.stdout.strip()
@@ -138,9 +140,16 @@ for name, fslug, jsx in files:
     body = body.replace('<p>{interp(m.text)}</p>', '<MessageText text={String(m.text ?? "")} />')
     body = body.replace('<header className="dock-head15">', '<header className="dock-head15" onPointerDown={v.dockMove16}>')
     body = body.replace('Connect a custom tool to your personal Operator. Read-only by default.', 'Connect a custom tool to this workspace&apos;s Operator. Review its capabilities before use.')
-    body = body.replace('<span>Tools</span>\n                  <b>search_knowledge · read only</b>', '<span>Capabilities</span>\n                  <b>Published by this server</b>')
+    body = body.replace('<span>Tools</span>', '<span>Capabilities</span>')
+    body = body.replace('<b>search_knowledge · read only</b>', '<b>Published by this server</b>')
     body = body.replace('Personal · not installed workspace-wide', 'Workspace · available only here')
     body = body.replace('onKeyDown={v.composerKey12}', 'onKeyDown={v.composerKey12} onPaste={v.composerPaste}')
+    body = body.replace('onKeyDown={v.dockKey15}', 'onKeyDown={v.dockKey15} onPaste={v.dockPaste}')
+    body = re.sub(
+        r'Sample accounts with simulated authorization\. No password, key, or session is requested here\. Usage\s+percentages come from the provider and are never converted into a dollar amount\.',
+        '{interp(v.accountsNote15)}',
+        body,
+    )
     body = re.sub(
         r'(<button\s+className=\{`send-button[^>]+type="submit"[^>]+disabled=\{v\.composerEmpty11\})',
         r'\1 onClick={v.sendComposer11}',

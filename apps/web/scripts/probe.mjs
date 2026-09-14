@@ -1,5 +1,5 @@
 import { chromium } from "playwright";
-const browser = await chromium.launch();
+const browser = await chromium.launch({ channel: process.env.CHROME_CHANNEL || "chrome" });
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 const errs = [];
 page.on("pageerror", (e) => errs.push(e.stack?.split("\n").slice(0, 3).join(" ")));

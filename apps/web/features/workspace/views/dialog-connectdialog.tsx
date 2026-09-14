@@ -44,7 +44,7 @@ export function DialogConnectdialog({ v }: { v: Vals }) {
             {interp(v.connectButton)}
           </button>
         </div>
-        <p className="fine">Simulated authorization. No real account is connected.</p>
+        <p className="fine">The connection is verified before it is saved to this workspace.</p>
       </>
     ) : null
   );

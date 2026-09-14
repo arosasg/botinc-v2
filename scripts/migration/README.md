@@ -24,6 +24,9 @@ by email; memberships retain their source roles. Issues retain UUIDs, numbers,
 timestamps, descriptions and parent links. Comments retain their IDs, authors,
 source metadata and text. Other source fields and old execution records remain
 in the private migration archive, never fabricated as new completed v2 runs.
+GitHub repository URLs from the saved workspace are normalized and imported
+idempotently. A repository becomes runnable only when the migrated workspace's
+GitHub connection still authorizes that repository.
 
 The importer creates a separate `v1-<workspace ID prefix>` workspace. Identical
 snapshot replay is a no-op; a changed snapshot is refused so it cannot overwrite

@@ -50,18 +50,14 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
                 <DotWave gap={16} dot={1} force={18} radius={120} speed={600} band={100} life={2} opacity={0.10} color="#0c0a08" />
               </div>
               <div className="hero-copy">
-                <span className="kicker">
-                  <i />
-                  Autopilot for your engineering backlog
-                </span>
                 <h1>
-                  Coding agents that never stop.
+                  Coding that never stops.
                   <br />
                   <span>Fixes that never ship unreviewed.</span>
                 </h1>
                 <p className="lead">
-                  Every run uses all your subscriptions, hands off the moment one hits a limit, and keeps going in the
-                  cloud. Errors become reviewed pull requests while you sleep. Nothing merges itself.
+                  Connect Sentry. Errors become reviewed pull requests, routed across the subscriptions you already pay for.
+                  Nothing merges itself.
                 </p>
                 <div className="hero-cta">
                   <button className="btn accent lg" onClick={v.startFree}>
@@ -75,55 +71,6 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
                   </button>
                 </div>
                 <small>Runs remotely, 24/7 · $2 starter credit · No card</small>
-                <div className="platforms">
-                  <button className="tbtn muted" onClick={v.openWin}>
-                    <svg className="ico fill">
-                      <use href="/assets/icons/platforms.svg#windows" />
-                    </svg>
-                    Windows
-                  </button>
-                  <button className="tbtn muted" onClick={v.openIos}>
-                    <svg className="ico fill">
-                      <use href="/assets/icons/platforms.svg#apple" />
-                    </svg>
-                    iPhone
-                  </button>
-                  <button className="tbtn muted" onClick={v.openAndroid}>
-                    <svg className="ico fill">
-                      <use href="/assets/icons/platforms.svg#google-play" />
-                    </svg>
-                    Android
-                  </button>
-                  <button className="tbtn" onClick={v.replay}>
-                    Replay the example
-                  </button>
-                </div>
-                <div className="logos">
-                  <span>
-                    <img src="/assets/connectors/sentry.png" alt="" />
-                    Sentry
-                  </span>
-                  <span>
-                    <img src="/assets/connectors/posthog.png" alt="" />
-                    PostHog
-                  </span>
-                  <span>
-                    <img src="/assets/connectors/si/grafana.svg" alt="" />
-                    Grafana
-                  </span>
-                  <span>
-                    <img src="/assets/connectors/datadog.png" alt="" />
-                    Datadog
-                  </span>
-                  <span>
-                    <img src="/assets/connectors/linear.png" alt="" />
-                    Linear
-                  </span>
-                  <span>
-                    <img src="/assets/connectors/github.png" alt="" />
-                    GitHub
-                  </span>
-                </div>
               </div>
               <div>
                 <div className="demo" aria-label="The BotInc workspace fixing a Sentry error on its own">
@@ -145,64 +92,11 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
                     <i />
                     {interp(v.d?.caption)}
                   </span>
-                  <span>The real workspace · click around</span>
+                  <button className="tbtn" onClick={v.replay}>
+                    Replay
+                  </button>
                 </div>
               </div>
-            </section>
-            <section className="route-strip" aria-label="Live routing across your accounts">
-              <div className="hr-label">
-                <svg className="ico">
-                  <use href="/i15.svg#waypoints" />
-                </svg>
-                <span>Routing now</span>
-                <small>BOT-42 · Implement</small>
-              </div>
-              <div className="hr-chain">
-                {(v.r?.accounts ?? []).map((a: any, i: number) => (
-                  <Fragment key={i}>
-                    <span className={a.chipCls}>
-                      <i className="hr-arrow" aria-hidden="true">
-                        →
-                      </i>
-                      <span className="hr-body">
-                        {a.isClaude ? (
-                          <>
-                            <img src="/assets/brands-v12/claude.svg" alt="" />
-                          </>
-                        ) : null}
-                        {a.isClaude2 ? (
-                          <>
-                            <img src="/assets/brands-v12/claude.svg" alt="" />
-                          </>
-                        ) : null}
-                        {a.isCodex ? (
-                          <>
-                            <img src="/assets/brands-v12/codex.svg" alt="" />
-                          </>
-                        ) : null}
-                        {a.isCursor ? (
-                          <>
-                            <img src="/assets/coding-accounts/cursor.svg" alt="" />
-                          </>
-                        ) : null}
-                        {a.isCopilot ? (
-                          <>
-                            <img src="/assets/coding-accounts/copilot.svg" alt="" />
-                          </>
-                        ) : null}
-                        {a.isApi ? (
-                          <>
-                            <img src="/assets/coding-accounts/deepseek.svg" alt="" />
-                          </>
-                        ) : null}
-                        <b>{interp(a.name)}</b>
-                        <small>{interp(a.chip)}</small>
-                      </span>
-                    </span>
-                  </Fragment>
-                ))}
-              </div>
-              <p className="hr-note">{interp(v.r?.note)}</p>
             </section>
             <section className="rail" id="how">
               <div className="rail-head">
@@ -219,8 +113,7 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
                   </span>
                   <span className="n">01 · CONNECT</span>
                   <h3>Connect what you run.</h3>
-                  <p>Error monitoring, backlog, repo. Read-only until you approve.</p>
-                  <code>{interp(v.d?.live1)}</code>
+                  <p>Sentry, Linear, GitHub. Read-only until you approve.</p>
                 </div>
                 <div className={v.d?.step2}>
                   <span className="rail-dot">
@@ -229,9 +122,8 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
                     </svg>
                   </span>
                   <span className="n">02 · AUTOPILOT</span>
-                  <h3>Autopilot triages.</h3>
-                  <p>Each new error becomes an issue with a priority and an owner.</p>
-                  <code>{interp(v.d?.live2)}</code>
+                  <h3>Errors become issues.</h3>
+                  <p>Each one gets a priority and an owner.</p>
                 </div>
                 <div className={v.d?.step3}>
                   <span className="rail-dot">
@@ -241,8 +133,7 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
                   </span>
                   <span className="n">03 · WORKFLOW</span>
                   <h3>The workflow fixes it.</h3>
-                  <p>Plan → Implement → Review → Verify, routed across your accounts so it never stalls.</p>
-                  <code>{interp(v.d?.live3)}</code>
+                  <p>Plan, implement, review, verify. Routed so it never stalls.</p>
                 </div>
                 <div className={v.d?.step4}>
                   <span className="rail-dot">
@@ -253,7 +144,6 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
                   <span className="n">04 · YOU</span>
                   <h3>You approve.</h3>
                   <p>A pull request waits with what changed and what it cost.</p>
-                  <code>{interp(v.d?.live4)}</code>
                 </div>
               </div>
             </section>
@@ -263,8 +153,9 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
                   <span className="eb">SMART ROUTING</span>
                   <h2>Your subscriptions, never idle. Your runs, never stopped.</h2>
                   <p>
-                    Claude Code stops when your account hits its limit. BotInc doesn&apos;t. Each run starts on the account with
-                    the most capacity left and, when it runs dry, continues on the next one. No re-login, no lost context.
+                    Claude Code stops when your account hits its limit. BotInc doesn&apos;t. Each run starts on the account
+                    with the most capacity left and, when it runs dry, continues on the next one. No re-login, no lost
+                    context.
                   </p>
                   <div className="route-facts">
                     <div className="rf">
@@ -800,10 +691,6 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
                       </p>
                       <ul>
                         <li>
-                          <b>{interp(p.conc)}</b>
-                          <span>concurrent sessions</span>
-                        </li>
-                        <li>
                           <b>{interp(p.runs)}</b>
                           <span>autopilot runs a month</span>
                         </li>
@@ -880,7 +767,7 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
                 <span>© 2026 BotInc, Inc. · San Francisco</span>
                 <div>
                   <button onClick={v.toggleTheme}>{interp(v.appearance)} appearance</button>
-                  <span>Sample work · simulated actions</span>
+                  <span>See how Operator works</span>
                 </div>
               </div>
             </footer>
@@ -1129,7 +1016,7 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
                     Back
                   </button>
                 </div>
-                <p className="ob-fine">Preview only. Connections are simulated; nothing is read from your accounts.</p>
+                <p className="ob-fine">Connections are authorized after you sign in. Nothing is read without your approval.</p>
               </div>
             </main>
           </div>
@@ -1398,14 +1285,11 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
               toggleTheme={v.toggleTheme}
               autosCount={v.autosCount}
               balance={v.balanceLabel}
-              showAppsNote={true} /></div>
+              showAppsNote={true}
+              loading={v.booting} /></div>
           </div>
         </>
       ) : null}
-      <footer className={v.footCls}>
-        <button onClick={v.openPreview}>Interactive preview</button>
-        <span>Sample work · simulated actions · no charges</span>
-      </footer>
       {v.dialogOpen ? (
         <>
           <div
@@ -1466,7 +1350,7 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
                       {interp(v.connectButton)}
                     </button>
                   </div>
-                  <p className="fine">Simulated authorization. No real account is connected.</p>
+                  <p className="fine">Sign in to authorize this connection securely.</p>
                 </>
               ) : null}
               {v.accountDialog ? (
@@ -1578,7 +1462,7 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
                     </>
                   ) : null}
                   <p className="fine">
-                    This opens a simulated provider authorization. No credentials are requested or stored in the design.
+                    Sign in to continue to the provider&apos;s secure authorization screen.
                   </p>
                 </>
               ) : null}
@@ -1629,7 +1513,7 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
                     <span>Total from credit</span>
                     <span>$0.02</span>
                   </div>
-                  <p className="fine">Sample figures. No live model ran.</p>
+                  <p className="fine">Illustrative usage. Actual receipts come from completed runs.</p>
                 </>
               ) : null}
               {v.metersDialog ? (

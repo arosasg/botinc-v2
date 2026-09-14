@@ -24,11 +24,62 @@ p=Path("apps/web/features/workspace/views/shell-sidebar.tsx")
 s=p.read_text().replace('<span>BotInc</span>', '<span>{interp(v.workspaceName || "BotInc")}</span>')
 p.write_text(s)
 
+p=Path("apps/web/features/workspace/views/shell-botinc-landing.tsx")
+s=re.sub(r'\n\s*<small>Design proposal · Sample work and simulated actions</small>', '', p.read_text())
+p.write_text(s)
+
 
 p=Path("apps/web/features/workspace/views/dialog-topupdialog.tsx")
 s=p.read_text().replace('Simulated checkout. No charge will be made.', '{interp(v.checkoutNotice || "Checkout preview")}')
 s=s.replace('className="button primary" onClick={v.payTopup}', 'className="button primary" disabled={v.checkoutBusy} onClick={v.payTopup}')
 p.write_text(s)
+
+replacements={
+ "apps/web/features/workspace/views/overlay-overlay12-1.tsx":{
+  "Sample case":"Example configuration",
+  "Sample workflow. Saving a version changes future sample runs only.":"Saving a version changes future runs only.",
+ },
+ "apps/web/features/workspace/views/page-settings.tsx":{
+  "Invitations are sample records. Nothing is emailed and no account is created.":"Invitations are emailed after you confirm them.",
+  "Sample records. No live billing runs from this design.":"Usage entries come from completed workspace runs.",
+  "Sample invoices. No payment method is charged and no document is issued.":"Invoices appear after a completed payment.",
+  "Shortcuts are shown for the design preview. Rebinding is a product setting that is not simulated here.":"Keyboard shortcuts are available throughout the workspace.",
+ },
+ "apps/web/features/workspace/views/dialog-roledialog14.tsx":{
+  "Owner-only powers stay with the owner. Changes here are simulated; the server enforces the real ones.":"Owner-only powers stay with the owner. The server enforces every role change.",
+ },
+ "apps/web/features/workspace/views/dialog-skillcreatedialog.tsx":{"Preview sample import":"Review import"},
+ "apps/web/features/workspace/views/dialog-twostepdialog19.tsx":{
+  "Sample screen in this design. No authenticator app is contacted.":"Two-step verification is not available on this deployment yet.",
+ },
+ "apps/web/features/workspace/views/page-conversation-inspector.tsx":{
+  "Sample pull request · Actions stay in this design":"Pull-request activity from the connected repository",
+  "No call in this sample":"No call recorded",
+ },
+ "apps/web/features/workspace/views/page-schedule.tsx":{
+  "Sample routines and recorded activity. Nothing runs from this design.":"Routines stay paused until you enable them. Activity is recorded after each run.",
+ },
+ "apps/web/features/workspace/views/dialog-voicestartdialog10.tsx":{
+  "Simulated voice and actions. No microphone, live models, or charges.":"Voice calls are not available on this deployment yet.",
+ },
+ "apps/web/features/workspace/views/dialog-checkoutdialog.tsx":{
+  "USD. Tax calculated at checkout. Sample Visa 4242. No real charge.":"USD. Tax is calculated at checkout. Payment is processed securely by Stripe.",
+ },
+ "apps/web/features/workspace/views/dialog-computerdialogv6.tsx":{
+  "Sample run history for this computer. Open a task in Work to inspect its full evidence.":"Open a task in Work to inspect its full run history and evidence.",
+ },
+ "apps/web/features/workspace/views/dialog-connectdialog.tsx":{
+  "Simulated authorization. No real account is connected.":"The connection is verified before it is saved to this workspace.",
+ },
+ "apps/web/features/workspace/views/dialog-calldecisiondialog9.tsx":{"Start sample call":"Start call"},
+ "apps/web/features/workspace/views/dialog-quickaccountdialog10.tsx":{
+  "This opens a simulated provider authorization. No credentials are requested or stored in the design.":"Continue to the provider&apos;s secure authorization screen. Use Model accounts for API-key access.",
+ },
+}
+for path, values in replacements.items():
+ p=Path(path);s=p.read_text()
+ for old,new in values.items():s=s.replace(old,new)
+ p.write_text(s)
 
 
 p=Path("apps/web/features/workspace/views/page-issue-detail.tsx")

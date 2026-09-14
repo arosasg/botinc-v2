@@ -405,7 +405,7 @@ export function PageAskOperator({ v }: { v: Vals }) {
                 placeholder={v.dockPlaceholder15}
                 value={v.dockDraft15}
                 onChange={v.editDockDraft15}
-                onKeyDown={v.dockKey15}
+                onKeyDown={v.dockKey15} onPaste={v.dockPaste}
               />
               <div className="composer10-tools">
                 <button type="button" className="icon-button" aria-label="Add files or context" onClick={v.dockPlusMenu15}>

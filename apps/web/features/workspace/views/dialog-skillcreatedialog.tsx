@@ -54,7 +54,7 @@ export function DialogSkillcreatedialog({ v }: { v: Vals }) {
             <input id="skill-source-value" className="field" value={v.skillImportValue} onChange={v.editSkillImport} />
             <p className="fine">{interp(v.skillImportCopy)}</p>
             <button className="small-button" onClick={v.previewSkillImport}>
-              Preview sample import
+              Review import
             </button>
             {v.skillImportReady ? (
               <>

@@ -1545,7 +1545,7 @@ export function PageConversationInspector({ v }: { v: Vals }) {
                     </button>
                   </>
                 ) : null}
-                <p className="preview-note12">Sample pull request · Actions stay in this design</p>
+                <p className="preview-note12">Pull-request activity from the connected repository</p>
               </>
             ) : null}
             {v.wfPane18 ? (
@@ -3482,7 +3482,7 @@ export function PageConversationInspector({ v }: { v: Vals }) {
                     </svg>
                     <span>
                       <strong>Voice</strong>
-                      <small>No call in this sample</small>
+                      <small>No call recorded</small>
                     </span>
                     <strong>$0.00</strong>
                   </div>
