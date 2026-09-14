@@ -46,6 +46,7 @@ type graphNode struct {
 	Name   string `json:"name"`
 	Kind   string `json:"kind"`
 	Model  string `json:"model,omitempty"`
+	Effort string `json:"effort,omitempty"`
 	Prompt string `json:"prompt,omitempty"`
 }
 
@@ -164,7 +165,7 @@ func stepsFromGraph(raw []byte) ([]runs.StepSpec, int) {
 		seen[key] = true
 		n := byKey[key]
 		if n.Kind != "finish" {
-			out = append(out, runs.StepSpec{Key: n.Key, Name: n.Name, Kind: n.Kind, Model: n.Model})
+			out = append(out, runs.StepSpec{Key: n.Key, Name: n.Name, Kind: n.Kind, Model: n.Model, Effort: n.Effort})
 		}
 		queue = append(queue, adj[key]...)
 	}

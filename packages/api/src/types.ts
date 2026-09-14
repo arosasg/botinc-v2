@@ -19,6 +19,7 @@ export type Workspace = {
   plan: string;
   issue_prefix: string;
   role?: string;
+  aliases?: string[];
   created_at: string;
 };
 
@@ -65,6 +66,7 @@ export type Run = {
   purpose: string;
   status: RunStatus;
   model: string;
+  effort: string;
   funding: string;
   task_limit_cents: number;
   cost_cents: number;
@@ -80,6 +82,7 @@ export type RunStep = {
   kind: string;
   status: string;
   model: string;
+  effort: string;
   cost_cents: number;
 };
 
@@ -146,6 +149,7 @@ export type Autopilot = {
   last_run_at: string | null;
   next_run_at: string | null;
   webhook_url?: string;
+  plugin_ids: UUID[];
 };
 
 export type Account = {
@@ -156,7 +160,7 @@ export type Account = {
   plan: string;
   kind: "subscription" | "api_key" | "credits";
   status: "connected" | "limited" | "disconnected";
-  quota: Array<{ window?: string; used: number; limit: number; resets_at?: string }>;
+  quota: Array<{ window?: string; used: number; limit: number; resets_at?: string; observed_at?: string }>;
   has_secret: boolean;
 };
 
@@ -196,5 +200,5 @@ export type Skill = { id: UUID; name: string; body: string; enabled: boolean; cr
 export type Memory = { id: UUID; user_id: UUID; scope: "personal" | "workspace" | "project"; project_id: UUID | null; body: string; pinned: boolean; updated_at: string };
 export type Member = { user_id: UUID; name: string; email: string; role: "owner" | "admin" | "member"; joined_at: string };
 export type Invitation = { id: UUID; email: string; role: string; expires_at: string; created_at: string };
-export type WorkflowGraph = { nodes: Array<{ key: string; name: string; kind: string; model?: string; prompt?: string; x?: number; y?: number }>; edges: string[][]; limits?: Record<string, number> };
+export type WorkflowGraph = { nodes: Array<{ key: string; name: string; kind: string; model?: string; effort?: string; prompt?: string; x?: number; y?: number }>; edges: string[][]; limits?: Record<string, number> };
 export type WorkflowVersion = { id: UUID; version: number; status: string; graph: WorkflowGraph; created_at: string };

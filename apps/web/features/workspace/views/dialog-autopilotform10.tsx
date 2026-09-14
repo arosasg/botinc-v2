@@ -298,6 +298,58 @@ export function DialogAutopilotform10({ v }: { v: Vals }) {
               </section>
               <section className="af-group16">
                 <header>
+                  <h3>Connectors</h3>
+                  <span>Choose exactly which workspace tools this routine may use</span>
+                </header>
+                <div className="frm16">
+                  <div className="frm-row16">
+                    <span>Available to runs</span>
+                    <button
+                      type="button"
+                      className="sel14 field"
+                      aria-haspopup="listbox"
+                      aria-label="Connectors available to this routine"
+                      onClick={v.afConnectorMenu19}
+                    >
+                      <span className="af-repolabel16">
+                        <svg
+                          className="ui-icon use14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.75"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                        >
+                          <use href="/i15.svg#plug" />
+                        </svg>
+                        {interp(v.afConnectorSummary19)}
+                      </span>
+                      <svg
+                        className="ui-icon use14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.75"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                      >
+                        <use href="/i15.svg#chevron-down" />
+                      </svg>
+                    </button>
+                  </div>
+                  <p className="fine af-connectnote19">
+                    {interp(v.afConnectorNote19)}{" "}
+                    <button type="button" className="text-button" onClick={v.afConnectorManage19}>
+                      Manage connectors
+                    </button>
+                  </p>
+                </div>
+              </section>
+              <section className="af-group16">
+                <header>
                   <h3>Repository and result</h3>
                   <span>Runs as {interp(v.memberName)} · Operator · BotInc Cloud</span>
                 </header>
@@ -537,6 +589,8 @@ export function DialogAutopilotform10({ v }: { v: Vals }) {
                   <dd>{interp(v.autoDraftTrigger9)}</dd>
                   <dt>Next</dt>
                   <dd>{interp(v.autoDraftNext9)}</dd>
+                  <dt>Connectors</dt>
+                  <dd>{interp(v.afConnectorSummary19)}</dd>
                   <dt>Repository</dt>
                   <dd>{interp(v.afRepoLabel16)}</dd>
                   <dt>Result</dt>

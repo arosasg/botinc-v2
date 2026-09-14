@@ -81,6 +81,8 @@ func (s *Server) createConversation(w http.ResponseWriter, r *http.Request) {
 		IssueID       *uuid.UUID  `json:"issue_id"`
 		Message       string      `json:"message"`
 		AttachmentIDs []uuid.UUID `json:"attachment_ids"`
+		PluginIDs     []uuid.UUID `json:"plugin_ids"`
+		Effort        string      `json:"effort"`
 	}
 	if err := httpx.Decode(r, &in); err != nil {
 		httpx.Error(w, 400, err.Error())
@@ -104,7 +106,7 @@ func (s *Server) createConversation(w http.ResponseWriter, r *http.Request) {
 	var first *Message
 	var run *runs.Run
 	if strings.TrimSpace(in.Message) != "" {
-		m, rn, err := s.postMessage(r, c, in.Message, in.AttachmentIDs)
+		m, rn, err := s.postMessage(r, c, in.Message, in.AttachmentIDs, in.PluginIDs, in.Effort)
 		if err != nil {
 			s.fail(w, err)
 			return
@@ -235,9 +237,10 @@ func (s *Server) updateConversation(w http.ResponseWriter, r *http.Request) {
 func (c Conversation) workspace(r *http.Request) uuid.UUID { return scopeOf(r.Context()).WorkspaceID }
 
 // postMessage appends a user message and starts a run to answer it.
-func (s *Server) postMessage(r *http.Request, c Conversation, body string, attachmentIDs []uuid.UUID) (Message, *runs.Run, error) {
+func (s *Server) postMessage(r *http.Request, c Conversation, body string, attachmentIDs, pluginIDs []uuid.UUID, effort string) (Message, *runs.Run, error) {
 	sc := scopeOf(r.Context())
 	ctx := r.Context()
+	pluginIDs = uniquePluginIDs(pluginIDs)
 	var m Message
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -272,11 +275,11 @@ func (s *Server) postMessage(r *http.Request, c Conversation, body string, attac
 	}
 	var started *runs.Run
 	if active {
-		if _, err := tx.Exec(ctx, `insert into message_queue(conversation_id,position,body) values($1,(select coalesce(max(position),0)+1 from message_queue where conversation_id=$1),$2)`, c.ID, body); err != nil {
+		if _, err := tx.Exec(ctx, `insert into message_queue(conversation_id,position,body,plugin_ids,effort) values($1,(select coalesce(max(position),0)+1 from message_queue where conversation_id=$1),$2,$3,$4)`, c.ID, body, pluginIDs, effort); err != nil {
 			return m, nil, err
 		}
 	} else {
-		rn, err := s.runs.CreateInTx(ctx, tx, runs.CreateParams{WorkspaceID: sc.WorkspaceID, ConversationID: &c.ID, IssueID: c.IssueID, Purpose: "chat", Model: c.Model, Prompt: body, CreatedBy: &sc.UserID})
+		rn, err := s.runs.CreateInTx(ctx, tx, runs.CreateParams{WorkspaceID: sc.WorkspaceID, ConversationID: &c.ID, IssueID: c.IssueID, Purpose: "chat", Model: c.Model, Effort: effort, Prompt: body, CreatedBy: &sc.UserID, PluginIDs: pluginIDs})
 		if err != nil {
 			return m, nil, err
 		}
@@ -309,6 +312,8 @@ func (s *Server) sendMessage(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Body          string      `json:"body"`
 		AttachmentIDs []uuid.UUID `json:"attachment_ids"`
+		PluginIDs     []uuid.UUID `json:"plugin_ids"`
+		Effort        string      `json:"effort"`
 	}
 	if err := httpx.Decode(r, &in); err != nil {
 		httpx.Error(w, 400, err.Error())
@@ -318,7 +323,7 @@ func (s *Server) sendMessage(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, 400, "message is empty")
 		return
 	}
-	m, rn, err := s.postMessage(r, c, in.Body, in.AttachmentIDs)
+	m, rn, err := s.postMessage(r, c, in.Body, in.AttachmentIDs, in.PluginIDs, in.Effort)
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -400,8 +405,10 @@ func (s *Server) enqueueMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		Body string `json:"body"`
-		Mode string `json:"mode"`
+		Body      string      `json:"body"`
+		Mode      string      `json:"mode"`
+		PluginIDs []uuid.UUID `json:"plugin_ids"`
+		Effort    string      `json:"effort"`
 	}
 	if err := httpx.Decode(r, &in); err != nil {
 		httpx.Error(w, 400, err.Error())
@@ -412,6 +419,7 @@ func (s *Server) enqueueMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	in.Mode = "queue"
+	in.PluginIDs = uniquePluginIDs(in.PluginIDs)
 	tx, err := s.pool.Begin(r.Context())
 	if err != nil {
 		s.fail(w, err)
@@ -428,7 +436,7 @@ func (s *Server) enqueueMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var q queueRow
-	if err := tx.QueryRow(r.Context(), `insert into message_queue (conversation_id, position, body, mode) values ($1,(select coalesce(max(position),0)+1 from message_queue where conversation_id=$1),$2,$3) returning id, position, body, mode`, c.ID, in.Body, in.Mode).Scan(&q.ID, &q.Position, &q.Body, &q.Mode); err != nil {
+	if err := tx.QueryRow(r.Context(), `insert into message_queue (conversation_id, position, body, mode, plugin_ids, effort) values ($1,(select coalesce(max(position),0)+1 from message_queue where conversation_id=$1),$2,$3,$4,$5) returning id, position, body, mode`, c.ID, in.Body, in.Mode, in.PluginIDs, in.Effort).Scan(&q.ID, &q.Position, &q.Body, &q.Mode); err != nil {
 		s.fail(w, err)
 		return
 	}
@@ -477,10 +485,12 @@ func (s *Server) drainQueue(r *http.Request, convID uuid.UUID) {
 	}
 	var qid uuid.UUID
 	var body string
-	if err := tx.QueryRow(ctx, `select id,body from message_queue where conversation_id=$1 order by position limit 1`, convID).Scan(&qid, &body); err != nil {
+	var pluginIDs []uuid.UUID
+	var effort string
+	if err := tx.QueryRow(ctx, `select id,body,plugin_ids,effort from message_queue where conversation_id=$1 order by position limit 1`, convID).Scan(&qid, &body, &pluginIDs, &effort); err != nil {
 		return
 	}
-	rn, err := s.runs.CreateInTx(ctx, tx, runs.CreateParams{WorkspaceID: wsID, ConversationID: &c.ID, IssueID: c.IssueID, Purpose: "chat", Model: c.Model, Prompt: body, CreatedBy: c.UserID})
+	rn, err := s.runs.CreateInTx(ctx, tx, runs.CreateParams{WorkspaceID: wsID, ConversationID: &c.ID, IssueID: c.IssueID, Purpose: "chat", Model: c.Model, Effort: effort, Prompt: body, CreatedBy: c.UserID, PluginIDs: pluginIDs})
 	if err != nil {
 		s.log.Error("drain queue retained message", "err", err)
 		return

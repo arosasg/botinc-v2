@@ -49,6 +49,7 @@ func (s *Scheduler) Run(ctx context.Context) {
 
 func (s *Scheduler) once(ctx context.Context) {
 	s.firer.Reconcile(ctx)
+	s.initializeSchedules(ctx)
 
 	// Claim every routine that is due, one row at a time, advancing
 	// next_run_at in the same statement so a second replica sees nothing.
@@ -68,6 +69,39 @@ func (s *Scheduler) once(ctx context.Context) {
 		if next, ok := nextFrom(trigger); ok {
 			if _, err := s.pool.Exec(ctx, `update autopilots set next_run_at=$2 where id=$1`, id, next); err != nil {
 				s.log.Error("autopilot reschedule", "autopilot", id, "err", err)
+			}
+		}
+	}
+}
+
+// initializeSchedules gives newly enabled or imported schedules their next
+// real cron occurrence before the claim loop sees them. This avoids both a
+// silent forever-pause and a burst where every migrated routine fires at once.
+func (s *Scheduler) initializeSchedules(ctx context.Context) {
+	rows, err := s.pool.Query(ctx, `select id, trigger from autopilots
+		where enabled and next_run_at is null and trigger->>'kind'='schedule'`)
+	if err != nil {
+		s.log.Error("initialize schedules", "err", err)
+		return
+	}
+	type pending struct {
+		id      uuid.UUID
+		trigger []byte
+	}
+	items := []pending{}
+	for rows.Next() {
+		var item pending
+		if err := rows.Scan(&item.id, &item.trigger); err != nil {
+			s.log.Error("read schedule", "err", err)
+			continue
+		}
+		items = append(items, item)
+	}
+	rows.Close()
+	for _, item := range items {
+		if next, ok := nextFrom(item.trigger); ok {
+			if _, err := s.pool.Exec(ctx, `update autopilots set next_run_at=$2 where id=$1 and next_run_at is null`, item.id, next); err != nil {
+				s.log.Error("initialize schedule", "autopilot", item.id, "err", err)
 			}
 		}
 	}

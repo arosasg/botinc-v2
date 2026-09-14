@@ -46,6 +46,7 @@ type Run struct {
 	Purpose           string          `json:"purpose"`
 	Status            string          `json:"status"`
 	Model             string          `json:"model"`
+	Effort            string          `json:"effort"`
 	AccountID         *uuid.UUID      `json:"account_id"`
 	Funding           string          `json:"funding"`
 	TaskLimitCents    int             `json:"task_limit_cents"`
@@ -60,11 +61,11 @@ type Run struct {
 	FinishedAt        *time.Time      `json:"finished_at"`
 }
 
-const runCols = `id, workspace_id, issue_id, conversation_id, workflow_version_id, purpose, status, model, account_id, funding, task_limit_cents, cost_cents, prompt, result, error, sandbox_id, parent_run_id, queued_at, started_at, finished_at`
+const runCols = `id, workspace_id, issue_id, conversation_id, workflow_version_id, purpose, status, model, effort, account_id, funding, task_limit_cents, cost_cents, prompt, result, error, sandbox_id, parent_run_id, queued_at, started_at, finished_at`
 
 func scanRun(row pgx.Row) (Run, error) {
 	var r Run
-	err := row.Scan(&r.ID, &r.WorkspaceID, &r.IssueID, &r.ConversationID, &r.WorkflowVersionID, &r.Purpose, &r.Status, &r.Model, &r.AccountID, &r.Funding, &r.TaskLimitCents, &r.CostCents, &r.Prompt, &r.Result, &r.Error, &r.SandboxID, &r.ParentRunID, &r.QueuedAt, &r.StartedAt, &r.FinishedAt)
+	err := row.Scan(&r.ID, &r.WorkspaceID, &r.IssueID, &r.ConversationID, &r.WorkflowVersionID, &r.Purpose, &r.Status, &r.Model, &r.Effort, &r.AccountID, &r.Funding, &r.TaskLimitCents, &r.CostCents, &r.Prompt, &r.Result, &r.Error, &r.SandboxID, &r.ParentRunID, &r.QueuedAt, &r.StartedAt, &r.FinishedAt)
 	return r, err
 }
 
@@ -75,17 +76,20 @@ type CreateParams struct {
 	WorkflowVersionID *uuid.UUID
 	Purpose           string
 	Model             string
+	Effort            string
 	Prompt            string
 	TaskLimitCents    int
 	CreatedBy         *uuid.UUID
 	Steps             []StepSpec
+	PluginIDs         []uuid.UUID
 }
 
 type StepSpec struct {
-	Key   string `json:"key"`
-	Name  string `json:"name"`
-	Kind  string `json:"kind"`
-	Model string `json:"model"`
+	Key    string `json:"key"`
+	Name   string `json:"name"`
+	Kind   string `json:"kind"`
+	Model  string `json:"model"`
+	Effort string `json:"effort"`
 }
 
 func hashToken(t string) string {
@@ -146,23 +150,56 @@ func (s *Service) CreateInTx(ctx context.Context, tx pgx.Tx, p CreateParams) (Ru
 			p.TaskLimitCents = available
 		}
 	}
-	row := tx.QueryRow(ctx, `insert into runs (workspace_id, issue_id, conversation_id, workflow_version_id, purpose, model, account_id, funding, task_limit_cents, prompt, created_by)
-		values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) returning `+runCols,
-		p.WorkspaceID, p.IssueID, p.ConversationID, p.WorkflowVersionID, p.Purpose, p.Model, accountID, funding, p.TaskLimitCents, p.Prompt, p.CreatedBy)
+	row := tx.QueryRow(ctx, `insert into runs (workspace_id, issue_id, conversation_id, workflow_version_id, purpose, model, effort, account_id, funding, task_limit_cents, prompt, created_by)
+		values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) returning `+runCols,
+		p.WorkspaceID, p.IssueID, p.ConversationID, p.WorkflowVersionID, p.Purpose, p.Model, p.Effort, accountID, funding, p.TaskLimitCents, p.Prompt, p.CreatedBy)
 	r, err := scanRun(row)
 	if err != nil {
 		return Run{}, err
+	}
+	pluginIDs := uniqueUUIDs(p.PluginIDs)
+	if len(pluginIDs) > 0 {
+		var available int
+		if err := tx.QueryRow(ctx, `select count(*) from plugins where workspace_id=$1 and status='connected' and id=any($2)`, p.WorkspaceID, pluginIDs).Scan(&available); err != nil {
+			return Run{}, err
+		}
+		if available != len(pluginIDs) {
+			return Run{}, errors.New("one or more selected connectors are unavailable")
+		}
+		if _, err := tx.Exec(ctx, `insert into run_plugins(run_id,plugin_id) select $1,unnest($2::uuid[])`, r.ID, pluginIDs); err != nil {
+			return Run{}, err
+		}
 	}
 	if len(p.Steps) == 0 {
 		p.Steps = defaultSteps(p.Purpose)
 	}
 	for i, st := range p.Steps {
-		if _, err := tx.Exec(ctx, `insert into run_steps (run_id, idx, key, name, kind, model) values ($1,$2,$3,$4,$5,$6)`, r.ID, i, st.Key, st.Name, st.Kind, st.Model); err != nil {
+		effort := st.Effort
+		if effort == "" {
+			effort = p.Effort
+		}
+		if _, err := tx.Exec(ctx, `insert into run_steps (run_id, idx, key, name, kind, model, effort) values ($1,$2,$3,$4,$5,$6,$7)`, r.ID, i, st.Key, st.Name, st.Kind, st.Model, effort); err != nil {
 			return Run{}, err
 		}
 	}
 
 	return r, nil
+}
+
+func uniqueUUIDs(values []uuid.UUID) []uuid.UUID {
+	seen := make(map[uuid.UUID]struct{}, len(values))
+	out := make([]uuid.UUID, 0, len(values))
+	for _, value := range values {
+		if value == uuid.Nil {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	return out
 }
 func (s *Service) Dispatch(ctx context.Context, r Run) {
 	s.hub.Publish(r.WorkspaceID, "run.created", r)
@@ -245,6 +282,8 @@ func providerFor(model string) string {
 		return "claude"
 	case strings.HasPrefix(model, "gpt") || strings.HasPrefix(model, "codex"):
 		return "codex"
+	case strings.HasPrefix(strings.ToLower(model), "deepseek"):
+		return "deepseek"
 	}
 	return ""
 }
@@ -416,7 +455,9 @@ func (s *Service) UpdateStep(ctx context.Context, r Run, u StepUpdate) error {
 	if err != nil {
 		return err
 	}
-	if _, err = tx.Exec(ctx, `update runs set cost_cents=cost_cents+$2, status=case when $3='waiting' then 'waiting' when $3='running' then 'running' else status end where id=$1`, r.ID, delta, u.Status); err != nil {
+	if _, err = tx.Exec(ctx, `update runs set cost_cents=cost_cents+$2,
+		effort=case when $4<>'' then $4 else effort end,
+		status=case when $3='waiting' then 'waiting' when $3='running' then 'running' else status end where id=$1`, r.ID, delta, u.Status, u.Effort); err != nil {
 		return err
 	}
 	if funding == "credits" && delta > 0 {
@@ -427,7 +468,7 @@ func (s *Service) UpdateStep(ctx context.Context, r Run, u StepUpdate) error {
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
-	s.hub.Publish(r.WorkspaceID, "run.step", map[string]any{"run_id": r.ID, "key": u.Key, "status": u.Status, "model": u.Model, "cost_cents": cost})
+	s.hub.Publish(r.WorkspaceID, "run.step", map[string]any{"run_id": r.ID, "key": u.Key, "status": u.Status, "model": u.Model, "effort": u.Effort, "cost_cents": cost})
 	return nil
 }
 

@@ -12,6 +12,50 @@ import "./motion19.js";
 export function makeWorkspaceLogic(DCLogic) {
 function replaceAll16(s, find, to) { return String(s).split(find).join(to); }
 class Component extends window.BotincMotionWorkspace19(window.BotincFlowWorkspace18(window.BotincRoutingWorkspace17(window.BotincRunWorkspace16(window.BotincWorkspaceBase16(DCLogic))))) {
+  providerCatalog() {
+    const providers = super.providerCatalog();
+    if (providers.some((provider) => provider.id === "deepseek")) return providers;
+    return providers.concat([{ id: "deepseek", name: "DeepSeek Harness", kind: "subscription", icon: "brain",
+      methods: ["computer", "apikey"], models: ["DeepSeek V3", "DeepSeek R1"], routable: true }]);
+  }
+
+  brand12(name) {
+    const path = {
+      Claude: "/assets/coding-accounts/claude-code.svg",
+      Codex: "/assets/coding-accounts/codex.svg",
+      Cursor: "/assets/coding-accounts/cursor.svg",
+      "DeepSeek Harness": "/assets/coding-accounts/deepseek.svg",
+      Hermes: "/assets/coding-accounts/hermes.webp",
+      OpenRouter: "/assets/providers/openrouter.svg",
+    }[name];
+    if (path) return { brand12: path, brandClass12: name === "Codex" ? "mono12" : "exact15" };
+    const brand = super.brand12(name);
+    if (brand.brand12 && !String(brand.brand12).startsWith("/")) brand.brand12 = "/" + brand.brand12;
+    return brand;
+  }
+
+  accountTabs15(accounts, byID) {
+    const ids = this.providerCatalog().map((provider) => provider.id).filter((id) => accounts.some((account) => (byID[account.id] || {}).provider === id));
+    const selected = ids.includes(this.state.accountTab14) ? this.state.accountTab14 : "all";
+    return [{ id: "all", label: "All", logo: "", logoClass: "" }].concat(ids.map((id) => {
+      const provider = this.provider8(id), brand = this.brand12(provider.name);
+      return { id, label: provider.name, logo: brand.brand12 || "", logoClass: brand.brandClass12 || "" };
+    })).map((provider) => ({
+      label: provider.label,
+      count: accounts.filter((account) => provider.id === "all" || (byID[account.id] || {}).provider === provider.id).length,
+      cls: selected === provider.id ? "active" : "",
+      hasLogo: !!provider.logo,
+      logo: provider.logo,
+      logoClass: provider.logoClass,
+      icon: this.icon14("layers"),
+      open: () => this.setState({ accountTab14: provider.id, accountSel14: null }),
+    }));
+  }
+
+  accountTab15() {
+    return this.providerCatalog().some((provider) => provider.id === this.state.accountTab14) ? this.state.accountTab14 : "all";
+  }
+
   // The Account usage modal duplicated the settings page it linked to, so every
   // route into it navigates straight to Settings > Model accounts instead. The
   // capacity card also gains the brand mark and plan its compact layout shows.
@@ -522,6 +566,32 @@ class Component extends window.BotincMotionWorkspace19(window.BotincFlowWorkspac
     });
   }
 
+  routineConnectorMenu19(event) {
+    this._routineConnectorTrigger19 = event?.currentTarget || this._routineConnectorTrigger19;
+    const draft = this.state.autoDraft9 || {};
+    const selected = Array.isArray(draft.connectors19)
+      ? draft.connectors19
+      : (draft.source && !["BotInc", "Manual"].includes(draft.source) ? [draft.source] : []);
+    const reopen = () => this.routineConnectorMenu19({ currentTarget: this._routineConnectorTrigger19 });
+    const rows = this.connectedConnectors15().map((connector) => ({
+      label: connector.name, logo: connector.logo, logoClass: connector.logoClass,
+      on: selected.includes(connector.name),
+      run: () => {
+        const connectors = selected.includes(connector.name)
+          ? selected.filter((name) => name !== connector.name)
+          : selected.concat(connector.name);
+        this.setState((state) => ({ autoDraft9: Object.assign({}, state.autoDraft9, { connectors19: connectors }) }));
+        reopen();
+      },
+    }));
+    if (!rows.length) rows.push({ label: "No connected tools yet", disabled: true });
+    this.openMenu14(null, { currentTarget: this._routineConnectorTrigger19 }, rows, "Connectors", {
+      kind: "routine-connectors", cls: "menu-rich15 menu-plugins16",
+      search: rows.length > 6 ? "Search connected tools" : "",
+      cta: { label: "Add a connector", icon: this.icon14("plus"), run: () => { this.closeMenu14(); this.openPlugins10("all"); } },
+    });
+  }
+
   // Dictation records in place. Pressing the mic starts it, pressing again stops
   // and drops what was heard into the draft — a modal has no part in it.
   toggleDictation16() {
@@ -829,26 +899,49 @@ class Component extends window.BotincMotionWorkspace19(window.BotincFlowWorkspac
   // The floating conversation is resized from its top-left corner, growing up
   // and to the left from its anchored bottom-right position.
   dockCornerDrag16(event) {
+    if (event.button !== undefined && event.button !== 0) return;
     const box = event.currentTarget.closest("aside");
     if (!box) return;
     const start = box.getBoundingClientRect();
     const x0 = event.clientX, y0 = event.clientY;
+    let frame = null;
+    let next = {
+      dockW16: Math.round(start.width), dockH16: Math.round(start.height),
+      dockX16: Math.round(start.left), dockY16: Math.round(start.top),
+    };
+    const paint = () => {
+      frame = null;
+      box.style.width = next.dockW16 + "px";
+      box.style.height = next.dockH16 + "px";
+      box.style.left = next.dockX16 + "px";
+      box.style.top = next.dockY16 + "px";
+      box.style.right = "auto";
+      box.style.bottom = "auto";
+    };
     const move = (e) => {
       const width = Math.max(320, Math.min(720, Math.round(start.width + (x0 - e.clientX))));
       const height = Math.max(320, Math.min(Math.round(window.innerHeight - 40), Math.round(start.height + (y0 - e.clientY))));
-      this.setState({
+      next = {
         dockW16: width,
         dockH16: height,
         dockX16: Math.max(8, Math.min(window.innerWidth - width - 8, Math.round(start.right - width))),
         dockY16: Math.max(8, Math.min(window.innerHeight - height - 8, Math.round(start.bottom - height))),
-      });
+      };
+      if (frame === null) frame = window.requestAnimationFrame(paint);
     };
     const up = () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      paint();
+      box.classList.remove("dragging16");
+      this.setState(next);
     };
+    box.classList.add("dragging16");
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
     if (event.preventDefault) event.preventDefault();
   }
 
@@ -862,15 +955,32 @@ class Component extends window.BotincMotionWorkspace19(window.BotincFlowWorkspac
     const start = box.getBoundingClientRect();
     const dx = event.clientX - start.left;
     const dy = event.clientY - start.top;
-    const move = (e) => this.setState({
-      dockX16: Math.max(8, Math.min(window.innerWidth - start.width - 8, Math.round(e.clientX - dx))),
-      dockY16: Math.max(8, Math.min(window.innerHeight - start.height - 8, Math.round(e.clientY - dy))),
-    });
+    let frame = null;
+    let next = { dockX16: Math.round(start.left), dockY16: Math.round(start.top) };
+    const paint = () => {
+      frame = null;
+      box.style.left = next.dockX16 + "px";
+      box.style.top = next.dockY16 + "px";
+      box.style.right = "auto";
+      box.style.bottom = "auto";
+    };
+    const move = (e) => {
+      next = {
+        dockX16: Math.max(8, Math.min(window.innerWidth - start.width - 8, Math.round(e.clientX - dx))),
+        dockY16: Math.max(8, Math.min(window.innerHeight - start.height - 8, Math.round(e.clientY - dy))),
+      };
+      if (frame === null) frame = window.requestAnimationFrame(paint);
+    };
     const up = () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
       window.removeEventListener("pointercancel", up);
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      paint();
+      box.classList.remove("dragging16");
+      this.setState(next);
     };
+    box.classList.add("dragging16");
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
     window.addEventListener("pointercancel", up);
@@ -940,21 +1050,43 @@ class Component extends window.BotincMotionWorkspace19(window.BotincFlowWorkspac
   }
 
   cbDrag16(event) {
+    if (event.button !== undefined && event.button !== 0) return;
+    if (event.target.closest("button,input,textarea,a")) return;
     const bar = event.currentTarget.closest(".callbar16");
     if (!bar) return;
     const box = bar.getBoundingClientRect();
     const dx = event.clientX - box.left;
     const dy = event.clientY - box.top;
-    const move = (e) => this.setState({
-      cbX16: Math.max(8, Math.min(window.innerWidth - box.width - 8, e.clientX - dx)),
-      cbY16: Math.max(8, Math.min(window.innerHeight - box.height - 8, e.clientY - dy)),
-    });
+    let frame = null;
+    let next = { cbX16: box.left, cbY16: box.top };
+    const paint = () => {
+      frame = null;
+      bar.style.left = next.cbX16 + "px";
+      bar.style.top = next.cbY16 + "px";
+      bar.style.right = "auto";
+      bar.style.bottom = "auto";
+      bar.style.transform = "none";
+    };
+    const move = (e) => {
+      next = {
+        cbX16: Math.max(8, Math.min(window.innerWidth - box.width - 8, e.clientX - dx)),
+        cbY16: Math.max(8, Math.min(window.innerHeight - box.height - 8, e.clientY - dy)),
+      };
+      if (frame === null) frame = window.requestAnimationFrame(paint);
+    };
     const up = () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      paint();
+      bar.classList.remove("dragging16");
+      this.setState(next);
     };
+    bar.classList.add("dragging16");
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
     if (event.preventDefault) event.preventDefault();
   }
 
@@ -1074,6 +1206,33 @@ class Component extends window.BotincMotionWorkspace19(window.BotincFlowWorkspac
 
   renderVals() {
     const v = super.renderVals();
+    // The older prototype layer still emits route-relative provider artwork.
+    // Deep workspace URLs then resolve it below the current conversation and
+    // show a broken image. Rebind every model surface to the canonical brand
+    // assets before React renders it, including fixture-only previews where
+    // the live API adapter is intentionally not installed.
+    const selectedModel = String(this.state.model || "Auto");
+    const selectedProvider = /^GPT/.test(selectedModel) ? "Codex" : /^Claude/.test(selectedModel) ? "Claude" : "";
+    if (selectedProvider) {
+      const selectedBrand = this.brand12(selectedProvider);
+      v.modelHasLogo11 = !!selectedBrand.brand12;
+      v.modelLogo11 = selectedBrand.brand12 || "";
+      v.modelLogoClass11 = selectedBrand.brandClass12 || "";
+    }
+    if (Array.isArray(v.providers11)) {
+      v.providers11 = v.providers11.map((provider) => {
+        const brand = this.brand12(provider.name);
+        return { ...provider, logo: !!brand.brand12, src: brand.brand12 || provider.src,
+          logoClass: brand.brandClass12 || provider.logoClass };
+      });
+    }
+    if (Array.isArray(v.addProviders14)) {
+      v.addProviders14 = v.addProviders14.map((provider) => {
+        const brand = this.brand12(provider.name);
+        return { ...provider, logo: !!brand.brand12, logoSrc: brand.brand12 || provider.logoSrc,
+          logoClass: brand.brandClass12 || provider.logoClass };
+      });
+    }
     const st = this.state;
     const gkey = this.composerKey15(this.state.plusWhere15 || "main");
     const goal = (this.state.goals12 || {})[gkey];
@@ -1123,8 +1282,25 @@ class Component extends window.BotincMotionWorkspace19(window.BotincFlowWorkspac
       v.menuRows14 = v.menuRows14.map((r) =>
         DRILL16.indexOf(r.label) >= 0 ? { ...r, cls: (r.cls || "") + " drill16" } : r);
     }
-    // 6 — the inspector stays out of a call.
-    v.inspectorShown16 = !!v.inspectorOpen10 && !(st.cbOn16 || st.voice10);
+    // 6 - the inspector stays out of calls and top-level pages. On a narrow
+    // viewport it is a full-screen layer, so render it only after the user
+    // explicitly opens the mobile inspector. Keeping the desktop preference
+    // alone used to cover Chat and Schedule with a blank pane on mobile.
+    const inspectorView16 = ["chat", "thread9", "issue", "auto9"].indexOf(st.view) >= 0;
+    const inspectorSubject16 = st.view === "chat" ? !!st.activeChat
+      : (st.view === "thread9" || st.view === "issue") ? !!st.activeIssue
+      : st.view === "auto9" ? !!st.activeAuto9 : false;
+    const narrowInspector16 = typeof window !== "undefined" && window.matchMedia("(max-width: 900px)").matches;
+    const showInspector16 = !!v.inspectorOpen10 && inspectorView16 && inspectorSubject16
+      && !(st.cbOn16 || st.voice10) && (!narrowInspector16 || !!st.mobileInspector10);
+    v.inspectorOpen10 = showInspector16;
+    v.inspectorShown16 = showInspector16;
+    if (!showInspector16) {
+      v.rootClass = String(v.rootClass || "")
+        .replace(/\s*\binspector-open10\b/g, "")
+        .replace(/\s*\bmobile-inspector10\b/g, "");
+      v.panelOpenClass = "";
+    }
     // 8 — the new-workspace dialog.
     v.newWorkspaceDialog16 = st.dialog === "newWorkspace16";
     const name16 = st.nwName16 || "";
@@ -1318,10 +1494,10 @@ class Component extends window.BotincMotionWorkspace19(window.BotincFlowWorkspac
       "I want to post a new issue. Ask me what needs to happen, then write it up and dispatch it.",
       ["A bug someone reported", "A change to the product", "Something I noticed myself", "Read it from a repository issue"]);
 
-    // 3 · A routine is set up by being asked about it, not by filling a form.
-    v.newAutopilot9 = () => this.askOperator16(
-      "Help me set up a routine. Ask what should happen on its own, how it should be triggered, and who should run it.",
-      ["Issue intake \u00b7 triage what arrives", "On a schedule \u00b7 every weekday", "On a GitHub event \u00b7 label or PR", "Watch something and tell me"]);
+    // 3 · New routine opens the complete editor directly. The floating chat
+    // remains available as help, but it must never replace the only path to
+    // trigger, connector, repository, limit, and review controls.
+    v.newAutopilot9 = () => this.openAutoForm9();
     // The entry path decides what the Operator offers first.
     if (st.dockChips16) {
       v.dockSuggestions15 = st.dockChips16.map((label, i) => ({
@@ -2110,6 +2286,17 @@ class Component extends window.BotincMotionWorkspace19(window.BotincFlowWorkspac
         key: k, icon: "i15.svg#" + icon, title, copy, on: kind === k, cls: kind === k ? "on" : "",
         pick: () => this.setState((s) => ({ autoDraft9: Object.assign({}, s.autoDraft9, { kind: k }) })),
       }));
+      const routineConnectors = Array.isArray(draftAuto.connectors19)
+        ? draftAuto.connectors19
+        : (draftAuto.source && !["BotInc", "Manual"].includes(draftAuto.source) ? [draftAuto.source] : []);
+      v.afConnectorSummary19 = routineConnectors.length
+        ? (routineConnectors.length === 1 ? routineConnectors[0] : routineConnectors.length + " connectors")
+        : "No connectors";
+      v.afConnectorNote19 = routineConnectors.length
+        ? "Only " + routineConnectors.join(", ") + " will be available to this routine."
+        : "This routine will run without connector access.";
+      v.afConnectorMenu19 = (e) => this.routineConnectorMenu19(e);
+      v.afConnectorManage19 = () => { this.setState({ dialog: null }); this.openPlugins10("all"); };
       const repoNow = /^[\w.-]+\/[\w.-]+$/.test(draftAuto.repo16 || draftAuto.scope || "") ? (draftAuto.repo16 || draftAuto.scope) : (draftAuto.repo16 || "");
       v.afRepoLabel16 = repoNow || "No repository";
       v.afRepoMenu16 = (e) => this.openMenu14(null, e, [{ head: "Repository" }].concat(

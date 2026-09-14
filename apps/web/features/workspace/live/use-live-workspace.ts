@@ -75,9 +75,10 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
   void (async()=>{
    const me=(await api.me(abort.signal)).user;
    const initialRoute=parseWorkspaceRoute(new URL(window.location.href));
-   const {workspaces}=await api.workspaces(abort.signal);const first=workspaces.find(w=>w.slug===initialRoute.workspace)||workspaces[0];if(!first)throw new Error("This account has no workspace");
+   const {workspaces}=await api.workspaces(abort.signal);const first=workspaces.find(w=>w.slug===initialRoute.workspace||w.aliases?.includes(initialRoute.workspace))||workspaces[0];if(!first)throw new Error("This account has no workspace");
    const ws=api.workspace(first.slug);const people:PeopleIndex=new Map();const member=me.name.trim()||me.email.split("@")[0]||"You";
    let bootIssueDetail:Awaited<ReturnType<WorkspaceClient["issue"]>>|null=null;
+   let bootConversationDetail:Awaited<ReturnType<WorkspaceClient["conversation"]>>|null=null;
    let refreshing=false,again=false;
    const hydrate=async()=>{
     if(!alive)return;if(refreshing){again=true;return;}refreshing=true;
@@ -105,7 +106,7 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
      })};
      const active=String(logic.state.activeChat||"");
      if(active&&chats.conversations.some(c=>c.id===active)){
-      const detail=await ws.conversation(active,abort.signal);if(!alive)return;
+      const detail=bootConversationDetail?.conversation.id===active?bootConversationDetail:await ws.conversation(active,abort.signal);if(!alive)return;
       const run=detail.runs.at(-1);const phase=phaseFor(run?.status);
       const apiOrigin=new URL(api.baseURL||"/",window.location.origin);
       const attachments=detail.attachments.map(a=>({...a,url:new URL(a.url,apiOrigin).toString()}));
@@ -183,6 +184,29 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
     });
     report("live");
    }
+   // A canonical chat URL also has enough information to paint the complete
+   // conversation before the workspace-wide navigation, settings and billing
+   // inventories finish. The full hydration reuses this response, so a cold
+   // chat does not pay for the detail request twice.
+   if(initialRoute.view==="chat"&&uuid(initialRoute.conversation)){
+    bootConversationDetail=await ws.conversation(initialRoute.conversation,abort.signal);if(!alive)return;
+    const run=bootConversationDetail.runs.at(-1);const phase=phaseFor(run?.status);
+    const apiOrigin=new URL(api.baseURL||"/",window.location.origin);
+    const attachments=bootConversationDetail.attachments.map(a=>({...a,url:new URL(a.url,apiOrigin).toString()}));
+    const conversation={
+     ...mapConversation(bootConversationDetail.conversation,bootConversationDetail.messages,me,people,attachments),
+     phase,runId:run?.id,runError:run?.error||"",
+     cost:bootConversationDetail.runs.reduce((sum,item)=>sum+item.cost_cents,0)/100,
+     taskLimit:(run?.task_limit_cents??200)/100,
+    };
+    logic.setState({
+     ...livePersonaDefaults(member),
+     liveWorkspaces:workspaces,workspace16:first.name,workspaceName:first.name,member,signed:true,
+     chats:{[member]:[conversation]},activeChat:initialRoute.conversation,view:"chat",phase,
+     draft:readDraft(ws.slug,initialRoute.conversation),...(run?.error?{error:run.error}:{}),
+    });
+    report("live");
+   }
    await hydrate();if(!alive)return;
    if(initialRoute.workflow&&typeof logic.openGraph14==="function")await logic.openGraph14(initialRoute.workflow);
    disconnect=ws.connect(e=>{if(e.type==="hello")return;if(timer)clearTimeout(timer);const isActiveWorkEvent=e.type==="message.created"||e.type.startsWith("run.");timer=setTimeout(()=>{void (isActiveWorkEvent?refreshActiveWork():hydrate()).catch(fail)},isActiveWorkEvent?350:100)},up=>{if(!up)return;if(hasConnected)void hydrate().catch(fail);hasConnected=true});
@@ -221,12 +245,13 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
   const startX=event.clientX;const startWidth=Number(logic.state.paneWidth11)||400;
   let pendingWidth=clampConversationPaneWidth(startWidth,paneAvailable());
   const inspector=event.currentTarget instanceof Element?event.currentTarget.closest(".inspector10") as HTMLElement|null:document.querySelector<HTMLElement>(".app-v19 .inspector10");
-  logic.setState({paneDragging11:true});
+  const app=inspector?.closest(".app-v19") as HTMLElement|null;
+  app?.classList.add("pane-dragging11");
   const paint=()=>{paneFrame=undefined;if(!inspector)return;inspector.style.width=`${pendingWidth}px`;inspector.style.flexBasis=`${pendingWidth}px`};
   const move=(moveEvent:PointerEvent)=>{pendingWidth=clampConversationPaneWidth(startWidth+startX-moveEvent.clientX,paneAvailable());if(paneFrame===undefined)paneFrame=requestAnimationFrame(paint)};
   const finish=()=>{
    document.removeEventListener("pointermove",move);document.removeEventListener("pointerup",finish);document.removeEventListener("pointercancel",finish);
-   if(paneFrame!==undefined){cancelAnimationFrame(paneFrame);paneFrame=undefined}if(!disposed){paint();logic.setState({paneDragging11:false,paneWidth11:pendingWidth,paneRestore11:pendingWidth,inspector10:true})}finishPaneDrag=undefined;
+   if(paneFrame!==undefined){cancelAnimationFrame(paneFrame);paneFrame=undefined}app?.classList.remove("pane-dragging11");if(!disposed){paint();logic.setState({paneWidth11:pendingWidth,paneRestore11:pendingWidth,inspector10:true})}finishPaneDrag=undefined;
   };
   finishPaneDrag=finish;document.addEventListener("pointermove",move);document.addEventListener("pointerup",finish);document.addEventListener("pointercancel",finish);
  });
@@ -238,6 +263,12 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
  const originalAccountRoutable=typeof logic.accountRoutable14==="function"?logic.accountRoutable14.bind(logic):null;
  if(originalAccountRoutable)bind("accountRoutable14",(account:Vals)=>typeof account.runtimeRoutable==="boolean"?account.runtimeRoutable&&account.enabled!==false:originalAccountRoutable(account));
  const write=(fn:()=>Promise<void>)=>async()=>{if(disposed)return;try{await fn();if(!disposed)await hydrate()}catch(err){if(!disposed)fail(err)}};
+ const selectedPluginIDs=(where:"main"|"dock"="main"):string[]=>{
+  const key=typeof logic.composerKey15==="function"?logic.composerKey15(where):typeof logic.key12==="function"?logic.key12():"";
+  const selected:string[]=typeof logic.tools15==="function"?logic.tools15(key):[];
+  const selectedKeys=new Set(selected.map(pluginKey));
+  return (logic.state.livePlugins||[]).filter((plugin:Vals)=>plugin.status==="connected"&&selectedKeys.has(pluginKey(plugin.kind))).map((plugin:Vals)=>String(plugin.id));
+ };
  let sending=false;
  const send=async(e?:{preventDefault:()=>void})=>{
   e?.preventDefault();if(sending||disposed)return;const isThread=logic.state.view==="thread9";let draft=String(isThread?logic.state.threadDraft9:logic.state.draft||"").trim();const queued=[...(logic.state.attachments11||[])].filter((a:Vals)=>pendingFiles.has(a.id));if(!draft&&!queued.length)return;if(!draft)draft="Review the attached files.";sending=true;
@@ -253,7 +284,7 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
    if(!uuid(active)){const out=await ws.createConversation({title:draft.slice(0,72),model:String(logic.state.model||"auto").toLowerCase()==="auto"?"auto":String(logic.state.model)});if(disposed)return;active=out.conversation.id;logic.setState({activeChat:active,view:"chat"});routeURL("chat",{activeChat:active})}
    const attachmentIDs:string[]=[];
    for(const item of queued){const file=pendingFiles.get(item.id);if(!file)continue;const out=await ws.uploadConversationAttachment(active,file);attachmentIDs.push(out.attachment.id)}
-   await ws.sendMessage(active,draft,attachmentIDs);
+   await ws.sendMessage(active,draft,attachmentIDs,selectedPluginIDs("main"),String(logic.state.reasoning||""));
    saveDraft(ws.slug,logic.state.activeChat,"");saveDraft(ws.slug,active,"");
    for(const item of queued){pendingFiles.delete(item.id);if(String(item.url||"").startsWith("blob:"))URL.revokeObjectURL(item.url)}
    if(!disposed){logic.setState({draft:"",attachments11:[]});await hydrate()}
@@ -274,7 +305,7 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
    }
    const attachmentIDs:string[]=[];
    for(const item of queued){const file=pendingFiles.get(item.id);if(!file)continue;const out=await ws.uploadConversationAttachment(active,file);attachmentIDs.push(out.attachment.id)}
-   await ws.sendMessage(active,draft,attachmentIDs);
+   await ws.sendMessage(active,draft,attachmentIDs,selectedPluginIDs("dock"),String(logic.state.reasoning||""));
    saveLocal(dockDraftKey(ws.slug),"");
    for(const item of queued){pendingFiles.delete(item.id);if(String(item.url||"").startsWith("blob:"))URL.revokeObjectURL(item.url)}
    if(!disposed){logic.setState({dockLiveDraft:"",dockAttachmentsLive:[]});await hydrate()}
@@ -286,7 +317,7 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
  for(const name of ["sendComposer10","sendComposer11","sendThreadMessage9"])bind(name,send);
  bind("openAuto9",(id:string)=>{logic.go("auto9",{activeAuto9:id,panel:null});void hydrate().catch(fail)});
  bind("toggleAuto9",(id:string,enabled:boolean)=>{void write(async()=>{await ws.setAutopilotEnabled(id,enabled)})()});
- bind("saveAuto9",()=>{const s=logic.state,draft=s.autoDraft9||{};const error=!String(draft.title||"").trim()?"Give this routine a name.":String(draft.prompt||"").trim().length<12?"Give this routine a clear instruction.":"";if(error){logic.setState({autoFormError9:error});return}if(s.autoFormStep9!=="review"){logic.setState({autoFormStep9:"review",autoFormError9:""});return}void write(async()=>{const trigger=routineTrigger(draft);const existing=uuid(s.autoEditing9)?s.autoEditing9:undefined;const out=await ws.saveAutopilot({name:String(draft.title).trim(),description:String(draft.description||""),prompt:String(draft.prompt).trim(),model:String(draft.model||"auto").toLowerCase()==="auto"?"auto":String(draft.model),trigger,workflow_id:draft.workflowId||null,enabled:draft.enabled!==false},existing);logic.setState({dialog:null,autoEditing9:null,activeAuto9:out.autopilot.id});routeURL("auto9",{activeAuto9:out.autopilot.id})})()});
+ bind("saveAuto9",()=>{const s=logic.state,draft=s.autoDraft9||{};const error=!String(draft.title||"").trim()?"Give this routine a name.":String(draft.prompt||"").trim().length<12?"Give this routine a clear instruction.":"";if(error){logic.setState({autoFormError9:error});return}if(s.autoFormStep9!=="review"){logic.setState({autoFormStep9:"review",autoFormError9:""});return}void write(async()=>{const trigger=routineTrigger(draft);const existing=uuid(s.autoEditing9)?s.autoEditing9:undefined;const out=await ws.saveAutopilot({name:String(draft.title).trim(),description:String(draft.description||""),prompt:String(draft.prompt).trim(),model:String(draft.model||"auto").toLowerCase()==="auto"?"auto":String(draft.model),trigger,workflow_id:draft.workflowId||null,plugin_ids:Array.isArray(draft.pluginIds)?draft.pluginIds:[],enabled:draft.enabled!==false},existing);logic.setState({dialog:null,autoEditing9:null,activeAuto9:out.autopilot.id});routeURL("auto9",{activeAuto9:out.autopilot.id})})()});
  bind("runAuto9",()=>{const autopilot=logic.state.autopilots9?.find((row:Vals)=>row.id===logic.state.activeAuto9);if(!autopilot?.enabled){logic.toast("Enable this routine before running it.");return}void write(async()=>{await ws.triggerAutopilot(autopilot.id)})()});
  bind("deleteRoutine14",(id:string)=>{const autopilot=logic.state.autopilots9?.find((row:Vals)=>row.id===id);if(!autopilot)return;logic.generic("Delete this routine?","Its recorded run history stays attached to the work it created.",[],{genericText:autopilot.title,genericActionLabel:"Delete routine",genericAction:()=>{void write(async()=>{await ws.deleteAutopilot(id);logic.setState({dialog:null,activeAuto9:null});logic.go("schedule9",{scheduleTab14:"routines"})})()}})});
  bind("workspaceMenu16",(event:Event)=>logic.openMenu14(null,event,[...(logic.state.liveWorkspaces||[]).map((w:Vals)=>({label:w.name,hint:w.role,on:w.slug===ws.slug,run:()=>window.location.assign(workspacePath({workspace:w.slug,view:"chat"}))})),{label:"New workspace",run:()=>logic.newWorkspace16()}],"Workspaces"));
@@ -319,15 +350,32 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
  bind("revokeInvite14",(id:string)=>write(async()=>{await ws.revokeInvitation(id)})());
  bind("setMemberRole14",(id:string,role:string)=>write(async()=>{await ws.setMemberRole(id,role.toLowerCase())})());
  bind("sendInvites14",write(async()=>{const s=logic.state;const emails=String(s.inviteEmails14||"").split(/[\s,;]+/).filter(Boolean);if(!emails.length)throw new Error("Add an email address");const links=[];for(const email of emails){const invite=await ws.invite(email,String(s.inviteRole14||"member").toLowerCase());links.push(invite.link)}logic.generic("Invitation links","Share each link with the invited person",[],{genericText:links.join("\n")});logic.setState({inviteEmails14:""})}));
- bind("openGraph14",(id:string)=>write(async()=>{const out=await ws.workflow(id);const v=out.versions.find(v=>v.id===out.workflow.active_version_id)||out.versions[0];if(!v)throw new Error("This workflow has no version");const graph={id:out.workflow.id,name:out.workflow.name,version:v.version,nodes:v.graph.nodes.map((n,i)=>({id:n.key,type:n.kind,label:n.name,model:n.model||"Auto",prompt:n.prompt||"",x:n.x??i*220,y:n.y??120})),edges:v.graph.edges.map((e,i)=>({id:"e"+i,from:e[0],to:e[1],label:""}))};logic.setState({view:"settings",section:"workflows",activeWorkflow:id,graph14:graph,graphSaved14:structuredClone(graph),graphVersions14:out.versions.map(v=>({id:v.id,name:"Version "+v.version,meta:v.created_at,state:titleCase(v.status)})),graphId14:id,overlay14:"graph",graphSide14:"node",graphSel14:graph.nodes[0]?.id});routeURL("settings",{section:"workflows",activeWorkflow:id})})());
+ bind("openGraph14",(id:string)=>write(async()=>{const out=await ws.workflow(id);const v=out.versions.find(v=>v.id===out.workflow.active_version_id)||out.versions[0];if(!v)throw new Error("This workflow has no version");const graph={id:out.workflow.id,name:out.workflow.name,version:v.version,nodes:v.graph.nodes.map((n,i)=>({id:n.key,type:n.kind,label:n.name,model:n.model||"Auto",effort:n.effort||"Medium",prompt:n.prompt||"",x:n.x??i*220,y:n.y??120})),edges:v.graph.edges.map((e,i)=>({id:"e"+i,from:e[0],to:e[1],label:""}))};logic.setState({view:"settings",section:"workflows",activeWorkflow:id,graph14:graph,graphSaved14:structuredClone(graph),graphVersions14:out.versions.map(v=>({id:v.id,name:"Version "+v.version,meta:v.created_at,state:titleCase(v.status)})),graphId14:id,overlay14:"graph",graphSide14:"node",graphSel14:graph.nodes[0]?.id});routeURL("settings",{section:"workflows",activeWorkflow:id})})());
  const closeGraph=typeof logic.closeGraph14==="function"?logic.closeGraph14.bind(logic):()=>logic.setState({overlay14:null});
  bind("closeGraph14",()=>{closeGraph();logic.setState({activeWorkflow:null});routeURL("settings",{section:"workflows",activeWorkflow:null},true)});
  bind("backToWorkflows14",()=>{logic.closeGraph14()});
- bind("saveGraph14",write(async()=>{const g=logic.state.graph14;const graph:WorkflowGraph={nodes:g.nodes.map((n:Vals)=>({key:n.id,name:n.label,kind:n.type,model:n.model==="Auto"?"auto":n.model,prompt:n.prompt||"",x:n.x,y:n.y})),edges:g.edges.map((e:Vals)=>[e.from,e.to])};const out=uuid(g.id)?await ws.saveWorkflow(g.id,graph):await ws.createWorkflow({name:g.name,graph});const id="workflow" in out?out.workflow.id:g.id;await logic.openGraph14(id)}));
- const render=logic.renderVals;
+ bind("saveGraph14",write(async()=>{const g=logic.state.graph14;const graph:WorkflowGraph={nodes:g.nodes.map((n:Vals)=>({key:n.id,name:n.label,kind:n.type,model:n.model==="Auto"?"auto":n.model,effort:n.effort||"Medium",prompt:n.prompt||"",x:n.x,y:n.y})),edges:g.edges.map((e:Vals)=>[e.from,e.to])};const out=uuid(g.id)?await ws.saveWorkflow(g.id,graph):await ws.createWorkflow({name:g.name,graph});const id="workflow" in out?out.workflow.id:g.id;await logic.openGraph14(id)}));
+  const render=logic.renderVals;
  bind("renderVals",()=>{
   const v=render.call(logic);const s=logic.state;
   v.workspaceName= s.workspace16||"BotInc";v.previewCard15=false;
+  if(v.autopilotForm10){
+   const available=(s.livePlugins||[]).filter((plugin:Vals)=>plugin.kind?.startsWith("mcp:"));
+   const selectedIDs:string[]=Array.isArray(s.autoDraft9?.pluginIds)?s.autoDraft9.pluginIds:[];
+   const selectedSet=new Set(selectedIDs);
+   const label=(plugin:Vals)=>titleCase(pluginKey(plugin.kind).replaceAll("-"," "));
+   const selectedNames=available.filter((plugin:Vals)=>selectedSet.has(plugin.id)).map(label);
+   let connectorTrigger:EventTarget|null=null;
+   const openConnectorMenu=()=>{
+    const rows=available.map((plugin:Vals)=>{const name=label(plugin);const brand=typeof logic.brand12==="function"?logic.brand12(name):{};return{label:name,logo:brand.brand12||"",logoClass:brand.brandClass12||"",on:selectedSet.has(plugin.id),disabled:plugin.status!=="connected",hint:plugin.status==="connected"?"":plugin.status==="needs_reauth"?"Reconnect":"Unavailable",run:()=>{const ids=selectedSet.has(plugin.id)?selectedIDs.filter((id)=>id!==plugin.id):[...selectedIDs,plugin.id];logic.setState({autoDraft9:{...logic.state.autoDraft9,pluginIds:ids}});setTimeout(openConnectorMenu,0)}}});
+    if(!rows.length)rows.push({label:"No connectors in this workspace",disabled:true});
+    logic.openMenu14(null,{currentTarget:connectorTrigger},rows,"Connectors",{kind:"routine-connectors",cls:"menu-rich15 menu-plugins16",search:rows.length>6?"Search connectors":"",cta:{label:"Add a connector",icon:logic.icon14?.("plus"),run:()=>{logic.setState({dialog:null});logic.openPlugins10("all")}}});
+   };
+   v.afConnectorSummary19=selectedNames.length?selectedNames.length===1?selectedNames[0]:`${selectedNames.length} connectors`:"No connectors";
+   v.afConnectorNote19=selectedNames.length?`Only ${selectedNames.join(", ")} will be available to this routine.`:"This routine will run without connector access.";
+   v.afConnectorMenu19=(event:Event)=>{connectorTrigger=event.currentTarget;openConnectorMenu()};
+   v.afConnectorManage19=()=>{logic.setState({dialog:null});logic.openPlugins10("all")};
+  }
   if(s.view==="settings"&&s.section==="projects"){
    v.projectsSettings=false;v.reposSettings14=true;v.designSettings14=true;
   }
@@ -417,14 +465,18 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
   v.editLiveRepoName=(e:Event)=>logic.setState({liveRepoName:(e.target as HTMLInputElement).value});
   v.pluginButton10=isSelectedPluginConnected?"Use in a conversation":s.plugin10==="GitHub"?"Save connection":`Connect ${s.plugin10}`;
   v.pluginConnect10=write(async()=>{
-   if(isSelectedPluginConnected){const draft=`Use ${s.plugin10} to `;logic.newChat();logic.setState({draft,dialog:null});saveDraft(ws.slug,null,draft);return}
+   if(isSelectedPluginConnected){const draft=`Use ${s.plugin10} to `;logic.newChat();logic.setState({draft,dialog:null});routeURL("chat");saveDraft(ws.slug,null,draft);return}
    if(s.plugin10!=="GitHub"){logic.setState({dialog:"mcp10",mcpName10:s.plugin10,mcpUrl10:"",mcpAuth10:"none",mcpReview10:false,mcpError10:""});return}
    if(s.livePluginSecret)await api.request("POST",`/api/w/${ws.slug}/plugins`,{kind:"github",secret:s.livePluginSecret});
    if(s.liveRepoName)await api.request("POST",`/api/w/${ws.slug}/repositories`,{full_name:String(s.liveRepoName).trim()});
    if(!s.livePluginSecret&&!s.liveRepoName)throw new Error("Enter a token or repository name");
    logic.setState({livePluginSecret:"",liveRepoName:"",dialog:null});
   });
-  v.pluginDisconnect10=write(async()=>{for(const plugin of selectedPlugins)await api.request("DELETE",`/api/w/${ws.slug}/plugins/${plugin.id}`);logic.setState({dialog:null})});
+  v.pluginDisconnect10=()=>logic.generic(`Disconnect ${s.plugin10}?`,"New messages and routine runs will stop receiving this connector. Existing conversations and recorded results stay intact.",[],{
+   genericText:`Workspace: ${String(logic.state.workspaceName||logic.state.workspace16||ws.slug)}\nConnector: ${s.plugin10}`,
+   genericActionLabel:"Disconnect connector",
+   genericAction:()=>{void write(async()=>{for(const plugin of selectedPlugins)await api.request("DELETE",`/api/w/${ws.slug}/plugins/${plugin.id}`);logic.setState({dialog:null})})()},
+  });
   v.repoFromGithub16=()=>logic.showPlugin10("GitHub");v.repoConnect14=v.repoFromGithub16;
   const chat=logic.currentChat();
   v.conversationCost10=logic.cash(chat?.cost||0);v.routeCostShort17=v.conversationCost10;
@@ -506,7 +558,7 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
   v.addMethods15=(v.addMethods15||[]).filter((m:Vals)=>/api/i.test(m.title));
   v.addStartLabel="Save account";
   v.addStart=write(async()=>{
-   if(!["claude","codex","openrouter"].includes(s.addProvider))throw new Error("This provider is not available for remote runs");
+   if(!["claude","codex","deepseek","openrouter"].includes(s.addProvider))throw new Error("This provider is not available for remote runs");
    const secret=String(s.liveAccountSecret||"").trim();if(!secret)throw new Error("Enter the provider API key");
    await api.request("POST",`/api/w/${ws.slug}/accounts`,{provider:s.addProvider,kind:"api_key",label:s.addLabel||s.addProvider,secret});
    logic.setState({liveAccountSecret:"",dialog:null});

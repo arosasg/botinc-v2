@@ -139,11 +139,11 @@ export class WorkspaceClient {
   conversation(id: string, signal?: AbortSignal) {
     return this.get<{ conversation: Conversation; messages: Message[]; runs: Run[]; attachments: Attachment[] }>(`/conversations/${id}`, signal);
   }
-  createConversation(input: { message?: string; title?: string; model?: string; issue_id?: string; attachment_ids?: string[] }) {
+  createConversation(input: { message?: string; title?: string; model?: string; effort?: string; issue_id?: string; attachment_ids?: string[]; plugin_ids?: string[] }) {
     return this.post<{ conversation: Conversation; message: Message | null; run: Run | null }>("/conversations", input);
   }
-  sendMessage(id: string, body: string, attachmentIDs: string[] = []) {
-    return this.post<{ message: Message; run: Run | null }>(`/conversations/${id}/messages`, { body, attachment_ids: attachmentIDs });
+  sendMessage(id: string, body: string, attachmentIDs: string[] = [], pluginIDs: string[] = [], effort = "") {
+    return this.post<{ message: Message; run: Run | null }>(`/conversations/${id}/messages`, { body, attachment_ids: attachmentIDs, plugin_ids: pluginIDs, effort });
   }
   queueMessage(id: string, body: string) { return this.post<void>(`/conversations/${id}/queue`, { body }); }
   uploadConversationAttachment(id: string, file: File) {
