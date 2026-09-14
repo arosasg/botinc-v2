@@ -13,6 +13,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -137,6 +139,30 @@ type Options struct {
 
 var ErrBinaryMissing = errors.New("the coding CLI is not installed in this sandbox")
 
+var validMCPServerName = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+
+func allowedMCPTools(config []byte) ([]string, error) {
+	var document struct {
+		Servers map[string]json.RawMessage `json:"mcpServers"`
+	}
+	if err := json.Unmarshal(config, &document); err != nil {
+		return nil, fmt.Errorf("decode MCP configuration: %w", err)
+	}
+	serverNames := make([]string, 0, len(document.Servers))
+	for name := range document.Servers {
+		if !validMCPServerName.MatchString(name) {
+			return nil, fmt.Errorf("MCP server name %q cannot be safely allowed", name)
+		}
+		serverNames = append(serverNames, name)
+	}
+	sort.Strings(serverNames)
+	allowed := make([]string, 0, len(serverNames))
+	for _, name := range serverNames {
+		allowed = append(allowed, "mcp__"+name+"__*")
+	}
+	return allowed, nil
+}
+
 // drainGrace is how long output is still collected after the process should
 // have finished.
 var drainGrace = 30 * time.Second
@@ -165,7 +191,14 @@ func Run(ctx context.Context, a Adapter, o Options) (map[string]any, error) {
 		// Workspace connectors are already selected by the user and scoped to
 		// this isolated run. Print mode has nobody available to answer a second
 		// permission prompt, so explicitly allow only the configured MCP tools.
-		args = append(args, "--mcp-config", mcpPath, "--strict-mcp-config", "--allowedTools", "mcp__*")
+		allowed, err := allowedMCPTools(o.MCPConfig)
+		if err != nil {
+			return nil, err
+		}
+		args = append(args, "--mcp-config", mcpPath, "--strict-mcp-config")
+		if len(allowed) > 0 {
+			args = append(args, "--allowedTools", strings.Join(allowed, ","))
+		}
 	}
 	if o.BudgetCents > 0 && (a.Provider == "claude" || a.Provider == "openrouter") {
 		args = append(args, "--max-budget-usd", fmt.Sprintf("%.2f", float64(o.BudgetCents)/100))

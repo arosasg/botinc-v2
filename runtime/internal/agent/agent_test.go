@@ -192,7 +192,7 @@ while [ "$#" -gt 0 ]; do
   shift
 done
 test "$(cat "$mcp")" = '{"mcpServers":{"gmail":{"url":"https://example.test","headers":{"Authorization":"Bearer mcp-secret"}}}}' || exit 10
-test "$allowed" = 'mcp__*' || exit 11
+test "$allowed" = 'mcp__gmail__*' || exit 11
 echo '{"type":"result","result":"mcp-secret"}'
 `)
 	adapter := adapterFor("mcpcli")
@@ -210,6 +210,19 @@ echo '{"type":"result","result":"mcp-secret"}'
 	}
 	if _, err := os.Stat(filepath.Join(workdir, ".botinc-mcp.json")); !os.IsNotExist(err) {
 		t.Fatal("task MCP file was not removed")
+	}
+}
+
+func TestAllowedMCPToolsAreExactAndDeterministic(t *testing.T) {
+	allowed, err := allowedMCPTools([]byte(`{"mcpServers":{"gmail":{},"braintrust-eu":{}}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(allowed, ","); got != "mcp__braintrust-eu__*,mcp__gmail__*" {
+		t.Fatalf("unexpected MCP allowlist: %s", got)
+	}
+	if _, err := allowedMCPTools([]byte(`{"mcpServers":{"bad,*":{}}}`)); err == nil {
+		t.Fatal("unsafe MCP server name accepted")
 	}
 }
 
