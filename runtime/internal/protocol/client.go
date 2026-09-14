@@ -134,7 +134,12 @@ type Repository struct {
 type Credential struct {
 	Provider string `json:"provider"`
 	Kind     string `json:"kind"`
-	Secret   string `json:"secret"`
+	// Secret is retained for API-key accounts created before structured
+	// credentials were introduced. Subscription logins use Env and Files so
+	// the CLI receives the exact credential shape it created.
+	Secret string            `json:"secret,omitempty"`
+	Env    map[string]string `json:"env,omitempty"`
+	Files  map[string]string `json:"files,omitempty"`
 }
 
 type Knowledge struct {

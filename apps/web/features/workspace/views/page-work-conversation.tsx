@@ -5,6 +5,7 @@ import { Fragment } from "react";
 import type { Vals } from "../vals";
 import { css } from "@/lib/dc/css";
 import { interp } from "@/lib/dc/interp";
+import { MessageText } from "../message-text";
 
 export function PageWorkConversation({ v }: { v: Vals }) {
   return (
@@ -522,7 +523,7 @@ export function PageWorkConversation({ v }: { v: Vals }) {
                                   <strong>{interp(m.who)}</strong>
                                   <time>{interp(m.time)}</time>
                                 </header>
-                                <p>{interp(m.text)}</p>
+                                <MessageText text={String(m.text ?? "")} />
                                 {m.hasOptions ? (
                                   <>
                                     <div className="answered13">
@@ -987,7 +988,7 @@ export function PageWorkConversation({ v }: { v: Vals }) {
                                     <Fragment key={i}>
                                       <article>
                                         <strong>{interp(m.who)}</strong>
-                                        <p>{interp(m.text)}</p>
+                                        <MessageText text={String(m.text ?? "")} />
                                       </article>
                                     </Fragment>
                                   ))}
@@ -1148,7 +1149,7 @@ export function PageWorkConversation({ v }: { v: Vals }) {
                           </div>
                           {!m.editing18 ? (
                             <>
-                              <p>{interp(m.text)}</p>
+                              <MessageText text={String(m.text ?? "")} />
                             </>
                           ) : null}
                           {m.editing18 ? (
@@ -2040,6 +2041,7 @@ export function PageWorkConversation({ v }: { v: Vals }) {
                 value={v.composerDraft10}
                 onChange={v.editComposer10}
                 onKeyDown={v.composerKey12}
+                onPaste={v.composerPaste}
               />
               <div className="composer10-tools">
                 <button
@@ -2287,6 +2289,7 @@ export function PageWorkConversation({ v }: { v: Vals }) {
                   aria-label={v.sendLabel18}
                   title={v.sendLabel18}
                   disabled={v.composerEmpty11}
+                  onClick={v.sendComposer11}
                 >
                   <svg
                     className="ui-icon use14"

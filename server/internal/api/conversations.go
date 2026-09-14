@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -75,10 +76,11 @@ func (s *Server) listConversations(w http.ResponseWriter, r *http.Request) {
 func (s *Server) createConversation(w http.ResponseWriter, r *http.Request) {
 	sc := scopeOf(r.Context())
 	var in struct {
-		Title   string     `json:"title"`
-		Model   string     `json:"model"`
-		IssueID *uuid.UUID `json:"issue_id"`
-		Message string     `json:"message"`
+		Title         string      `json:"title"`
+		Model         string      `json:"model"`
+		IssueID       *uuid.UUID  `json:"issue_id"`
+		Message       string      `json:"message"`
+		AttachmentIDs []uuid.UUID `json:"attachment_ids"`
 	}
 	if err := httpx.Decode(r, &in); err != nil {
 		httpx.Error(w, 400, err.Error())
@@ -102,7 +104,7 @@ func (s *Server) createConversation(w http.ResponseWriter, r *http.Request) {
 	var first *Message
 	var run *runs.Run
 	if strings.TrimSpace(in.Message) != "" {
-		m, rn, err := s.postMessage(r, c, in.Message)
+		m, rn, err := s.postMessage(r, c, in.Message, in.AttachmentIDs)
 		if err != nil {
 			s.fail(w, err)
 			return
@@ -138,6 +140,7 @@ func (s *Server) loadConversation(r *http.Request) (Conversation, bool, error) {
 }
 
 func (s *Server) getConversation(w http.ResponseWriter, r *http.Request) {
+	sc := scopeOf(r.Context())
 	c, found, err := s.loadConversation(r)
 	if err != nil {
 		s.fail(w, err)
@@ -177,7 +180,27 @@ func (s *Server) getConversation(w http.ResponseWriter, r *http.Request) {
 		}
 		rs = append(rs, rn)
 	}
-	httpx.JSON(w, 200, map[string]any{"conversation": c, "messages": msgs, "runs": rs})
+	attachments := []attachmentRow{}
+	attRows, err := s.pool.Query(r.Context(), `select id,issue_id,conversation_id,message_id,comment_id,filename,content_type,size_bytes from attachments where conversation_id=$1 order by created_at,id`, c.ID)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	defer attRows.Close()
+	for attRows.Next() {
+		var a attachmentRow
+		if err := attRows.Scan(&a.ID, &a.IssueID, &a.ConversationID, &a.MessageID, &a.CommentID, &a.Filename, &a.ContentType, &a.Size); err != nil {
+			s.fail(w, err)
+			return
+		}
+		a.URL = fmt.Sprintf("/api/w/%s/attachments/%s", sc.Slug, a.ID)
+		attachments = append(attachments, a)
+	}
+	if err := attRows.Err(); err != nil {
+		s.fail(w, err)
+		return
+	}
+	httpx.JSON(w, 200, map[string]any{"conversation": c, "messages": msgs, "runs": rs, "attachments": attachments})
 }
 
 func (s *Server) updateConversation(w http.ResponseWriter, r *http.Request) {
@@ -212,7 +235,7 @@ func (s *Server) updateConversation(w http.ResponseWriter, r *http.Request) {
 func (c Conversation) workspace(r *http.Request) uuid.UUID { return scopeOf(r.Context()).WorkspaceID }
 
 // postMessage appends a user message and starts a run to answer it.
-func (s *Server) postMessage(r *http.Request, c Conversation, body string) (Message, *runs.Run, error) {
+func (s *Server) postMessage(r *http.Request, c Conversation, body string, attachmentIDs []uuid.UUID) (Message, *runs.Run, error) {
 	sc := scopeOf(r.Context())
 	ctx := r.Context()
 	var m Message
@@ -230,6 +253,15 @@ func (s *Server) postMessage(r *http.Request, c Conversation, body string) (Mess
 	}
 	if err := tx.QueryRow(ctx, `insert into messages(conversation_id,seq,role,author_user_id,body) values($1,(select coalesce(max(seq),0)+1 from messages where conversation_id=$1),'user',$2,$3) returning `+msgCols, c.ID, sc.UserID, body).Scan(m.scan()...); err != nil {
 		return m, nil, err
+	}
+	if len(attachmentIDs) > 0 {
+		tag, err := tx.Exec(ctx, `update attachments set message_id=$1 where id=any($2) and workspace_id=$3 and conversation_id=$4 and message_id is null`, m.ID, attachmentIDs, sc.WorkspaceID, c.ID)
+		if err != nil {
+			return m, nil, err
+		}
+		if tag.RowsAffected() != int64(len(attachmentIDs)) {
+			return m, nil, errors.New("one or more attachments are unavailable")
+		}
 	}
 	if _, err := tx.Exec(ctx, `update conversations set updated_at=now() where id=$1`, c.ID); err != nil {
 		return m, nil, err
@@ -275,7 +307,8 @@ func (s *Server) sendMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		Body string `json:"body"`
+		Body          string      `json:"body"`
+		AttachmentIDs []uuid.UUID `json:"attachment_ids"`
 	}
 	if err := httpx.Decode(r, &in); err != nil {
 		httpx.Error(w, 400, err.Error())
@@ -285,7 +318,7 @@ func (s *Server) sendMessage(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, 400, "message is empty")
 		return
 	}
-	m, rn, err := s.postMessage(r, c, in.Body)
+	m, rn, err := s.postMessage(r, c, in.Body, in.AttachmentIDs)
 	if err != nil {
 		s.fail(w, err)
 		return

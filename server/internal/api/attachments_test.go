@@ -32,6 +32,20 @@ func TestAttachmentsPersistAndRespectConversationPrivacy(t *testing.T) {
 	}
 	var out struct{ Attachment attachmentRow }
 	h.decode(rec, &out)
+	var sent struct {
+		Message Message `json:"message"`
+	}
+	h.decode(h.do("POST", h.w("/conversations/"+conv.Conversation.ID.String()+"/messages"), map[string]any{
+		"body":           "Review the attached proof.",
+		"attachment_ids": []string{out.Attachment.ID.String()},
+	}, 201), &sent)
+	var detail struct {
+		Attachments []attachmentRow `json:"attachments"`
+	}
+	h.decode(h.do("GET", h.w("/conversations/"+conv.Conversation.ID.String()), nil, 200), &detail)
+	if len(detail.Attachments) != 1 || detail.Attachments[0].MessageID == nil || *detail.Attachments[0].MessageID != sent.Message.ID {
+		t.Fatalf("attachment was not associated with the sent message: %+v", detail.Attachments)
+	}
 	if _, err := os.Stat(filepath.Join(h.server.cfg.AttachmentDir, out.Attachment.ID.String())); err != nil {
 		t.Fatal(err)
 	}

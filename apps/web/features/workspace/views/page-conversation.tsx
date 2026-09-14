@@ -5,6 +5,7 @@ import { Fragment } from "react";
 import type { Vals } from "../vals";
 import { css } from "@/lib/dc/css";
 import { interp } from "@/lib/dc/interp";
+import { MessageText } from "../message-text";
 
 export function PageConversation({ v }: { v: Vals }) {
   return (
@@ -75,7 +76,7 @@ export function PageConversation({ v }: { v: Vals }) {
                             <strong>{interp(m.author)}</strong>
                             <small>{interp(m.model)}</small>
                           </div>
-                          <p>{interp(m.text)}</p>
+                          <MessageText text={String(m.text ?? "")} />
                           {m.hasAttachments11 ? (
                             <>
                               <div className="message-attachments11">
@@ -1060,6 +1061,7 @@ export function PageConversation({ v }: { v: Vals }) {
                 value={v.composerDraft10}
                 onChange={v.editComposer10}
                 onKeyDown={v.composerKey12}
+                onPaste={v.composerPaste}
               />
               <div className="composer10-tools">
                 <button
@@ -1307,6 +1309,7 @@ export function PageConversation({ v }: { v: Vals }) {
                   aria-label={v.sendLabel18}
                   title={v.sendLabel18}
                   disabled={v.composerEmpty11}
+                  onClick={v.sendComposer11}
                 >
                   <svg
                     className="ui-icon use14"

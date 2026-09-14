@@ -112,7 +112,7 @@ export function WorkspaceView({ v }: { v: Vals }) {
           <PageSettingsHomeV7 v={v} />
           <PageSettings v={v} />
           <BodyInput v={v} />
-          <BodyInput v={v} />
+          <BodyInput1 v={v} />
           <PageAskOperator v={v} />
           <PagePfTip16 v={v} />
           <PageC9Card16 v={v} />
@@ -122,7 +122,7 @@ export function WorkspaceView({ v }: { v: Vals }) {
           <PageWorkDetails v={v} />
         </div>
         <OverlayOverlay12 v={v} />
-        <OverlayOverlay12 v={v} />
+        <OverlayOverlay121 v={v} />
       </div>
       <ShellToast v={v} />
       <ShellDismissMenu v={v} />

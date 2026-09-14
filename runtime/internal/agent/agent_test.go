@@ -146,6 +146,44 @@ exit 0
 	}
 }
 
+func TestStructuredCredentialIsIsolatedAndRemoved(t *testing.T) {
+	fakeCLI(t, "structuredcli", `
+test "$(cat "$CODEX_HOME/auth.json")" = '{"tokens":{"access_token":"file-secret"}}' || exit 8
+test "$ACCOUNT_TOKEN" = 'env-secret' || exit 9
+echo '{"type":"result","result":"file-secret env-secret"}'
+exit 0
+`)
+	adapter := adapterFor("structuredcli")
+	adapter.Provider = "codex"
+	workdir := t.TempDir()
+	out, err := Run(context.Background(), adapter, Options{
+		Dir:             workdir,
+		CredentialEnv:   map[string]string{"ACCOUNT_TOKEN": "env-secret"},
+		CredentialFiles: map[string]string{"auth.json": `{"tokens":{"access_token":"file-secret"}}`},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out["result"] != "[redacted] [redacted]" {
+		t.Fatalf("structured secrets must be redacted: %+v", out)
+	}
+	if _, err := os.Stat(filepath.Join(workdir, ".botinc-credentials")); !os.IsNotExist(err) {
+		t.Fatal("task credential directory was not removed")
+	}
+}
+
+func TestStructuredCredentialCannotEscapeItsPrivateDirectory(t *testing.T) {
+	fakeCLI(t, "structuredcli", "exit 0\n")
+	adapter := adapterFor("structuredcli")
+	adapter.Provider = "codex"
+	_, err := Run(context.Background(), adapter, Options{
+		Dir: t.TempDir(), CredentialFiles: map[string]string{"../../outside": "secret"},
+	})
+	if err == nil {
+		t.Fatal("escaping credential path accepted")
+	}
+}
+
 func TestPickResolvesTheKnownProviders(t *testing.T) {
 	for _, p := range []string{"claude", "codex", "openrouter"} {
 		if a, err := Pick(p); err != nil || a.Provider != p {

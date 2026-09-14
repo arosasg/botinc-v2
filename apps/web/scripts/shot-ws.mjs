@@ -12,7 +12,7 @@ if (!screen) {
   process.exit(1);
 }
 fs.mkdirSync("proof", { recursive: true });
-const browser = await chromium.launch();
+const browser = await chromium.launch({ channel: process.env.CHROME_CHANNEL || "chrome" });
 let failed = false;
 for (const w of widthsArg.split(",").map(Number)) {
   for (const theme of themesArg.split(",")) {

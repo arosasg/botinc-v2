@@ -4,6 +4,7 @@
 import { Fragment } from "react";
 import type { Vals } from "../vals";
 import { interp } from "@/lib/dc/interp";
+import { MessageText } from "../message-text";
 
 export function PageAutopilotConversation({ v }: { v: Vals }) {
   return (
@@ -407,7 +408,7 @@ export function PageAutopilotConversation({ v }: { v: Vals }) {
                           <div className="message-author">
                             <strong>{interp(m.who)}</strong>
                           </div>
-                          <p>{interp(m.text)}</p>
+                          <MessageText text={String(m.text ?? "")} />
                           {m.hasAttachments11 ? (
                             <>
                               <div className="message-attachments11">

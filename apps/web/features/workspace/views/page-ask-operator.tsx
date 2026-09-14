@@ -5,6 +5,7 @@ import { Fragment } from "react";
 import type { Vals } from "../vals";
 import { css } from "@/lib/dc/css";
 import { interp } from "@/lib/dc/interp";
+import { MessageText } from "../message-text";
 
 export function PageAskOperator({ v }: { v: Vals }) {
   return (
@@ -55,7 +56,7 @@ export function PageAskOperator({ v }: { v: Vals }) {
                     <strong>{interp(m.author)}</strong>
                     <small>{interp(m.model)}</small>
                   </div>
-                  <p>{interp(m.text)}</p>
+                  <MessageText text={String(m.text ?? "")} />
                   {m.hasAttachments11 ? (
                     <>
                       <div className="message-attachments11">

@@ -5,7 +5,7 @@
  * the UI must never invent an explanation for something it did not diagnose. */
 
 import type {
-  Account, Autopilot, Conversation, Issue, IssueComment, Message, Overview,
+  Account, Attachment, Autopilot, Conversation, Issue, IssueComment, Message, Overview,
   Skill, Memory, Member, Invitation, WorkflowVersion, WorkflowGraph, Plugin, Project, Repository, Run, RunEvent, RunStep, User, Workflow, Workspace, WSEvent,
 } from "./types";
 
@@ -68,6 +68,32 @@ export class Client {
     return (text ? (JSON.parse(text) as T) : (undefined as T));
   }
 
+  async requestForm<T>(path: string, body: FormData, signal?: AbortSignal): Promise<T> {
+    const res = await this.doFetch(this.baseURL + path, {
+      method: "POST",
+      credentials: "include",
+      headers: { Accept: "application/json" },
+      body,
+      ...(signal ? { signal } : {}),
+    });
+    const text = await res.text();
+    if (!res.ok) {
+      let code = "";
+      let message = "";
+      try {
+        const parsed = JSON.parse(text) as { error?: string; code?: string };
+        code = parsed.code ?? "";
+        message = parsed.error ?? "";
+      } catch {
+        message = text.slice(0, 200);
+      }
+      const err = new ApiError(res.status, code, message);
+      if (err.unauthenticated) this.onUnauthenticated?.();
+      throw err;
+    }
+    return text ? (JSON.parse(text) as T) : (undefined as T);
+  }
+
   private get<T>(path: string, signal?: AbortSignal) { return this.request<T>("GET", path, undefined, signal); }
   private post<T>(path: string, body?: unknown) { return this.request<T>("POST", path, body ?? {}); }
   private patch<T>(path: string, body: unknown) { return this.request<T>("PATCH", path, body); }
@@ -104,15 +130,21 @@ export class WorkspaceClient {
   // --- conversations ---
   conversations(signal?: AbortSignal) { return this.get<{ conversations: Conversation[] }>("/conversations", signal); }
   conversation(id: string, signal?: AbortSignal) {
-    return this.get<{ conversation: Conversation; messages: Message[]; runs: Run[] }>(`/conversations/${id}`, signal);
+    return this.get<{ conversation: Conversation; messages: Message[]; runs: Run[]; attachments: Attachment[] }>(`/conversations/${id}`, signal);
   }
-  createConversation(input: { message?: string; title?: string; model?: string; issue_id?: string }) {
+  createConversation(input: { message?: string; title?: string; model?: string; issue_id?: string; attachment_ids?: string[] }) {
     return this.post<{ conversation: Conversation; message: Message | null; run: Run | null }>("/conversations", input);
   }
-  sendMessage(id: string, body: string) {
-    return this.post<{ message: Message; run: Run | null }>(`/conversations/${id}/messages`, { body });
+  sendMessage(id: string, body: string, attachmentIDs: string[] = []) {
+    return this.post<{ message: Message; run: Run | null }>(`/conversations/${id}/messages`, { body, attachment_ids: attachmentIDs });
   }
   queueMessage(id: string, body: string) { return this.post<void>(`/conversations/${id}/queue`, { body }); }
+  uploadConversationAttachment(id: string, file: File) {
+    const body = new FormData();
+    body.set("conversation_id", id);
+    body.set("file", file, file.name);
+    return this.api.requestForm<{ attachment: Attachment }>(this.w("/attachments"), body);
+  }
 
   // --- issues ---
   async issues(params?: { status?: string; assignee?: "me"; project?: string }, signal?: AbortSignal) {

@@ -385,7 +385,8 @@ export function useLanding(opts: { onEnterWorkspace?: () => void } = {}) {
       required: k === "github", cls: "card d" + Math.min(i + 1, 6) + (conn(k) ? " done" : ""), done: conn(k), pending: !conn(k),
       connect: () => patch({ dialog: "connect", dialogFor: k, scope: SRC[k]![2], error: "" }),
     }));
-    const signedIn = () => persist({ screen: "goals", dialog: null, error: "" });
+    const returnTo=()=>{const value=new URLSearchParams(window.location.search).get("returnTo")||"";return value.startsWith("/")&&!value.startsWith("//")?value:""};
+    const signedIn = () => {const destination=returnTo();if(destination&&apiBaseURL()){window.location.assign(destination);return}persist({ screen: "goals", dialog: null, error: "" })};
     const emailSignIn = async () => {
       if (s.authBusy) return;
       if (!emailOk(s.email)) { patch({error:"Enter a valid email address."}); return; }
@@ -398,8 +399,8 @@ export function useLanding(opts: { onEnterWorkspace?: () => void } = {}) {
       } catch(err) {patch({error:err instanceof Error?err.message:"Sign-in failed. Try again."});}
       finally {patch({authBusy:false});}
     };
-    const googleSignIn=()=>{const base=apiBaseURL();if(!base){signedIn();return;}window.location.assign(base.replace(/\/$/,"")+"/api/auth/google/start");};
-    const githubSignIn=()=>{const base=apiBaseURL();if(!base){signedIn();return;}window.location.assign(base.replace(/\/$/,"")+"/api/auth/github/start");};
+    const googleSignIn=()=>{const base=apiBaseURL();if(!base){signedIn();return;}const url=new URL(base.replace(/\/$/,"")+"/api/auth/google/start",window.location.origin);const destination=returnTo();if(destination)url.searchParams.set("return_to",destination);window.location.assign(url)};
+    const githubSignIn=()=>{const base=apiBaseURL();if(!base){signedIn();return;}const url=new URL(base.replace(/\/$/,"")+"/api/auth/github/start",window.location.origin);const destination=returnTo();if(destination)url.searchParams.set("return_to",destination);window.location.assign(url)};
     const cur = SRC[s.dialogFor] || SRC.github!;
     const plans = [
       { name: "Free", m: 0, a: 0, conc: "1", runs: "100", storage: "1 GB", note: "No credit card required", cta: "Start free", tag: "" },

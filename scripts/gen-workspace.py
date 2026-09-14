@@ -26,6 +26,7 @@ def pascal(s):
     return "".join(x.capitalize() for x in slug(s).split("-"))
 
 files = []  # (component name, file slug, jsx)
+component_ids = {}
 def emit(name, node, scope=set()):
     if node.tag == "sc-if":
         # a bare conditional is the component body (no JSX-expression braces)
@@ -33,8 +34,16 @@ def emit(name, node, scope=set()):
         jsx = f"{dc2jsx.expr(cond_of(node), set(scope))} ? (<>{inner}</>) : null"
     else:
         jsx = dc2jsx.render(node, set(scope), 0)
-    files.append((pascal(name), slug(name), jsx))
-    return pascal(name)
+    fslug = slug(name)
+    suffix = component_ids.get(fslug, 0)
+    component_ids[fslug] = suffix + 1
+    if suffix:
+        fslug = f"{fslug}-{suffix}"
+        name = f"{pascal(name)}{suffix}"
+    else:
+        name = pascal(name)
+    files.append((name, fslug, jsx))
+    return name
 
 def cond_of(n):
     m = dc2jsx.BIND.search(dict(n.attrs).get("value", ""))
@@ -121,18 +130,19 @@ import { Fragment } from "react";
 import type { Vals } from "../vals";
 import { css } from "@/lib/dc/css";
 import { interp } from "@/lib/dc/interp";
+import { MessageText } from "../message-text";
 
 '''
-# dedupe names
-seen = {}
-final = []
-for name, fslug, jsx in files:
-    n = seen.get(fslug, 0); seen[fslug] = n + 1
-    if n: fslug, name = f"{fslug}-{n}", f"{name}{n}"
-    final.append((name, fslug, jsx))
-files = final
 for name, fslug, jsx in files:
     body = pretty(jsx)
+    body = body.replace('<p>{interp(m.text)}</p>', '<MessageText text={String(m.text ?? "")} />')
+    body = body.replace('onKeyDown={v.composerKey12}', 'onKeyDown={v.composerKey12} onPaste={v.composerPaste}')
+    body = re.sub(
+        r'(<button\s+className=\{`send-button[^>]+type="submit"[^>]+disabled=\{v\.composerEmpty11\})',
+        r'\1 onClick={v.sendComposer11}',
+        body,
+        flags=re.S,
+    )
     uses_css = "CSSProperties" in body
     uses_frag = "<Fragment" in body
     hdr = HEADER
@@ -140,6 +150,7 @@ for name, fslug, jsx in files:
     if not uses_frag: hdr = hdr.replace('import { Fragment } from "react";\n', "")
     if "css(" not in body: hdr = hdr.replace('import { css } from "@/lib/dc/css";\n', "")
     if "interp(" not in body: hdr = hdr.replace('import { interp } from "@/lib/dc/interp";\n', "")
+    if "<MessageText" not in body: hdr = hdr.replace('import { MessageText } from "../message-text";\n', "")
     open(os.path.join(OUT, fslug + ".tsx"), "w").write(hdr + f"export function {name}({{ v }}: {{ v: Vals }}) {{\n  return (\n    " + body.replace("\n", "\n    ") + "\n  );\n}\n")
     print(fslug, len(body))
 

@@ -6,7 +6,7 @@
  * row, so a field with no source is left out rather than invented. A screen
  * that has nothing real to show should look empty, not plausible. */
 
-import type { Account, Autopilot, Conversation, Issue, Message, Run, User } from "@botinc/api";
+import type { Account, Attachment, Autopilot, Conversation, Issue, Message, Run, User } from "@botinc/api";
 
 /* The design writes status as a sentence, the API as a token, and the sentence
    is not free text: the workspace logic groups the sidebar by comparing it
@@ -78,7 +78,7 @@ function sourceLabel(kind: string): string {
   }
 }
 
-export function mapMessage(m: Message, me: User | null, people: PeopleIndex) {
+export function mapMessage(m: Message, me: User | null, people: PeopleIndex, attachments: Attachment[] = []) {
   const mine = m.role === "user";
   const author = mine
     ? (people.get(m.meta?.["author_user_id"] as string)?.name ?? me?.name ?? me?.email ?? "You")
@@ -92,10 +92,18 @@ export function mapMessage(m: Message, me: User | null, people: PeopleIndex) {
     cls: mine ? "message user-message" : "message assistant-message",
     text: m.body,
     createdAt: m.created_at,
+    attachments11: attachments.filter((a) => a.message_id === m.id).map((a) => ({
+      id: a.id,
+      name: a.filename,
+      image: a.content_type.startsWith("image/"),
+      url: a.url,
+      size: a.size_bytes,
+      meta: `${Math.max(1, Math.ceil(a.size_bytes / 1024))} KB · ${a.content_type.startsWith("image/") ? "Image" : "File"}`,
+    })),
   };
 }
 
-export function mapConversation(c: Conversation, messages: Message[], me: User | null, people: PeopleIndex) {
+export function mapConversation(c: Conversation, messages: Message[], me: User | null, people: PeopleIndex, attachments: Attachment[] = []) {
   return {
     id: c.id,
     title: c.title || "Untitled",
@@ -103,7 +111,7 @@ export function mapConversation(c: Conversation, messages: Message[], me: User |
     model: c.model === "auto" ? "Auto" : c.model,
     phase: "done",
     result: false,
-    messages: messages.map((m) => mapMessage(m, me, people)),
+    messages: messages.map((m) => mapMessage(m, me, people, attachments)),
   };
 }
 

@@ -18,6 +18,7 @@ type attachmentRow struct {
 	ID             uuid.UUID  `json:"id"`
 	IssueID        *uuid.UUID `json:"issue_id"`
 	ConversationID *uuid.UUID `json:"conversation_id"`
+	MessageID      *uuid.UUID `json:"message_id"`
 	CommentID      *uuid.UUID `json:"comment_id"`
 	Filename       string     `json:"filename"`
 	ContentType    string     `json:"content_type"`
@@ -171,7 +172,7 @@ func (s *Server) listAttachments(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, 400, "invalid attachment destination")
 		return
 	}
-	rows, err := s.pool.Query(r.Context(), `select a.id,a.issue_id,a.conversation_id,a.comment_id,a.filename,a.content_type,a.size_bytes from attachments a where a.workspace_id=$1 and a.`+column+`=$2 and (a.conversation_id is null or exists(select 1 from conversations c where c.id=a.conversation_id and (c.shared or c.user_id=$3))) order by a.created_at,a.id`, sc.WorkspaceID, id, sc.UserID)
+	rows, err := s.pool.Query(r.Context(), `select a.id,a.issue_id,a.conversation_id,a.message_id,a.comment_id,a.filename,a.content_type,a.size_bytes from attachments a where a.workspace_id=$1 and a.`+column+`=$2 and (a.conversation_id is null or exists(select 1 from conversations c where c.id=a.conversation_id and (c.shared or c.user_id=$3))) order by a.created_at,a.id`, sc.WorkspaceID, id, sc.UserID)
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -180,7 +181,7 @@ func (s *Server) listAttachments(w http.ResponseWriter, r *http.Request) {
 	out := []attachmentRow{}
 	for rows.Next() {
 		var a attachmentRow
-		if err := rows.Scan(&a.ID, &a.IssueID, &a.ConversationID, &a.CommentID, &a.Filename, &a.ContentType, &a.Size); err != nil {
+		if err := rows.Scan(&a.ID, &a.IssueID, &a.ConversationID, &a.MessageID, &a.CommentID, &a.Filename, &a.ContentType, &a.Size); err != nil {
 			s.fail(w, err)
 			return
 		}
