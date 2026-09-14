@@ -187,7 +187,10 @@ type queryer interface {
 
 func (s *Service) route(ctx context.Context, db queryer, ws uuid.UUID, model string) (*uuid.UUID, string, error) {
 	provider := providerFor(model)
-	rows, err := db.Query(ctx, `select id, kind, quota from model_accounts where workspace_id=$1 and status='connected' and ($2='' or provider=$2) order by created_at`, ws, provider)
+	rows, err := db.Query(ctx, `select id, kind, quota from model_accounts
+		where workspace_id=$1 and status='connected'
+		and (($2='' and provider in ('claude','codex','openrouter')) or provider=$2)
+		order by created_at`, ws, provider)
 	if err != nil {
 		return nil, "", err
 	}

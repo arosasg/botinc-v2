@@ -981,6 +981,29 @@ func TestRoutingUsesAnAPIKeyWhenThatIsAllThereIs(t *testing.T) {
 	}
 }
 
+func TestAutoRoutingSkipsAccountsWithoutARuntimeAdapter(t *testing.T) {
+	h := newHarness(t)
+	h.signIn(uniqueEmail(t))
+	h.do("POST", h.w("/accounts"), map[string]any{
+		"provider": "cursor", "kind": "subscription", "secret": "legacy-profile",
+	}, 201)
+	var runnable struct {
+		Account Account `json:"account"`
+	}
+	h.decode(h.do("POST", h.w("/accounts"), map[string]any{
+		"provider": "claude", "kind": "subscription", "secret": "claude-token",
+	}, 201), &runnable)
+
+	h.do("POST", h.w("/conversations"), map[string]any{"message": "Use a runnable account."}, 201)
+	var accountID *uuid.UUID
+	if err := testPool.QueryRow(t.Context(), `select account_id from runs order by queued_at desc limit 1`).Scan(&accountID); err != nil {
+		t.Fatal(err)
+	}
+	if accountID == nil || *accountID != runnable.Account.ID {
+		t.Fatalf("auto must skip a provider without a runtime adapter, got %v", accountID)
+	}
+}
+
 // The runtime spec must carry the credential, or the run cannot do anything.
 func TestRuntimeSpecCarriesTheCredential(t *testing.T) {
 	h := newHarness(t)
