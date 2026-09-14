@@ -113,6 +113,18 @@ export type Message = {
   created_at: string;
 };
 
+export type Attachment = {
+  id: UUID;
+  issue_id: UUID | null;
+  conversation_id: UUID | null;
+  message_id: UUID | null;
+  comment_id: UUID | null;
+  filename: string;
+  content_type: string;
+  size_bytes: number;
+  url: string;
+};
+
 export type Workflow = {
   id: UUID;
   key: string;

@@ -5,6 +5,7 @@ import { Fragment } from "react";
 import type { Vals } from "../vals";
 import { css } from "@/lib/dc/css";
 import { interp } from "@/lib/dc/interp";
+import { MessageText } from "../message-text";
 
 export function PageSettings({ v }: { v: Vals }) {
   return (
@@ -2128,7 +2129,7 @@ export function PageSettings({ v }: { v: Vals }) {
                           <article className="memsug14">
                             <div className="memsug-body14">
                               <span className={`mem-type14 ${m.typeTone}`}>{interp(m.type)}</span>
-                              <p>{interp(m.text)}</p>
+                              <MessageText text={String(m.text ?? "")} />
                               <small>{interp(m.provenance)}</small>
                               {m.conflicts ? (
                                 <>

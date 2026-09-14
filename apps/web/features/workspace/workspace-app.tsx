@@ -21,7 +21,11 @@ function Mounted({ Logic }: { Logic: LogicClass }) {
   const [detail,setDetail]=useState("");
   const report=useCallback((status:LiveStatus,detail?:string)=>{setStatus(status);setDetail(detail||"");},[]);
   useLiveWorkspace(logic as Parameters<typeof useLiveWorkspace>[0],report);
-  if(status!=="live"&&status!=="off") return <main className="sc-host" role="status"><p>{status==="connecting"?"Loading your workspace…":status==="signed-out"?"Sign in to open your workspace.":detail||"The workspace could not be loaded."}</p><a href="/">{status==="signed-out"?"Sign in":"Return home"}</a></main>;
+  if(status!=="live"&&status!=="off") {
+    const destination=typeof window!=="undefined"?window.location.pathname+window.location.search:"/w";
+    const href=status==="signed-out"?`/?returnTo=${encodeURIComponent(destination)}`:"/";
+    return <main className="workspace-gate" role="status"><div className="workspace-gate-card"><img src="/assets/logo/botinc-mark.svg" alt=""/><span className="workspace-gate-kicker">BOTINC</span><h1>{status==="connecting"?"Opening your workspace":status==="signed-out"?"Welcome back":"Workspace unavailable"}</h1><p>{status==="connecting"?"Loading conversations, work and connections…":status==="signed-out"?"Sign in to continue exactly where this link points.":detail||"The workspace could not be loaded."}</p>{status!=="connecting"?<a className="workspace-gate-action" href={href}>{status==="signed-out"?"Sign in":"Return home"}</a>:<span className="workspace-gate-progress" aria-hidden="true"/>}</div></main>;
+  }
   /* The design publishes its semantic tokens on the runtime's host element
      (`#dc-root, .sc-host`), including the dark values behind
      `:has(.app[data-theme=dark])`. Without a host, any token declared only

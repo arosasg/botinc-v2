@@ -18,23 +18,28 @@ import (
 // ref into the credential store and the runtime spec is the only reader.
 
 type Account struct {
-	ID        uuid.UUID       `json:"id"`
-	UserID    *uuid.UUID      `json:"user_id"`
-	Provider  string          `json:"provider"`
-	Label     string          `json:"label"`
-	Plan      string          `json:"plan"`
-	Kind      string          `json:"kind"`
-	Status    string          `json:"status"`
-	Quota     json.RawMessage `json:"quota"`
-	HasSecret bool            `json:"has_secret"`
-	CreatedAt time.Time       `json:"created_at"`
-	UpdatedAt time.Time       `json:"updated_at"`
+	ID             uuid.UUID       `json:"id"`
+	UserID         *uuid.UUID      `json:"user_id"`
+	Provider       string          `json:"provider"`
+	AccountKey     string          `json:"account_key"`
+	Label          string          `json:"label"`
+	Email          string          `json:"email"`
+	Plan           string          `json:"plan"`
+	Kind           string          `json:"kind"`
+	CredentialKind string          `json:"credential_kind"`
+	Status         string          `json:"status"`
+	Quota          json.RawMessage `json:"quota"`
+	HasSecret      bool            `json:"has_secret"`
+	ExpiresAt      *time.Time      `json:"expires_at,omitempty"`
+	RefreshError   string          `json:"refresh_error,omitempty"`
+	CreatedAt      time.Time       `json:"created_at"`
+	UpdatedAt      time.Time       `json:"updated_at"`
 }
 
-const accountCols = `id, user_id, provider, label, plan, kind, status, quota, secret_ref <> '', created_at, updated_at`
+const accountCols = `id, user_id, provider, account_key, label, email, plan, kind, credential_kind, status, quota, secret_ref <> '', expires_at, refresh_error, created_at, updated_at`
 
 func (a *Account) scan() []any {
-	return []any{&a.ID, &a.UserID, &a.Provider, &a.Label, &a.Plan, &a.Kind, &a.Status, &a.Quota, &a.HasSecret, &a.CreatedAt, &a.UpdatedAt}
+	return []any{&a.ID, &a.UserID, &a.Provider, &a.AccountKey, &a.Label, &a.Email, &a.Plan, &a.Kind, &a.CredentialKind, &a.Status, &a.Quota, &a.HasSecret, &a.ExpiresAt, &a.RefreshError, &a.CreatedAt, &a.UpdatedAt}
 }
 
 var accountProviders = map[string]bool{

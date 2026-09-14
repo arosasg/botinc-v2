@@ -106,7 +106,7 @@ func run() error {
 
 // execute does the run's actual work and returns what to record.
 func execute(ctx context.Context, c *protocol.Client, spec protocol.Spec, workdir string) (map[string]any, error) {
-	if spec.Credential == nil || spec.Credential.Secret == "" {
+	if spec.Credential == nil || (spec.Credential.Secret == "" && len(spec.Credential.Env) == 0 && len(spec.Credential.Files) == 0) {
 		return nil, errors.New("this run has no model credential; connect an account or add credit")
 	}
 	adapter, err := agent.Pick(spec.Credential.Provider)
@@ -132,7 +132,9 @@ func runChat(ctx context.Context, c *protocol.Client, spec protocol.Spec, a agen
 	prompt := chatPrompt(spec)
 	out, err := agent.Run(ctx, a, agent.Options{
 		Dir: workdir, Prompt: prompt, Model: spec.Run.Model, Secret: spec.Credential.Secret,
-		Timeout: 20 * time.Minute, BudgetCents: spec.Run.TaskLimitCents, Emit: emit,
+		CredentialEnv: spec.Credential.Env, CredentialFiles: spec.Credential.Files,
+		MCPConfig: spec.MCPConfig,
+		Timeout:   20 * time.Minute, BudgetCents: spec.Run.TaskLimitCents, Emit: emit,
 	})
 	if err != nil {
 		_ = c.Step(ctx, protocol.StepUpdate{Key: key, Status: "stuck", CostCents: resultCost(out)})
@@ -268,7 +270,7 @@ func runBuild(ctx context.Context, c *protocol.Client, spec protocol.Spec, a age
 			}
 			prompt += "\nThis is a decision only. Do not edit files. Respond with exactly one of: " + strings.Join(choices, ", ")
 		}
-		out, runErr := agent.Run(ctx, a, agent.Options{Dir: checkout.Dir, Prompt: prompt, Model: model, Secret: spec.Credential.Secret, Timeout: 30 * time.Minute, BudgetCents: spec.Run.TaskLimitCents - cost, Emit: emit})
+		out, runErr := agent.Run(ctx, a, agent.Options{Dir: checkout.Dir, Prompt: prompt, Model: model, Secret: spec.Credential.Secret, CredentialEnv: spec.Credential.Env, CredentialFiles: spec.Credential.Files, MCPConfig: spec.MCPConfig, Timeout: 30 * time.Minute, BudgetCents: spec.Run.TaskLimitCents - cost, Emit: emit})
 		cost += resultCost(out)
 		stepCosts[node.Key] += resultCost(out)
 		previousOutput = resultText(out)

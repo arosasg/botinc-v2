@@ -308,6 +308,29 @@ func (s *Server) deviceApprove(w http.ResponseWriter, r *http.Request) {
 
 // --- Google OAuth (only when configured) ---
 
+func safeReturnPath(value string) string {
+	if strings.HasPrefix(value, "/") && !strings.HasPrefix(value, "//") {
+		return value
+	}
+	return "/w"
+}
+
+func (s *Server) rememberReturnPath(w http.ResponseWriter, r *http.Request) {
+	value := safeReturnPath(r.URL.Query().Get("return_to"))
+	http.SetCookie(w, &http.Cookie{Name: "botinc_return_to", Value: url.QueryEscape(value), Path: "/", HttpOnly: true, Secure: s.cfg.Production(), SameSite: http.SameSiteLaxMode, MaxAge: 600})
+}
+
+func (s *Server) takeReturnPath(w http.ResponseWriter, r *http.Request) string {
+	value := "/w"
+	if cookie, err := r.Cookie("botinc_return_to"); err == nil {
+		if decoded, err := url.QueryUnescape(cookie.Value); err == nil {
+			value = safeReturnPath(decoded)
+		}
+	}
+	http.SetCookie(w, &http.Cookie{Name: "botinc_return_to", Path: "/", MaxAge: -1, HttpOnly: true, Secure: s.cfg.Production(), SameSite: http.SameSiteLaxMode})
+	return value
+}
+
 func (s *Server) googleStart(w http.ResponseWriter, r *http.Request) {
 	if s.cfg.GoogleClientID == "" {
 		httpx.Error(w, 404, "Google sign-in is not configured")
@@ -316,6 +339,7 @@ func (s *Server) googleStart(w http.ResponseWriter, r *http.Request) {
 	raw := make([]byte, 16)
 	_, _ = rand.Read(raw)
 	state := base64.RawURLEncoding.EncodeToString(raw)
+	s.rememberReturnPath(w, r)
 	http.SetCookie(w, &http.Cookie{Name: "botinc_oauth_state", Value: state, Path: "/api/auth/google", HttpOnly: true, Secure: s.cfg.Production(), SameSite: http.SameSiteLaxMode, MaxAge: 600})
 	q := url.Values{
 		"client_id":     {s.cfg.GoogleClientID},
@@ -384,7 +408,7 @@ func (s *Server) googleCallback(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
-	http.Redirect(w, r, strings.TrimRight(s.cfg.FrontendOrigin, "/")+"/w", http.StatusFound)
+	http.Redirect(w, r, strings.TrimRight(s.cfg.FrontendOrigin, "/")+s.takeReturnPath(w, r), http.StatusFound)
 }
 
 var errForbidden = errors.New("forbidden")

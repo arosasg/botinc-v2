@@ -27,6 +27,7 @@ func (s *Server) githubStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	state, verifier := oauthNonce(), oauthNonce()
+	s.rememberReturnPath(w, r)
 	challenge := sha256.Sum256([]byte(verifier))
 	for name, value := range map[string]string{"state": state, "verifier": verifier} {
 		http.SetCookie(w, &http.Cookie{Name: "botinc_github_" + name, Value: value, Path: "/api/auth/github", HttpOnly: true, Secure: s.cfg.Production(), SameSite: http.SameSiteLaxMode, MaxAge: 600})
@@ -125,7 +126,7 @@ func (s *Server) githubCallback(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
-	http.Redirect(w, r, strings.TrimRight(s.cfg.FrontendOrigin, "/")+"/w", http.StatusFound)
+	http.Redirect(w, r, strings.TrimRight(s.cfg.FrontendOrigin, "/")+s.takeReturnPath(w, r), http.StatusFound)
 }
 func oauthJSON(req *http.Request, out any) error {
 	req.Header.Set("Accept", "application/json")

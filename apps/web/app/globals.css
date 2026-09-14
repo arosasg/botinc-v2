@@ -1,3 +1,14 @@
 /* App-level resets only. Visual language lives in @botinc/brand. */
 html, body { margin: 0; min-height: 100%; }
 body { -webkit-font-smoothing: antialiased; }
+.workspace-gate{min-height:100dvh;display:grid;place-items:center;padding:24px;background:#f7f8fa;color:#171a20;font-family:'Instrument Sans',Arial,sans-serif}
+.workspace-gate-card{width:min(430px,100%);padding:42px;border:1px solid #e5e8ed;border-radius:20px;background:#fff;box-shadow:0 24px 80px #18202b12;text-align:center}
+.workspace-gate-card img{width:42px;height:42px;margin-bottom:18px}
+.workspace-gate-kicker{display:block;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.12em;color:#747b87}
+.workspace-gate-card h1{margin:12px 0 10px;font-size:29px;line-height:1.15;letter-spacing:-.7px;font-weight:500}
+.workspace-gate-card p{margin:0 auto;color:#747b87;font-size:14px;line-height:1.65;max-width:330px}
+.workspace-gate-action{display:inline-flex;margin-top:26px;padding:11px 18px;border-radius:9px;background:#171a20;color:#fff;text-decoration:none;font-size:13px}
+.workspace-gate-progress{display:block;width:110px;height:3px;margin:28px auto 0;border-radius:3px;background:linear-gradient(90deg,#e5e8ed 0 20%,#007fff 45% 60%,#e5e8ed 80%);background-size:220% 100%;animation:workspace-gate-progress 1.2s linear infinite}
+@keyframes workspace-gate-progress{to{background-position:-220% 0}}
+@media(prefers-color-scheme:dark){.workspace-gate{background:#0b0d0f;color:#eceff4}.workspace-gate-card{background:#101214;border-color:#292e35;box-shadow:0 24px 80px #0008}.workspace-gate-card p,.workspace-gate-kicker{color:#9aa3ae}.workspace-gate-action{background:#eceff4;color:#101214}}
+@media(max-width:520px){.workspace-gate{padding:14px}.workspace-gate-card{padding:34px 24px;border-radius:16px}}

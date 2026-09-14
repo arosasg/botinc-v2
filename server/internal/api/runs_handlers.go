@@ -250,6 +250,12 @@ func (s *Server) runtimeSpec(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	spec := map[string]any{"run": rn, "steps": steps}
+	if mcpConfig, err := s.runtimeMCPConfig(ctx, rn.WorkspaceID); err != nil {
+		s.fail(w, err)
+		return
+	} else if len(mcpConfig) > 0 {
+		spec["mcp_config"] = mcpConfig
+	}
 	if rn.WorkflowVersionID != nil {
 		var graph json.RawMessage
 		if err := s.pool.QueryRow(ctx, `select v.graph from workflow_versions v join workflows w on w.id=v.workflow_id where v.id=$1 and w.workspace_id=$2`, rn.WorkflowVersionID, rn.WorkspaceID).Scan(&graph); err != nil {
@@ -367,15 +373,23 @@ func (s *Server) runtimeSpec(w http.ResponseWriter, r *http.Request) {
 		spec["repositories"] = repos
 	}
 	if rn.AccountID != nil {
-		var provider, kind, secretRef string
-		if err := s.pool.QueryRow(ctx, `select provider, kind, secret_ref from model_accounts where id=$1`, *rn.AccountID).Scan(&provider, &kind, &secretRef); err == nil {
+		provider, kind, value, credentialErr := s.resolveAccountCredential(ctx, *rn.AccountID, rn.WorkspaceID)
+		if credentialErr == nil {
 			cred := map[string]any{"provider": provider, "kind": kind}
-			if secretRef != "" {
-				if v, err := s.readSecret(ctx, secretRef); err == nil {
-					cred["secret"] = v
-				}
+			var structured struct {
+				Env   map[string]string `json:"env"`
+				Files map[string]string `json:"files"`
+			}
+			if json.Unmarshal([]byte(value), &structured) == nil && (len(structured.Env) > 0 || len(structured.Files) > 0) {
+				cred["env"] = structured.Env
+				cred["files"] = structured.Files
+			} else {
+				cred["secret"] = value
 			}
 			spec["credential"] = cred
+		} else {
+			httpx.ErrorCode(w, 409, "account_needs_reconnect", credentialErr.Error())
+			return
 		}
 	} else if rn.Funding == "credits" && s.cfg.OpenRouterAPIKey != "" {
 		spec["credential"] = map[string]any{"provider": "openrouter", "kind": "credits", "secret": s.cfg.OpenRouterAPIKey}
