@@ -162,7 +162,10 @@ func Run(ctx context.Context, a Adapter, o Options) (map[string]any, error) {
 		}
 		removeMCP = func() { _ = os.Remove(mcpPath) }
 		defer removeMCP()
-		args = append(args, "--mcp-config", mcpPath, "--strict-mcp-config")
+		// Workspace connectors are already selected by the user and scoped to
+		// this isolated run. Print mode has nobody available to answer a second
+		// permission prompt, so explicitly allow only the configured MCP tools.
+		args = append(args, "--mcp-config", mcpPath, "--strict-mcp-config", "--allowedTools", "mcp__*")
 	}
 	if o.BudgetCents > 0 && (a.Provider == "claude" || a.Provider == "openrouter") {
 		args = append(args, "--max-budget-usd", fmt.Sprintf("%.2f", float64(o.BudgetCents)/100))
