@@ -88,13 +88,15 @@ func run(ctx context.Context) error {
 	workspaceIDs := strings.Split(workspaceCSV, ",")
 	rows, err := sourcePool.Query(ctx, `
 		with latest_snapshot as (
-			select distinct on (runtime.owner_id, ra.account_key)
-				runtime.owner_id, ra.account_key, ra.limits, ra.usage_captured_at,
+			-- Legacy runtimes may not have an owner_id. account_key is the
+			-- credential-derived identity shared across the owner's workspaces.
+			select distinct on (ra.account_key)
+				ra.account_key, ra.limits, ra.usage_captured_at,
 				ra.status, ra.limit_reason, ra.limited_until
 			from runtime_account ra
 			join agent_runtime runtime on runtime.id=ra.runtime_id
 			where runtime.workspace_id = any($1::uuid[])
-			order by runtime.owner_id, ra.account_key,
+			order by ra.account_key,
 				coalesce(ra.usage_captured_at,ra.last_reported_at) desc
 		)
 		select a.id::text, a.workspace_id::text, u.email, a.provider, a.account_key,
@@ -105,7 +107,7 @@ func run(ctx context.Context) error {
 			coalesce(snapshot.status, ''), coalesce(snapshot.limit_reason, ''), snapshot.limited_until
 		from agent_account a join "user" u on u.id=a.owner_id
 		left join latest_snapshot snapshot
-			on snapshot.owner_id=a.owner_id and snapshot.account_key=a.account_key
+			on snapshot.account_key=a.account_key
 		where a.workspace_id = any($1::uuid[])
 		order by a.workspace_id, a.provider, a.account_key`, workspaceIDs)
 	if err != nil {
