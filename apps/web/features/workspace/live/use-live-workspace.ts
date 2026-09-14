@@ -24,6 +24,9 @@ const dockDraftKey = (workspace: string) => `botinc:dock-draft:v2:${workspace}`;
 export function threadInspectorPatch(isDesktop: boolean): Vals {
  return isDesktop?{inspector10:true,mobileInspector10:false,inspectorTab10:"issue",paneWidth11:400,paneRestore11:400}:{};
 }
+export function hydrationIssueKey(activeIssue: unknown, routeIssue: string | undefined, hydrated: boolean): unknown {
+ return activeIssue||(!hydrated?routeIssue:undefined);
+}
 export function readDraft(workspace: string, conversation?: unknown): string {
  try{return window.localStorage.getItem(draftKey(workspace,conversation))||""}catch{return ""}
 }
@@ -75,7 +78,13 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
      for(const k of ["connections","agentPrefs","funding","memoryByMember","skillGrants","modelAccounts","preferencesBy10","fallbackPolicies10"]){patch[k]={[member]:{}};}
      patch.liveWorkspaces=workspaces;patch.workspace16=overview.workspace.name;patch.member=member;patch.signed=true;patch.workspaceName=overview.workspace.name;
      patch.issues=issues.issues.map(i=>mapIssue(i,people));
-     const selectedIssue=issues.issues.find(i=>i.identifier===logic.state.activeIssue||i.id===logic.state.activeIssue);
+     // On a cold deep link the design logic has not copied the route into
+     // activeIssue yet. Load that issue during the first hydration instead of
+     // waiting for a second state-driven pass which can be interrupted by the
+     // initial render. Without this, a hard refresh shows the sparse design
+     // fallback until the user navigates away and back.
+     const requestedIssue=hydrationIssueKey(logic.state.activeIssue,initialRoute.issue,hydrated);
+     const selectedIssue=issues.issues.find(i=>i.identifier===requestedIssue||i.id===requestedIssue);
      if(selectedIssue){const detail=await ws.issue(selectedIssue.id,abort.signal);const files=await api.request<{attachments:Vals[]}>("GET",`/api/w/${ws.slug}/attachments?issue=${selectedIssue.id}`,undefined,abort.signal);patch.liveIssueDetail=detail;patch.liveIssueFiles=files.attachments;patch.liveIssueWorkflow=detail.issue.workflow_id?await ws.workflow(detail.issue.workflow_id,abort.signal):null;patch.issues=patch.issues.map((i:Vals)=>i.uuid===selectedIssue.id?{...i,events:detail.comments.map(c=>({who:people.get(c.author_user_id||"")?.name||"Previous agent",role:c.author_kind,when:new Date(c.created_at).toLocaleString(),text:c.body})),cost:detail.runs.reduce((sum,r)=>sum+r.cost_cents,0)/100}:i)}
      const oldChats=logic.state.chats?.[previous]||[];
      patch.chats={[member]:chats.conversations.map(c=>{
