@@ -6156,6 +6156,10 @@ button{font-family:inherit}button .ui-icon{color:inherit}
 .app-v19 .inspector10,.app-v19 .inspector10.inspector11{animation:rise-x19 360ms var(--ease19) both}
 .app-v19 .inspector10{transition:width 320ms var(--ease19),flex-basis 320ms var(--ease19)}
 .app-v19.pane-dragging11 .inspector10{transition:none}
+.app-v19 .inspector10.inspector11{min-width:min(360px,42vw)}
+.app-v19 .inspector-tabs10{scroll-padding-inline:18px}
+.app-v19 .inspector-tabs10>button{flex:0 0 auto}
+@media(min-width:761px) and (max-width:959px){.app-v19 .inspector10.inspector11{min-width:300px}}
 .app-v19 .sidebar{transition:width 320ms var(--ease19),flex-basis 320ms var(--ease19)}
 .app-v19.sb-dragging19 .sidebar{transition:none}
 .app-v19 .inspector-tabs10>button{transition:color 160ms,border-color 160ms}

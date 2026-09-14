@@ -5,6 +5,7 @@
 import { useEffect, useRef } from "react";
 import { Client, type User, type WorkspaceClient, type WorkflowGraph } from "@botinc/api";
 import type { Vals } from "../vals";
+import { clampConversationPaneWidth, conversationPaneBounds, normalizePublicAssets } from "./layout";
 import { mapAccount, mapAutopilot, mapConversation, mapIssue, mapMessage, mapRun, mapWorkflowSteps, type PeopleIndex } from "./map";
 import { parseWorkspaceRoute, workspacePath, type WorkspaceRoute } from "./routes";
 
@@ -47,7 +48,7 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
  useEffect(()=>{statusRef.current=onStatus},[onStatus]);
  useEffect(() => {
   const baseURL=apiBaseURL(); if(!logic||!baseURL){statusRef.current?.("off");return;}
-  let hydrated=false;let alive=true; const abort=new AbortController(); let disconnect:(()=>void)|undefined; let restore:(()=>void)|undefined; let timer:ReturnType<typeof setTimeout>|undefined;
+  let hydrated=false;let alive=true; const abort=new AbortController(); let disconnect:(()=>void)|undefined; let restore:(()=>void)|undefined; let timer:ReturnType<typeof setTimeout>|undefined;let hasConnected=false;
   const report=(s:LiveStatus,detail?:string)=>{if(alive)statusRef.current?.(s,detail)};
   report("connecting");
   const fail=(err:unknown)=>{if(!alive)return;const text=err instanceof Error?err.message:String(err);logic.setState({error:text});if(!hydrated)report("error",text)};
@@ -122,10 +123,29 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
      logic.setState(patch);if(!hydrated){if(previous!==member)logic.newChat();const conversation=initialRoute.conversation;const issue=initialRoute.issue;const requestedView=initialRoute.view;if(conversation&&chats.conversations.some(c=>c.id===conversation)){logic.setState({activeChat:conversation,view:"chat",draft:readDraft(ws.slug,conversation)});again=true}else if(issue&&issues.issues.some(i=>i.id===issue||i.identifier===issue)){logic.setState({activeIssue:issue,view:requestedView==="thread9"?"thread9":"issue"});again=true}else{logic.setState({view:requestedView,...initialRoute.autopilot?{activeAuto9:initialRoute.autopilot}:{},...initialRoute.section?{section:initialRoute.section}:{},draft:readDraft(ws.slug,null)})}const canonicalIssue=issue?issues.issues.find(i=>i.id===issue||i.identifier===issue)?.id:undefined;window.history.replaceState({},"",workspacePath({...initialRoute,workspace:ws.slug,...canonicalIssue?{issue:canonicalIssue}:{}}))}hydrated=true;report("live");
     }finally{refreshing=false;if(again&&alive){again=false;void hydrate().catch(fail)}}
    };
+   let liveRefreshing=false,liveAgain=false;
+   const refreshActiveWork=async()=>{
+    if(!alive)return;if(liveRefreshing){liveAgain=true;return}liveRefreshing=true;
+    try{
+     const patch:Vals={};const active=String(logic.state.activeChat||"");const dockID=String(logic.state.dockConversationID||readLocal(dockConversationKey(ws.slug)));const issueRow=(logic.state.issues||[]).find((item:Vals)=>item.id===logic.state.activeIssue||item.uuid===logic.state.activeIssue);
+     if(uuid(active)){
+      const detail=await ws.conversation(active,abort.signal);if(!alive)return;const run=detail.runs.at(-1);const phase=phaseFor(run?.status);const apiOrigin=new URL(api.baseURL||"/",window.location.origin);const attachments=detail.attachments.map(a=>({...a,url:new URL(a.url,apiOrigin).toString()}));
+      patch.chats={...logic.state.chats,[member]:(logic.state.chats?.[member]||[]).map((conversation:Vals)=>conversation.id===active?{...mapConversation(detail.conversation,detail.messages,me,people,attachments),phase,runId:run?.id,runError:run?.error||"",cost:detail.runs.reduce((sum,r)=>sum+r.cost_cents,0)/100,taskLimit:conversation.taskLimit}:conversation)};patch.phase=phase;if(run?.error)patch.error=run.error;
+     }
+     if(uuid(dockID)&&dockID!==active){
+      const detail=await ws.conversation(dockID,abort.signal);if(!alive)return;const apiOrigin=new URL(api.baseURL||"/",window.location.origin);const attachments=detail.attachments.map(a=>({...a,url:new URL(a.url,apiOrigin).toString()}));const run=detail.runs.at(-1);
+      patch.dockLiveMessages=detail.messages.map(message=>mapMessage(message,me,people,attachments));patch.dockLiveRun=run||null;patch.dockLivePhase=phaseFor(run?.status);patch.dockLiveCost=detail.runs.reduce((sum,item)=>sum+item.cost_cents,0)/100;
+     }
+     if(issueRow){
+      const detail=await ws.issue(issueRow.uuid||issueRow.id,abort.signal);if(!alive)return;patch.liveIssueDetail=detail;patch.issues=(logic.state.issues||[]).map((item:Vals)=>item.uuid===detail.issue.id?{...item,events:detail.comments.map(comment=>({who:people.get(comment.author_user_id||"")?.name||"Previous agent",role:comment.author_kind,when:new Date(comment.created_at).toLocaleString(),text:comment.body})),cost:detail.runs.reduce((sum,run)=>sum+run.cost_cents,0)/100}:item);
+     }
+     if(Object.keys(patch).length)logic.setState(patch);
+    }finally{liveRefreshing=false;if(liveAgain&&alive){liveAgain=false;void refreshActiveWork().catch(fail)}}
+   };
    restore=installActions(logic,ws,api,me,people,hydrate,fail);
    await hydrate();if(!alive)return;
    if(initialRoute.workflow&&typeof logic.openGraph14==="function")await logic.openGraph14(initialRoute.workflow);
-   disconnect=ws.connect(e=>{if(e.type==="hello")return;if(timer)clearTimeout(timer);timer=setTimeout(()=>{void hydrate().catch(fail)},100)},up=>{if(up)void hydrate().catch(fail)});
+   disconnect=ws.connect(e=>{if(e.type==="hello")return;if(timer)clearTimeout(timer);const isActiveWorkEvent=e.type==="message.created"||e.type.startsWith("run.");timer=setTimeout(()=>{void (isActiveWorkEvent?refreshActiveWork():hydrate()).catch(fail)},isActiveWorkEvent?350:100)},up=>{if(!up)return;if(hasConnected)void hydrate().catch(fail);hasConnected=true});
   })().catch(err=>{if(err?.status===401)report("signed-out");else fail(err)});
   return()=>{alive=false;abort.abort();if(timer)clearTimeout(timer);disconnect?.();restore?.()};
  },[logic]);
@@ -135,8 +155,41 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
 export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User,people:PeopleIndex,hydrate:()=>Promise<void>,fail:(err:unknown)=>void){
  const originals=new Map<string,unknown>();let disposed=false;
  const pendingFiles=new Map<string,File>();
+ let paneFrame:number|undefined;let finishPaneDrag:(()=>void)|undefined;
  let fileTarget:"main"|"dock"="main";
  const bind=(name:string,fn:unknown)=>{if(!originals.has(name))originals.set(name,logic[name]);logic[name]=fn};
+ const paneAvailable=()=>document.querySelector<HTMLElement>(".app-v19 .workspace-body")?.clientWidth||Number(logic.state.paneAvailable11)||1040;
+ const setPane=(width:number,remember=true)=>{
+  if(width<=0){logic.setState({inspector10:false,mobileInspector10:false,paneWidth11:0});return}
+  const next=clampConversationPaneWidth(width,paneAvailable());
+  logic.setState({paneWidth11:next,...remember?{paneRestore11:next}:{},inspector10:true});
+ };
+ bind("paneMax11",()=>conversationPaneBounds(paneAvailable()).max);
+ bind("setPane11",setPane);
+ bind("resizeKey11",(event:KeyboardEvent)=>{
+  if(!["ArrowLeft","ArrowRight","Home","End","Enter"].includes(event.key))return;
+  event.preventDefault();logic.closePicker11?.();
+  const current=Number(logic.state.paneWidth11)||400;
+  if(event.key==="Home")setPane(0);
+  else if(event.key==="End")setPane(conversationPaneBounds(paneAvailable()).max);
+  else if(event.key==="Enter")setPane(400);
+  else setPane(current+(event.key==="ArrowLeft"?1:-1)*(event.shiftKey?80:24));
+ });
+ bind("dragPane11",(event:PointerEvent)=>{
+  if(event.button!==undefined&&event.button!==0)return;
+  event.preventDefault();logic.closePicker11?.();finishPaneDrag?.();
+  const startX=event.clientX;const startWidth=Number(logic.state.paneWidth11)||400;
+  let pendingWidth=clampConversationPaneWidth(startWidth,paneAvailable());
+  const inspector=event.currentTarget instanceof Element?event.currentTarget.closest(".inspector10") as HTMLElement|null:document.querySelector<HTMLElement>(".app-v19 .inspector10");
+  logic.setState({paneDragging11:true});
+  const paint=()=>{paneFrame=undefined;if(!inspector)return;inspector.style.width=`${pendingWidth}px`;inspector.style.flexBasis=`${pendingWidth}px`};
+  const move=(moveEvent:PointerEvent)=>{pendingWidth=clampConversationPaneWidth(startWidth+startX-moveEvent.clientX,paneAvailable());if(paneFrame===undefined)paneFrame=requestAnimationFrame(paint)};
+  const finish=()=>{
+   document.removeEventListener("pointermove",move);document.removeEventListener("pointerup",finish);document.removeEventListener("pointercancel",finish);
+   if(paneFrame!==undefined){cancelAnimationFrame(paneFrame);paneFrame=undefined}if(!disposed){paint();logic.setState({paneDragging11:false,paneWidth11:pendingWidth,paneRestore11:pendingWidth,inspector10:true})}finishPaneDrag=undefined;
+  };
+  finishPaneDrag=finish;document.addEventListener("pointermove",move);document.addEventListener("pointerup",finish);document.addEventListener("pointercancel",finish);
+ });
  const routeURL=(view:string,patch:Vals={},replace=false)=>{const state:Vals={...logic.state,...patch,view};const issueRow=(state.issues||[]).find((item:Vals)=>item.id===state.activeIssue||item.uuid===state.activeIssue);const issueID=issueRow?.uuid||state.activeIssue;const route:WorkspaceRoute={workspace:ws.slug,view,...(view==="chat"&&uuid(state.activeChat)?{conversation:state.activeChat}:{}),...(["issue","thread9"].includes(view)&&issueID?{issue:issueID}:{}),...(view==="auto9"&&state.activeAuto9?{autopilot:state.activeAuto9}:{}),...(view==="settings"&&state.section?{section:state.section}:{}),...(view==="settings"&&state.section==="workflows"&&state.activeWorkflow?{workflow:state.activeWorkflow}:{})};window.history[replace?"replaceState":"pushState"]({},"",workspacePath(route))};
  const originalGo=typeof logic.go==="function"?logic.go.bind(logic):null;
  if(originalGo)bind("go",(view:string,patch:Vals={})=>{originalGo(view,patch);routeURL(view,patch)});
@@ -395,11 +448,11 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
     run:write(async()=>{await api.request("PATCH","/api/me/keys/"+k.id,{scopes:scope==="Full access"?["read","write"]:["read"]})})
    })),"What this key may do")
   }));
-  return v;
+  return normalizePublicAssets(v) as Vals;
  });
  logic.forceUpdate?.();
  const popRoute=()=>{const route=parseWorkspaceRoute(new URL(window.location.href));if(route.workspace!==ws.slug){window.location.reload();return}if(route.conversation){logic.setState({view:"chat",activeChat:route.conversation,draft:readDraft(ws.slug,route.conversation)});void hydrate().catch(fail)}else if(route.issue){logic.setState({view:route.view==="thread9"?"thread9":"issue",activeIssue:route.issue});void hydrate().catch(fail)}else{logic.setState({view:route.view,...route.view==="chat"?{activeChat:null,draft:readDraft(ws.slug,null)}:{},...route.autopilot?{activeAuto9:route.autopilot}:{},...route.section?{section:route.section}:{}});if(route.workflow&&typeof logic.openGraph14==="function")void logic.openGraph14(route.workflow)}};
  window.addEventListener("popstate",popRoute);
- return()=>{disposed=true;window.removeEventListener("popstate",popRoute);for(const[k,v]of originals){if(v===undefined)delete logic[k];else logic[k]=v}};
+ return()=>{disposed=true;finishPaneDrag?.();if(paneFrame!==undefined)cancelAnimationFrame(paneFrame);window.removeEventListener("popstate",popRoute);for(const[k,v]of originals){if(v===undefined)delete logic[k];else logic[k]=v}};
 }
 export {mapIssue,mapConversation,mapAutopilot,mapAccount,mapRun};
