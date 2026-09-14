@@ -203,6 +203,9 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
  bind("setMemberRole14",(id:string,role:string)=>write(async()=>{await ws.setMemberRole(id,role.toLowerCase())})());
  bind("sendInvites14",write(async()=>{const s=logic.state;const emails=String(s.inviteEmails14||"").split(/[\s,;]+/).filter(Boolean);if(!emails.length)throw new Error("Add an email address");const links=[];for(const email of emails){const invite=await ws.invite(email,String(s.inviteRole14||"member").toLowerCase());links.push(invite.link)}logic.generic("Invitation links","Share each link with the invited person",[],{genericText:links.join("\n")});logic.setState({inviteEmails14:""})}));
  bind("openGraph14",(id:string)=>write(async()=>{const out=await ws.workflow(id);const v=out.versions.find(v=>v.id===out.workflow.active_version_id)||out.versions[0];if(!v)throw new Error("This workflow has no version");const graph={id:out.workflow.id,name:out.workflow.name,version:v.version,nodes:v.graph.nodes.map((n,i)=>({id:n.key,type:n.kind,label:n.name,model:n.model||"Auto",prompt:n.prompt||"",x:n.x??i*220,y:n.y??120})),edges:v.graph.edges.map((e,i)=>({id:"e"+i,from:e[0],to:e[1],label:""}))};logic.setState({view:"settings",section:"workflows",activeWorkflow:id,graph14:graph,graphSaved14:structuredClone(graph),graphVersions14:out.versions.map(v=>({id:v.id,name:"Version "+v.version,meta:v.created_at,state:titleCase(v.status)})),graphId14:id,overlay14:"graph",graphSide14:"node",graphSel14:graph.nodes[0]?.id});routeURL("settings",{section:"workflows",activeWorkflow:id})})());
+ const closeGraph=typeof logic.closeGraph14==="function"?logic.closeGraph14.bind(logic):()=>logic.setState({overlay14:null});
+ bind("closeGraph14",()=>{closeGraph();logic.setState({activeWorkflow:null});routeURL("settings",{section:"workflows",activeWorkflow:null},true)});
+ bind("backToWorkflows14",()=>{logic.closeGraph14()});
  bind("saveGraph14",write(async()=>{const g=logic.state.graph14;const graph:WorkflowGraph={nodes:g.nodes.map((n:Vals)=>({key:n.id,name:n.label,kind:n.type,model:n.model==="Auto"?"auto":n.model,prompt:n.prompt||"",x:n.x,y:n.y})),edges:g.edges.map((e:Vals)=>[e.from,e.to])};const out=uuid(g.id)?await ws.saveWorkflow(g.id,graph):await ws.createWorkflow({name:g.name,graph});const id="workflow" in out?out.workflow.id:g.id;await logic.openGraph14(id)}));
  const render=logic.renderVals;
  bind("renderVals",()=>{
@@ -304,6 +307,10 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
   v.accountsNote15="Connected accounts are scoped to this workspace. Secrets are encrypted, and provider usage is reported without converting quota into a dollar amount.";
   v.accountPrivacy14=`${(s.accounts10||[]).length} connected accounts, private to ${me.name||me.email}. Other members cannot see these identities or use their capacity.`;
   v.usageMonthNote19="Current workspace usage from completed runs. No preview or estimated charges are included.";
+  v.billingTabs14=(v.billingTabs14||[]).filter((tab:Vals)=>tab.label==="Plan"||tab.label==="Credit history");
+  v.usageTab19=false;v.invoiceTab14=false;v.invoiceRows14=[];
+  v.usageDetails=()=>logic.setState({billingTab14:"credits"});
+  v.monthlyText=Number(s.monthly||0)>0?`${logic.cash(s.monthly)} included credit available now`:"No included credit remaining";
   v.pfWeeks15=[];v.pfMonths15=[];v.pfStats15=[];v.pfActivitySummary15="Repository activity appears after connected repositories report it.";v.pfFoot15="No repository contribution activity has been reported yet.";
   if(Array.isArray(v.conversationGroups12))v.conversationGroups12=v.conversationGroups12.map((group:Vals)=>({...group,rows:(group.rows||[]).map((row:Vals)=>{
    const id=String(row.id||"");
