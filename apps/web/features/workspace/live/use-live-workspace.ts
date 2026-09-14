@@ -64,6 +64,7 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
    const initialRoute=parseWorkspaceRoute(new URL(window.location.href));
    const {workspaces}=await api.workspaces(abort.signal);const first=workspaces.find(w=>w.slug===initialRoute.workspace)||workspaces[0];if(!first)throw new Error("This account has no workspace");
    const ws=api.workspace(first.slug);const people:PeopleIndex=new Map();const member=me.name.trim()||me.email.split("@")[0]||"You";
+   let bootIssueDetail:Awaited<ReturnType<WorkspaceClient["issue"]>>|null=null;
    let refreshing=false,again=false;
    const hydrate=async()=>{
     if(!alive)return;if(refreshing){again=true;return;}refreshing=true;
@@ -85,7 +86,7 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
      // fallback until the user navigates away and back.
      const requestedIssue=hydrationIssueKey(logic.state.activeIssue,initialRoute.issue,hydrated);
      const selectedIssue=issues.issues.find(i=>i.identifier===requestedIssue||i.id===requestedIssue);
-     if(selectedIssue){const detail=await ws.issue(selectedIssue.id,abort.signal);const files=await api.request<{attachments:Vals[]}>("GET",`/api/w/${ws.slug}/attachments?issue=${selectedIssue.id}`,undefined,abort.signal);patch.liveIssueDetail=detail;patch.liveIssueFiles=files.attachments;patch.liveIssueWorkflow=detail.issue.workflow_id?await ws.workflow(detail.issue.workflow_id,abort.signal):null;patch.issues=patch.issues.map((i:Vals)=>i.uuid===selectedIssue.id?{...i,events:detail.comments.map(c=>({who:people.get(c.author_user_id||"")?.name||"Previous agent",role:c.author_kind,when:new Date(c.created_at).toLocaleString(),text:c.body})),cost:detail.runs.reduce((sum,r)=>sum+r.cost_cents,0)/100}:i)}
+     if(selectedIssue){const detail=bootIssueDetail?.issue.id===selectedIssue.id?bootIssueDetail:await ws.issue(selectedIssue.id,abort.signal);const files=await api.request<{attachments:Vals[]}>("GET",`/api/w/${ws.slug}/attachments?issue=${selectedIssue.id}`,undefined,abort.signal);patch.liveIssueDetail=detail;patch.liveIssueFiles=files.attachments;patch.liveIssueWorkflow=detail.issue.workflow_id?await ws.workflow(detail.issue.workflow_id,abort.signal):null;patch.issues=patch.issues.map((i:Vals)=>i.uuid===selectedIssue.id?{...i,events:detail.comments.map(c=>({who:people.get(c.author_user_id||"")?.name||"Previous agent",role:c.author_kind,when:new Date(c.created_at).toLocaleString(),text:c.body})),cost:detail.runs.reduce((sum,r)=>sum+r.cost_cents,0)/100}:i)}
      const oldChats=logic.state.chats?.[previous]||[];
      patch.chats={[member]:chats.conversations.map(c=>{
       const old=oldChats.find((x:Vals)=>x.id===c.id);return {...mapConversation(c,[],me,people),messages:old?.messages||[],phase:old?.phase||"done"};
@@ -155,6 +156,20 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
     }finally{liveRefreshing=false;if(liveAgain&&alive){liveAgain=false;void refreshActiveWork().catch(fail)}}
    };
    restore=installActions(logic,ws,api,me,people,hydrate,fail);
+   // A canonical work-conversation URL already contains the issue UUID. Show
+   // that issue and its real timeline as soon as the detail request returns;
+   // the larger workspace inventory can populate the navigation afterward.
+   // This keeps thousands of imported issues off the route's critical path.
+   if(initialRoute.view==="thread9"&&uuid(initialRoute.issue)){
+    bootIssueDetail=await ws.issue(initialRoute.issue,abort.signal);if(!alive)return;
+    logic.setState({
+     liveWorkspaces:workspaces,workspace16:first.name,workspaceName:first.name,member,signed:true,
+     issues:[mapIssue(bootIssueDetail.issue,people)],activeIssue:bootIssueDetail.issue.id,view:"thread9",
+     liveIssueDetail:bootIssueDetail,threadDraft9:readDraft(ws.slug,bootIssueDetail.issue.id),
+     ...threadInspectorPatch(window.matchMedia("(min-width: 901px)").matches),
+    });
+    report("live");
+   }
    await hydrate();if(!alive)return;
    if(initialRoute.workflow&&typeof logic.openGraph14==="function")await logic.openGraph14(initialRoute.workflow);
    disconnect=ws.connect(e=>{if(e.type==="hello")return;if(timer)clearTimeout(timer);const isActiveWorkEvent=e.type==="message.created"||e.type.startsWith("run.");timer=setTimeout(()=>{void (isActiveWorkEvent?refreshActiveWork():hydrate()).catch(fail)},isActiveWorkEvent?350:100)},up=>{if(!up)return;if(hasConnected)void hydrate().catch(fail);hasConnected=true});
