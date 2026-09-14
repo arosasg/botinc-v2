@@ -87,34 +87,13 @@ func run(ctx context.Context) error {
 
 	workspaceIDs := strings.Split(workspaceCSV, ",")
 	rows, err := sourcePool.Query(ctx, `
-		with latest_snapshot as (
-			-- Legacy runtimes may not have an owner_id. account_key is the
-			-- credential-derived identity shared across the owner's workspaces.
-			select distinct on (ra.account_key)
-				ra.account_key, ra.limits, ra.usage_captured_at,
-				ra.status, ra.limit_reason, ra.limited_until
-			from runtime_account ra
-			join agent_runtime runtime on runtime.id=ra.runtime_id
-			where runtime.workspace_id = any($1::uuid[])
-			order by ra.account_key,
-				coalesce(ra.usage_captured_at,ra.last_reported_at) desc
-		)
 		select a.id::text, a.workspace_id::text, u.email, a.provider, a.account_key,
 			a.label, a.email, a.plan, a.credential_kind, a.credential_encrypted,
 			a.refresh_encrypted, a.expires_at, a.refresh_error, a.enabled,
 			a.created_at, a.updated_at,
-			case
-				when coalesce(jsonb_array_length(snapshot.limits), 0) > 0 then snapshot.limits
-				else coalesce(a.usage_limits, '[]'::jsonb)
-			end,
-			case
-				when coalesce(jsonb_array_length(snapshot.limits), 0) > 0 then snapshot.usage_captured_at
-				else a.usage_captured_at
-			end,
-			coalesce(snapshot.status, ''), coalesce(snapshot.limit_reason, ''), snapshot.limited_until
+			coalesce(a.usage_limits, '[]'::jsonb), a.usage_captured_at,
+			'', coalesce(a.limit_reason, ''), a.limited_until
 		from agent_account a join "user" u on u.id=a.owner_id
-		left join latest_snapshot snapshot
-			on snapshot.account_key=a.account_key
 		where a.workspace_id = any($1::uuid[])
 		order by a.workspace_id, a.provider, a.account_key`, workspaceIDs)
 	if err != nil {
