@@ -302,6 +302,8 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
   v.dockHasCost19=!!s.dockConversationID;v.conversationCost10=logic.cash(s.dockLiveCost||0);
   v.dockDictate15=()=>logic.toast("Voice dictation is not available in this browser yet.");
   v.accountsNote15="Connected accounts are scoped to this workspace. Secrets are encrypted, and provider usage is reported without converting quota into a dollar amount.";
+  v.accountPrivacy14=`${(s.accounts10||[]).length} connected accounts, private to ${me.name||me.email}. Other members cannot see these identities or use their capacity.`;
+  v.usageMonthNote19="Current workspace usage from completed runs. No preview or estimated charges are included.";
   v.pfWeeks15=[];v.pfMonths15=[];v.pfStats15=[];v.pfActivitySummary15="Repository activity appears after connected repositories report it.";v.pfFoot15="No repository contribution activity has been reported yet.";
   if(Array.isArray(v.conversationGroups12))v.conversationGroups12=v.conversationGroups12.map((group:Vals)=>({...group,rows:(group.rows||[]).map((row:Vals)=>{
    const id=String(row.id||"");

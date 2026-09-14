@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Apply product-only input bindings after the design generator."""
+import re
 from pathlib import Path
 p=Path("apps/web/features/workspace/views/dialog-addaccountdialog.tsx")
 s=p.read_text()
@@ -72,6 +73,22 @@ replacements={
   "Simulated authorization. No real account is connected.":"The connection is verified before it is saved to this workspace.",
  },
  "apps/web/features/workspace/views/dialog-calldecisiondialog9.tsx":{"Start sample call":"Start call"},
+ "apps/web/features/workspace/views/dialog-authdialog.tsx":{
+  "Prototype sign-in. No account is created.":"Sign in securely to keep this conversation in your workspace.",
+ },
+ "apps/web/features/workspace/views/dialog-invitedialog14.tsx":{
+  "Prototype only. No invitation is emailed and no account is created.":"Invitation links are created securely and can be revoked from this workspace.",
+ },
+ "apps/web/features/workspace/views/dialog-previewdialog.tsx":{
+  "REVIEW CONTROLS · SIMULATION ONLY":"WORKSPACE CONTROLS",
+  "Explore the whole experience.":"Workspace diagnostics",
+  "Preview as":"View as",
+  "Switching members is a design test control. It changes private chats and connections while keeping shared issues.":"Private chats and personal connections remain scoped to the signed-in member.",
+ },
+ "apps/web/features/workspace/views/dialog-calldecisiondialog9.tsx":{
+  "OPERATOR CALL · SIMULATION":"OPERATOR CALL",
+  "Tap an answer to simulate speaking. Your microphone is not used.":"Choose an answer to continue. Microphone input is not available in this browser yet.",
+ },
  "apps/web/features/workspace/views/dialog-quickaccountdialog10.tsx":{
   "This opens a simulated provider authorization. No credentials are requested or stored in the design.":"Continue to the provider&apos;s secure authorization screen. Use Model accounts for API-key access.",
  },

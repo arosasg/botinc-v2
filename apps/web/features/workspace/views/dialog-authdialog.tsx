@@ -27,7 +27,7 @@ export function DialogAuthdialog({ v }: { v: Vals }) {
         <button className="button" onClick={v.emailComplete}>
           Continue with email
         </button>
-        <p className="fine">Prototype sign-in. No account is created.</p>
+        <p className="fine">Sign in securely to keep this conversation in your workspace.</p>
       </>
     ) : null
   );
