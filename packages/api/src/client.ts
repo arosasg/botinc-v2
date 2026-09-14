@@ -31,6 +31,13 @@ export type ClientOptions = {
   fetch?: typeof globalThis.fetch;
 };
 
+export function webSocketURL(baseURL: string, path: string, origin?: string): string {
+  const fallbackOrigin = origin ?? (typeof window === "undefined" ? "http://localhost" : window.location.origin);
+  const url = new URL(baseURL.replace(/\/+$/, "") + path, fallbackOrigin);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  return url.toString();
+}
+
 export class Client {
   readonly baseURL: string;
   private readonly onUnauthenticated: (() => void) | undefined;
@@ -232,7 +239,7 @@ export class WorkspaceClient {
   /* The realtime socket for this workspace. Reconnects with backoff, because a
      dropped socket must not quietly stop the page from updating. */
   connect(onEvent: (e: WSEvent) => void, onStatus?: (up: boolean) => void): () => void {
-    const url = this.api.baseURL.replace(/^http/, "ws") + this.w("/ws");
+    const url = webSocketURL(this.api.baseURL, this.w("/ws"));
     let socket: WebSocket | null = null;
     let closed = false;
     let attempt = 0;
