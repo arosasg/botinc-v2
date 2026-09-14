@@ -45,6 +45,8 @@ replacements={
   "Sample records. No live billing runs from this design.":"Usage entries come from completed workspace runs.",
   "Sample invoices. No payment method is charged and no document is issued.":"Invoices appear after a completed payment.",
   "Shortcuts are shown for the design preview. Rebinding is a product setting that is not simulated here.":"Keyboard shortcuts are available throughout the workspace.",
+  "<h4>By person</h4>":"<h4>By provider</h4>",
+  "<h4>Most expensive work</h4>":"<h4>Daily usage</h4>",
  },
  "apps/web/features/workspace/views/dialog-roledialog14.tsx":{
   "Owner-only powers stay with the owner. Changes here are simulated; the server enforces the real ones.":"Owner-only powers stay with the owner. The server enforces every role change.",

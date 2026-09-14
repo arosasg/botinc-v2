@@ -52,8 +52,8 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
    const hydrate=async()=>{
     if(!alive)return;if(refreshing){again=true;return;}refreshing=true;
     try{
-     const [issues,chats,autos,accounts,routing,overview,members,skills,memories,credits,plugins,repos,projects,workflows,invites,sessions,keys]=await Promise.all([
-      ws.issues(undefined,abort.signal),ws.conversations(abort.signal),ws.autopilots(abort.signal),ws.accounts(abort.signal),ws.routing(abort.signal),ws.overview(abort.signal),ws.members(abort.signal),ws.skills(abort.signal),ws.memories(abort.signal),ws.credits(abort.signal),ws.plugins(abort.signal),ws.repositories(abort.signal),ws.projects(abort.signal),ws.workflows(abort.signal),ws.invitations(abort.signal),api.request<{sessions:Vals[]}>("GET","/api/me/sessions",undefined,abort.signal),api.request<{keys:Vals[]}>("GET","/api/me/keys",undefined,abort.signal),
+     const [issues,chats,autos,accounts,routing,overview,members,skills,memories,credits,usage,plugins,repos,projects,workflows,invites,sessions,keys]=await Promise.all([
+      ws.issues(undefined,abort.signal),ws.conversations(abort.signal),ws.autopilots(abort.signal),ws.accounts(abort.signal),ws.routing(abort.signal),ws.overview(abort.signal),ws.members(abort.signal),ws.skills(abort.signal),ws.memories(abort.signal),ws.credits(abort.signal),ws.usage(abort.signal),ws.plugins(abort.signal),ws.repositories(abort.signal),ws.projects(abort.signal),ws.workflows(abort.signal),ws.invitations(abort.signal),api.request<{sessions:Vals[]}>("GET","/api/me/sessions",undefined,abort.signal),api.request<{keys:Vals[]}>("GET","/api/me/keys",undefined,abort.signal),
      ]);
      if(!alive)return;
      for(const p of members.members)people.set(p.user_id,{name:p.name,email:p.email});
@@ -98,6 +98,7 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
      patch.plan=titleCase(overview.workspace.plan);patch.monthly=0;patch.purchased=credits.balance_cents/100;patch.runningRuns=overview.running_runs;
      patch.paymentsEnabled=credits.payments_enabled;patch.paymentsTestMode=credits.payments_test_mode;patch.workspaceRole=overview.workspace.role||first.role;
      patch.ledger=credits.entries.map((e,i)=>({id:String(i),kind:e.kind,label:e.note,title:e.note,amount:e.amount_cents/100,date:e.created_at,when:e.created_at}));
+     patch.liveUsage=usage;
      patch.members14=members.members.map(p=>({id:p.user_id,name:p.name||p.email.split("@")[0],email:p.email,role:titleCase(p.role),meta:"Joined "+new Date(p.joined_at).toLocaleDateString(),scope:"",locked:p.role==="owner"}));
      patch.invites14=invites.invitations.map(i=>({id:i.id,email:i.email,role:titleCase(i.role),state:"Pending",scope:"",meta:"Expires "+new Date(i.expires_at).toLocaleDateString()}));
      patch.skills=skills.skills.map(k=>({...k,description:k.body.split("\n").find(t=>t&&!t.startsWith("#"))||"Workspace instructions",source:"Workspace",owner:"workspace",version:"Saved",files:["SKILL.md"]}));
@@ -306,10 +307,15 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
   v.dockDictate15=()=>logic.toast("Voice dictation is not available in this browser yet.");
   v.accountsNote15="Connected accounts are scoped to this workspace. Secrets are encrypted, and provider usage is reported without converting quota into a dollar amount.";
   v.accountPrivacy14=`${(s.accounts10||[]).length} connected accounts, private to ${me.name||me.email}. Other members cannot see these identities or use their capacity.`;
-  v.usageMonthNote19="Current workspace usage from completed runs. No preview or estimated charges are included.";
-  v.billingTabs14=(v.billingTabs14||[]).filter((tab:Vals)=>tab.label==="Plan"||tab.label==="Credit history");
-  v.usageTab19=false;v.invoiceTab14=false;v.invoiceRows14=[];
-  v.usageDetails=()=>logic.setState({billingTab14:"credits"});
+  const usage=s.liveUsage||{days:[],providers:[],total_cost_cents:0,runs:0};const usageTotal=Number(usage.total_cost_cents||0)/100;
+  v.usageMonthNote19="Last 30 days from recorded workspace runs. No preview or estimated charges are included.";
+  v.billingTabs14=(v.billingTabs14||[]).filter((tab:Vals)=>tab.label!=="Invoices");
+  v.invoiceTab14=false;v.invoiceRows14=[];
+  v.ugTotal19=logic.cash(usageTotal);v.ugOfNote19=`${Number(usage.runs||0)} recorded runs`;
+  v.ugSlices19=(usage.providers||[]).filter((provider:Vals)=>Number(provider.cost_cents)>0).map((provider:Vals,index:number)=>{const amount=Number(provider.cost_cents)/100;return{key:provider.provider,name:titleCase(String(provider.provider||"Other")),cls:`s${index%3+1}`,amount:logic.cash(amount),share:usageTotal>0?`${Math.round(amount/usageTotal*100)}%`:"0%",style:`flex:${Math.max(amount,0.01)}`,title:`${titleCase(String(provider.provider||"Other"))} · ${logic.cash(amount)}`}});
+  v.ugPeople19=(usage.providers||[]).map((provider:Vals)=>({key:provider.provider,initial:titleCase(String(provider.provider||"?"))[0]||"?",name:titleCase(String(provider.provider||"Other")),meta:`${Number(provider.runs||0)} runs`,amount:logic.cash(Number(provider.cost_cents||0)/100)}));
+  v.ugTasks19=(usage.days||[]).slice().reverse().map((day:Vals)=>({key:day.day,id:new Date(day.day).toLocaleDateString(),title:`${Number(day.runs||0)} recorded runs`,meta:"Workspace usage",amount:logic.cash(Number(day.cost_cents||0)/100),open:()=>{}}));
+  v.ugFootNote19="Every figure comes from a recorded workspace run. Provider subscription quota is never converted into credit.";
   v.monthlyText=Number(s.monthly||0)>0?`${logic.cash(s.monthly)} included credit available now`:"No included credit remaining";
   const repositoryByName=new Map<string,Vals>();for(const repository of s.repos14||[])repositoryByName.set(String(repository.name),repository);
   v.repoTabs14=(v.repoTabs14||[]).map((row:Vals)=>{const repository=repositoryByName.get(String(row.name));return repository?{...row,sub:`Default branch ${repository.branch}`,ready:"Connected",tone:"ok14",readyIcon:"/i15.svg#circle-check"}:row});

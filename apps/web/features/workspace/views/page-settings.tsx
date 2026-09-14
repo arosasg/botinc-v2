@@ -1212,7 +1212,7 @@ export function PageSettings({ v }: { v: Vals }) {
                       </ul>
                     </section>
                     <section className="ug-block19">
-                      <h4>By person</h4>
+                      <h4>By provider</h4>
                       {(v.ugPeople19 ?? []).map((p: any, i: number) => (
                         <Fragment key={i}>
                           <div className="ug-row19">
@@ -1227,7 +1227,7 @@ export function PageSettings({ v }: { v: Vals }) {
                       ))}
                     </section>
                     <section className="ug-block19">
-                      <h4>Most expensive work</h4>
+                      <h4>Daily usage</h4>
                       {(v.ugTasks19 ?? []).map((t: any, i: number) => (
                         <Fragment key={i}>
                           <button type="button" className="ug-row19 ug-task19" onClick={t.open}>
