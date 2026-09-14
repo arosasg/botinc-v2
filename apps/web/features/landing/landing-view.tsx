@@ -53,6 +53,7 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
                 <h1>
                   Coding that never stops.
                   <br />
+                  {" "}
                   <span>Fixes that never ship unreviewed.</span>
                 </h1>
                 <p className="lead">

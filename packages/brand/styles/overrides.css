@@ -39,7 +39,22 @@
 .l4 .foot-grid,
 .l4 .foot-bottom { width:min(1600px,100%); }
 
-/* 5. Owner request (2026-09-14): a live conversation uses the whole centre
+/* 5. Landing v4's phone layout must compose within the viewport instead of
+      hiding overflow from desktop-sized children. Keep the two essential nav
+      actions, let the headline rebalance without its desktop-only hard break,
+      and render the real workspace shell at its responsive phone width. */
+@media (max-width:640px) {
+  .l4 .nav { gap:12px; }
+  .l4 .nav-actions { gap:10px; }
+  .l4 .nav-actions>.tbtn:first-child { display:none; }
+  .l4 .hero>* { min-width:0; }
+  .l4 .hero h1 { font-size:clamp(30px,8.2vw,36px);overflow-wrap:anywhere; }
+  .l4 .hero h1 br { display:none; }
+  .l4 .demo { height:560px; }
+  .l4 .demo-inner { width:100%;height:100%;transform:none; }
+}
+
+/* 6. Owner request (2026-09-14): a live conversation uses the whole centre
       canvas. Workspace v19's inherited V11 rules cap the transcript at 780px
       and the composer at 760px, which leaves an unrelated empty column on
       wide displays. Keep the centred first-message state, then align the live
