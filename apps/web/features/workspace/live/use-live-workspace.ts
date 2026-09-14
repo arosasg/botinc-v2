@@ -25,11 +25,17 @@ export function threadInspectorPatch(isDesktop: boolean): Vals {
  return isDesktop?{inspector10:true,mobileInspector10:false,inspectorTab10:"issue",paneWidth11:400,paneRestore11:400}:{};
 }
 export function livePersonaDefaults(member: string): Vals {
- const patch:Vals={chats:{[member]:[]}};
- for(const key of ["connections","agentPrefs","funding","memoryByMember","skillGrants","modelAccounts","preferencesBy10","fallbackPolicies10"]){
-  patch[key]={[member]:{}};
- }
- return patch;
+ return {
+  chats:{[member]:[]},
+  connections:{[member]:{}},
+  agentPrefs:{[member]:{}},
+  funding:{[member]:"credits"},
+  memoryByMember:{[member]:{}},
+  skillGrants:{[member]:{}},
+  modelAccounts:{[member]:[]},
+  preferencesBy10:{[member]:""},
+  fallbackPolicies10:{[member]:"ask"},
+ };
 }
 export function hydrationIssueKey(activeIssue: unknown, routeIssue: string | undefined, hydrated: boolean): unknown {
  return !hydrated&&routeIssue?routeIssue:activeIssue;
