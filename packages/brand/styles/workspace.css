@@ -6515,3 +6515,30 @@ button{font-family:inherit}button .ui-icon{color:inherit}
 
 /* The floating chat leaves the side pane and the context summary alone —
    the breakpoint below 1180px still decides whether the summary fits. */
+
+/* Live conversation content keeps the v19 reading rhythm while rendering
+   migrated Markdown as real structure instead of exposing source syntax. */
+.app .message-markdown{display:grid;gap:10px;margin:10px 0 0;min-width:0;font-size:14px;line-height:1.7;letter-spacing:-.1px;overflow-wrap:anywhere}
+.app .message-markdown>p,.app .message-markdown>h2,.app .message-markdown>h3,.app .message-markdown>blockquote,.app .message-markdown>pre,.app .message-markdown>ul,.app .message-markdown>ol{margin:0}
+.app .message-markdown h2{font-size:18px;line-height:1.35;font-weight:500;letter-spacing:-.02em}
+.app .message-markdown h3{font-size:15px;line-height:1.45;font-weight:500}
+.app .message-markdown ul,.app .message-markdown ol{padding-left:22px;display:grid;gap:5px}
+.app .message-markdown blockquote{padding:7px 0 7px 13px;border-left:2px solid var(--line);color:var(--muted)}
+.app .message-markdown code{font-family:var(--mono14,var(--mono));font-size:.9em;background:var(--soft14,var(--panel));border:1px solid var(--line);border-radius:5px;padding:1px 4px}
+.app .message-markdown pre{padding:11px 13px;background:var(--soft14,var(--panel));border:1px solid var(--line);border-radius:8px;overflow:auto;white-space:pre}
+.app .message-markdown pre code{padding:0;border:0;background:transparent}
+.app .message-markdown a{text-decoration:underline;text-decoration-color:color-mix(in srgb,var(--blue) 34%,transparent);text-underline-offset:2px}
+.app .message-mention{display:inline-flex;align-items:center;padding:1px 6px;border-radius:5px;background:var(--wash,var(--blue-soft));color:var(--blue);font-weight:500;white-space:nowrap}
+.app .entry13.human13>.message-markdown{font-size:13px;line-height:1.65}
+.app .live-pr19,.app .live-runs19{display:grid;gap:14px}
+.app .live-pr19>.brand12{width:24px;height:24px}
+.app .live-pr19 h2{font-size:19px;line-height:1.35;font-weight:500;margin:0}
+.app .live-pr19 p{font-size:12.5px;line-height:1.65;color:var(--muted);margin:0}
+.app .live-pr19>.small-button{display:inline-flex;align-items:center;gap:7px;width:max-content;text-decoration:none}
+.app .live-pr19>.small-button .ui-icon{width:13px;height:13px}
+.app .live-run19{display:grid;gap:5px;padding:12px;border:1px solid var(--line);border-radius:9px;background:var(--bg)}
+.app .live-run19>header{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.app .live-run19>header strong{font-size:12.5px;font-weight:500}
+.app .live-run19>header span{font:400 9.5px var(--mono14,var(--mono));text-transform:uppercase;color:var(--muted)}
+.app .live-run19 p,.app .live-run19 time,.app .live-run19 small{font-size:10.5px;line-height:1.5;color:var(--muted);margin:0}
+.app .live-run19 small{color:var(--danger);overflow-wrap:anywhere}
