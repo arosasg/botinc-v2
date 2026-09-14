@@ -2,15 +2,17 @@
 # Regenerate the landing + thread-shell JSX bodies from the design sources.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-D=../design-ref
+D=design-ref
 gen() { python3 scripts/dc2jsx.py "$1" --start "$2" --end "$3" > /tmp/gen.jsx; npx --yes prettier@3 --parser babel --print-width 120 /tmp/gen.jsx 2>/dev/null; }
 python3 - "$D" <<'PY'
 import re,subprocess,sys
 D=sys.argv[1]
 def gen(f,start,end):
     j=subprocess.run(["python3","scripts/dc2jsx.py",f"{D}/{f}","--start",start,"--end",end],capture_output=True,text=True,check=True).stdout
-    open('/tmp/gen.jsx','w').write(j)
-    p=subprocess.run(["npx","--yes","prettier@3","--parser","babel-ts","--print-width","120","/tmp/gen.jsx"],capture_output=True,text=True)
+    temp=f'/tmp/botinc-landing-gen-{__import__("os").getpid()}.jsx'
+    open(temp,'w').write(j)
+    p=subprocess.run(["npx","--yes","prettier@3","--parser","babel-ts","--print-width","120",temp],capture_output=True,text=True)
+    __import__("os").unlink(temp)
     if p.returncode: raise SystemExit(p.stderr[-2000:])
     j=p.stdout.strip()
     if j.endswith(';'): j=j[:-1]

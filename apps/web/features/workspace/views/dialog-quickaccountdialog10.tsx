@@ -87,7 +87,7 @@ export function DialogQuickaccountdialog10({ v }: { v: Vals }) {
           </Fragment>
         ))}
         <p className="fine">
-          This opens a simulated provider authorization. No credentials are requested or stored in the design.
+          Continue to the provider&apos;s secure authorization screen. Use Model accounts for API-key access.
         </p>
       </>
     ) : null

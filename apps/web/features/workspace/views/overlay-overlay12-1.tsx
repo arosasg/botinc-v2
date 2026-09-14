@@ -1254,7 +1254,7 @@ export function OverlayOverlay121({ v }: { v: Vals }) {
                   <>
                     <div className="gside-test17">
                       <section className="gtest-setup17">
-                        <p className="gside-title14">Sample case</p>
+                        <p className="gside-title14">Example configuration</p>
                         <div className="gcases17">
                           {(v.graphCases17 ?? []).map((c: any, i: number) => (
                             <Fragment key={i}>
@@ -1528,7 +1528,7 @@ export function OverlayOverlay121({ v }: { v: Vals }) {
                 >
                   <use href="/i15.svg#info" />
                 </svg>{" "}
-                Sample workflow. Saving a version changes future sample runs only.
+                Saving a version changes future runs only.
               </span>
               <button
                 type="button"

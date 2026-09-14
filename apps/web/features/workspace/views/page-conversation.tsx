@@ -1060,8 +1060,7 @@ export function PageConversation({ v }: { v: Vals }) {
                 placeholder={v.composerPlaceholder10}
                 value={v.composerDraft10}
                 onChange={v.editComposer10}
-                onKeyDown={v.composerKey12}
-                onPaste={v.composerPaste}
+                onKeyDown={v.composerKey12} onPaste={v.composerPaste}
               />
               <div className="composer10-tools">
                 <button
@@ -1308,8 +1307,7 @@ export function PageConversation({ v }: { v: Vals }) {
                   type="submit"
                   aria-label={v.sendLabel18}
                   title={v.sendLabel18}
-                  disabled={v.composerEmpty11}
-                  onClick={v.sendComposer11}
+                  disabled={v.composerEmpty11} onClick={v.sendComposer11}
                 >
                   <svg
                     className="ui-icon use14"

@@ -78,7 +78,7 @@ export function DialogVoicestartdialog10({ v }: { v: Vals }) {
               </svg>
             </button>
           </div>
-          <p className="fine">Simulated voice and actions. No microphone, live models, or charges.</p>
+          <p className="fine">Voice calls are not available on this deployment yet.</p>
         </div>
       </>
     ) : null

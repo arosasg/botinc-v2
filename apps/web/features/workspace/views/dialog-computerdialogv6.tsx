@@ -99,7 +99,7 @@ export function DialogComputerdialogv6({ v }: { v: Vals }) {
                   <span>$0.84</span>
                 </div>
                 <p className="fine">
-                  Sample run history for this computer. Open a task in Work to inspect its full evidence.
+                  Open a task in Work to inspect its full run history and evidence.
                 </p>
               </>
             ) : null}

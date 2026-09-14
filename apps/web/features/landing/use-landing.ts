@@ -423,7 +423,7 @@ export function useLanding(opts: { onEnterWorkspace?: () => void } = {}) {
     };
 
     return {
-      rootClass: "l4" + (theme === "dark" ? " dark" : ""), theme, onLanding, d, r: router(s.rt, s.apiFallback), g: gate(s.wf),
+      rootClass: "l4" + (theme === "dark" ? " dark" : ""), theme, onLanding, d, r: router(s.rt, s.apiFallback), g: gate(s.wf), booting:false,
       goRouting: () => go("routing"), apiFallback: s.apiFallback, apiCls: "switch" + (s.apiFallback ? "" : " off"), toggleApi: () => persist({ apiFallback: !s.apiFallback }),
       dSteps: d.steps, autosCount: s.autos.length, demoView: s.demoView, setDemoView: (v: LandingState["demoView"]) => patch({ demoView: v }),
       appView: s.appView, setAppView: (v: LandingState["appView"]) => patch({ appView: v }),

@@ -72,7 +72,7 @@ export function DialogTwostepdialog19({ v }: { v: Vals }) {
               Done
             </button>
           </div>
-          <p className="fine">Sample screen in this design. No authenticator app is contacted.</p>
+          <p className="fine">Two-step verification is not available on this deployment yet.</p>
         </div>
       </>
     ) : null

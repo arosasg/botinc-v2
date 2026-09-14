@@ -22,6 +22,23 @@ func TestLegacyMergedDevStatusIsComplete(t *testing.T) {
 	}
 }
 
+func TestGitHubRepositoryName(t *testing.T) {
+	for input, want := range map[string]string{
+		"https://github.com/arosasg/botinc-v2.git":             "arosasg/botinc-v2",
+		"https://github.com/didit-protocol/service-didit-auth": "didit-protocol/service-didit-auth",
+	} {
+		got, err := githubRepositoryName(input)
+		if err != nil || got != want {
+			t.Fatalf("githubRepositoryName(%q) = %q, %v; want %q", input, got, err, want)
+		}
+	}
+	for _, input := range []string{"http://github.com/a/b", "https://example.com/a/b", "https://github.com/a/b/extra", "https://token@github.com/a/b"} {
+		if _, err := githubRepositoryName(input); err == nil {
+			t.Fatalf("unsafe repository URL %q was accepted", input)
+		}
+	}
+}
+
 func TestImportRollbackReplayAndRelationships(t *testing.T) {
 	url := os.Getenv("TEST_DATABASE_URL")
 	if url == "" {
@@ -54,7 +71,7 @@ func TestImportRollbackReplayAndRelationships(t *testing.T) {
 	}
 	ws, user, parent, child, comment := uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New()
 	when := "2026-09-13T00:00:00Z"
-	s := &Snapshot{Hash: "snapshot-one", Manifest: Manifest{WorkspaceID: ws, IssueCount: 2}, Workspace: row(map[string]any{"id": ws, "name": "Migrated", "issue_prefix": "OLD", "created_at": when}), Members: []Row{row(map[string]any{"user_id": user, "email": "owner@example.test", "name": "Owner", "role": "owner"})}, Files: map[string]json.RawMessage{}}
+	s := &Snapshot{Hash: "snapshot-one", Manifest: Manifest{WorkspaceID: ws, IssueCount: 2}, Workspace: row(map[string]any{"id": ws, "name": "Migrated", "issue_prefix": "OLD", "created_at": when}), Members: []Row{row(map[string]any{"user_id": user, "email": "owner@example.test", "name": "Owner", "role": "owner"})}, Repositories: []Row{row(map[string]any{"url": "https://github.com/arosasg/botinc-v2.git"})}, Files: map[string]json.RawMessage{}}
 	for n, id := range []uuid.UUID{parent, child} {
 		i := row(map[string]any{"id": id, "workspace_id": ws, "number": n + 1, "title": "Source issue", "description": "Preserved text", "status": "backlog", "priority": "medium", "created_at": when, "updated_at": when, "creator_id": user, "assignee_type": "agent", "assignee_id": uuid.NewString()})
 		if n == 1 {
@@ -94,6 +111,9 @@ func TestImportRollbackReplayAndRelationships(t *testing.T) {
 	if !replay.Replayed || replay.Issues != 2 || replay.Comments != 1 {
 		t.Fatal(replay)
 	}
+	if replay.Repositories != 1 {
+		t.Fatalf("repository replay count = %d, want 1", replay.Repositories)
+	}
 	var pid uuid.UUID
 	var author uuid.UUID
 	var text string
@@ -102,6 +122,9 @@ func TestImportRollbackReplayAndRelationships(t *testing.T) {
 	}
 	if err := pool.QueryRow(ctx, `select c.body,u.id from issue_comments c join users u on c.author_user_id=u.id where c.id=$1 and u.email='owner@example.test'`, comment).Scan(&text, &author); err != nil || text != "Historical comment" {
 		t.Fatal("comment attribution lost", err)
+	}
+	if err := pool.QueryRow(ctx, `select count(*) from repositories where workspace_id=$1 and full_name='arosasg/botinc-v2'`, ws).Scan(&count); err != nil || count != 1 {
+		t.Fatal("repository lost or duplicated", err, count)
 	}
 	s.Hash = "changed-snapshot"
 	if _, err := Apply(ctx, pool, s, "owner@example.test", true); err == nil {

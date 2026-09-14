@@ -361,7 +361,7 @@ export function PageSchedule({ v }: { v: Vals }) {
               </div>
             </>
           ) : null}
-          <p className="s9-foot">Sample routines and recorded activity. Nothing runs from this design.</p>
+          <p className="s9-foot">Routines stay paused until you enable them. Activity is recorded after each run.</p>
         </main>
       </>
     ) : null

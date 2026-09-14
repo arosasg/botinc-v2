@@ -531,7 +531,6 @@ export function ShellBotincLanding({ v }: { v: Vals }) {
                 {interp(v.appearanceLabel)}
               </button>
             </div>
-            <small>Design proposal · Sample work and simulated actions</small>
           </footer>
         </main>
       </>

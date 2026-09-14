@@ -35,12 +35,14 @@ export type ThreadShellProps = {
   autosCount?: number;
   balance?: string;
   showAppsNote?: boolean;
+  loading?: boolean;
 };
 
 const noop = () => {};
 
 function useShellVals(p: ThreadShellProps) {
   const [local, setLocal] = useState<ShellView>("thread");
+  const [isWorkspaceMenuOpen, setIsWorkspaceMenuOpen] = useState(false);
   const view = (p.view as ShellView | undefined) || local;
   const set = (v: ShellView) => () => {
     if (p.setView) (p.setView as unknown as (v: ShellView) => void)(v);
@@ -84,6 +86,12 @@ function useShellVals(p: ThreadShellProps) {
     threadRowCls: "c9-row" + (view === "thread" ? " active" : ""), threadCurrent: (view === "thread" ? "page" : "false") as "page" | "false", chat1Cls: "c9-row",
     crumbA: view === "schedule" ? "Schedule" : view === "plugins" ? "Plugins" : view === "chat" ? "New chat" : view === "intro" ? "Getting to work" : "Work",
     pluginCount: 6, plugins, needsCount: needs ? 1 : 0, doneCount: merged ? 2 : 1, workGroups: groups, routines,
+    loadState:p.loading?"loading":"ready",loading:!!p.loading,fullLoading:false,crumbThread:view==="thread",
+    wsOpen:isWorkspaceMenuOpen,toggleWs:()=>setIsWorkspaceMenuOpen((open)=>!open),closeWs:()=>setIsWorkspaceMenuOpen(false),
+    wsInitial:"B",wsName:"BotInc",workspaces:[
+      {initial:"B",name:"BotInc",sub:"Current workspace",cls:"on",on:true,pick:()=>setIsWorkspaceMenuOpen(false)},
+      {initial:"D",name:"Didit",sub:"3 tasks need you",cls:"",on:false,pick:()=>setIsWorkspaceMenuOpen(false)},
+    ],
   };
 }
 
@@ -98,24 +106,75 @@ export function ThreadShell(p: ThreadShellProps) {
     <div
       className="app app-v9 app-v10 app-v11 app-v12 app-v13 app-v14 app-v19 conversation-open9 has-conversation l4shell"
       data-theme={v.theme}
+      data-load={v.loadState}
     >
       <aside className="sidebar sidebar9 sidebar12" aria-label="Workspace navigation">
-        <button className="workspace-button">
-          <img src="/assets/logo/botinc-mark.svg" alt="" />
-          <span>BotInc</span>
-          <svg
-            className="ui-icon use14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.75"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <use href="/i15.svg#chevrons-up-down" />
-          </svg>
-        </button>
+        <div className="l4-ws">
+          <button className="workspace-button" onClick={v.toggleWs} aria-expanded={v.wsOpen} aria-haspopup="menu">
+            <span className="l4-wsglyph">{interp(v.wsInitial)}</span>
+            <span>{interp(v.wsName)}</span>
+            <svg
+              className="ui-icon use14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.75"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <use href="/i15.svg#chevrons-up-down" />
+            </svg>
+          </button>
+          {v.wsOpen ? (
+            <>
+              <button className="l4-wsscrim" onClick={v.closeWs} aria-label="Close workspace menu" />
+              <div className="menu14 l4-wsmenu" role="menu" aria-label="Workspaces">
+                <p className="menu-title14">Workspaces</p>
+                <div className="menu-rows14">
+                  {(v.workspaces ?? []).map((w: any, i: number) => (
+                    <Fragment key={i}>
+                      <button className={w.cls} role="menuitemradio" aria-checked={w.on} onClick={w.pick}>
+                        <span className="l4-wsglyph">{interp(w.initial)}</span>
+                        <span className="l4-wscopy">
+                          <strong>{interp(w.name)}</strong>
+                          <small>{interp(w.sub)}</small>
+                        </span>
+                        <svg
+                          className="ui-icon use14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.75"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                        >
+                          <use href="/i15.svg#check" />
+                        </svg>
+                      </button>
+                    </Fragment>
+                  ))}
+                </div>
+                <button className="menu-cta15" role="menuitem" onClick={v.closeWs}>
+                  <svg
+                    className="ui-icon use14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.75"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <use href="/i15.svg#plus" />
+                  </svg>
+                  <span>New workspace</span>
+                </button>
+              </div>
+            </>
+          ) : null}
+        </div>
         <div className="nav-main">
           <button className={v.chatNavCls} onClick={v.viewChat}>
             <span className="nav-icon">
@@ -456,10 +515,15 @@ export function ThreadShell(p: ThreadShellProps) {
         </div>
       </aside>
       <div className="app-main">
+        {v.fullLoading ? (
+          <>
+            <i className="l4-progress" aria-hidden="true" />
+          </>
+        ) : null}
         <header className="topbar">
           <div className="breadcrumb">
             <span>{interp(v.crumbA)}</span>
-            {v.isThread ? (
+            {v.crumbThread ? (
               <>
                 <span className="muted">/</span>
                 <strong>BOT-42</strong>
@@ -515,6 +579,24 @@ export function ThreadShell(p: ThreadShellProps) {
           </div>
         </header>
         <div className="workspace-body">
+          {v.loading ? (
+            <>
+              <div className="l4-skel" aria-busy="true" aria-label="Loading">
+                <div className="l4-skel-head">
+                  <i />
+                  <i />
+                  <i />
+                </div>
+                <div className="l4-skel-log">
+                  <i />
+                  <i />
+                  <i />
+                  <i />
+                </div>
+                <div className="l4-skel-composer" />
+              </div>
+            </>
+          ) : null}
           {v.isConvo ? (
             <>
               <main className="thread9" data-screen-label="BOT-42 conversation">

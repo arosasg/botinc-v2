@@ -44,7 +44,7 @@ export function DialogCalldecisiondialog9({ v }: { v: Vals }) {
             <>
               <div className="d9-options">
                 <button className="small-button primary" onClick={v.connectDecisionCall9}>
-                  Start sample call{" "}
+                  Start call{" "}
                   <svg
                     className="ui-icon use14"
                     viewBox="0 0 24 24"

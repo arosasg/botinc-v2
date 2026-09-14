@@ -142,7 +142,7 @@ export function DialogRoledialog14({ v }: { v: Vals }) {
               ))}
             </ul>
             <p className="fine">
-              Owner-only powers stay with the owner. Changes here are simulated; the server enforces the real ones.
+              Owner-only powers stay with the owner. The server enforces every role change.
             </p>
           </aside>
         </div>

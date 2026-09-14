@@ -38,3 +38,25 @@
 .l4 .inv-inner,
 .l4 .foot-grid,
 .l4 .foot-bottom { width:min(1600px,100%); }
+
+/* 5. Owner request (2026-09-14): a live conversation uses the whole centre
+      canvas. Workspace v19's inherited V11 rules cap the transcript at 780px
+      and the composer at 760px, which leaves an unrelated empty column on
+      wide displays. Keep the centred first-message state, then align the live
+      transcript and composer to the available canvas. */
+@media (min-width:761px) {
+  .app-v19 .chat10:not(.welcome-state10) .chat10-scroll {
+    width:100%;max-width:none;margin:0;padding-inline:clamp(28px,4vw,64px);
+  }
+  .app-v19 .chat10:not(.welcome-state10) .chat10-col15 { width:100%;min-width:0; }
+  .app-v19 .chat10:not(.welcome-state10) .message10,
+  .app-v19 .chat10:not(.welcome-state10) .activity-inline10,
+  .app-v19 .chat10:not(.welcome-state10) .result10 { max-width:none;width:100%; }
+  .app-v19 .chat10:not(.welcome-state10) .message10.user-message {
+    width:fit-content;max-width:min(75%,960px);
+  }
+  .app-v19 .chat10:not(.welcome-state10) > .composer10-wrap {
+    width:auto;max-width:none;margin:0 clamp(28px,4vw,64px) 10px!important;
+    padding-left:0!important;padding-right:0!important;
+  }
+}

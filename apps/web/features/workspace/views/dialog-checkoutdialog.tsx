@@ -46,7 +46,7 @@ export function DialogCheckoutdialog({ v }: { v: Vals }) {
             {interp(v.checkoutConfirm)}
           </button>
         </div>
-        <p className="fine">USD. Tax calculated at checkout. Sample Visa 4242. No real charge.</p>
+        <p className="fine">USD. Tax is calculated at checkout. Payment is processed securely by Stripe.</p>
       </>
     ) : null
   );

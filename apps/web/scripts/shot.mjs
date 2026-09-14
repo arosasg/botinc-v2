@@ -4,7 +4,7 @@ import fs from "node:fs";
 const [, , url, prefix, ...rest] = process.argv;
 const o = Object.fromEntries(rest.map((s) => { const i = s.indexOf("="); return [s.slice(0, i), s.slice(i + 1)]; }));
 fs.mkdirSync("proof", { recursive: true });
-const browser = await chromium.launch();
+const browser = await chromium.launch({ channel: process.env.CHROME_CHANNEL || "chrome" });
 for (const w of (o.widths || "1440,390").split(",").map(Number)) {
   const ctx = await browser.newContext({ viewport: { width: w, height: w < 500 ? 844 : 900 }, deviceScaleFactor: 1, reducedMotion: "reduce" });
   const page = await ctx.newPage();
