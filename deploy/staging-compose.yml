@@ -27,7 +27,7 @@ services:
     image: ${REGISTRY}/botinc-v2-staging/web:${IMAGE_TAG}
     restart: unless-stopped
     environment:
-      BOTINC_API_URL: https://test.botinc.ai
+      BOTINC_API_URL: /
   proxy:
     image: caddy:2.10.2-alpine
     restart: unless-stopped
