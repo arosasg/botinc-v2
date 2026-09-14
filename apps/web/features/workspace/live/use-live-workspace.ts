@@ -208,6 +208,9 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
  bind("renderVals",()=>{
   const v=render.call(logic);const s=logic.state;
   v.workspaceName= s.workspace16||"BotInc";v.previewCard15=false;
+  const autopilotByTitle=new Map<string,Vals>();for(const autopilot of s.autopilots9||[])autopilotByTitle.set(String(autopilot.title),autopilot);
+  const applyLiveSchedule=(rows:Vals[]=[])=>(rows||[]).map((row:Vals)=>{const autopilot=autopilotByTitle.get(row.title);return autopilot?{...row,trigger:autopilot.triggerText||row.trigger,next:autopilot.nextText||row.next,zone:autopilot.zone||row.zone,source:autopilot.source||row.source}:row});
+  v.routineRows14=applyLiveSchedule(v.routineRows14);v.upcomingRows14=applyLiveSchedule(v.upcomingRows14);
   const detail=s.liveIssueDetail;const currentIssue=logic.issue();
   v.i8Computer="Remote";v.i8Agent="Operator";
   v.i8HasPr=!!detail?.runs?.some((r:Vals)=>r.result?.pull_request?.url);v.i8HasDeploy=false;v.i8HasCriteria=false;v.i8NoCriteria=true;

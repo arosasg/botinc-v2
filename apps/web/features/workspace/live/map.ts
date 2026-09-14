@@ -146,6 +146,9 @@ export function mapWorkflowSteps(version: WorkflowVersion, openIndex: number, on
 }
 
 export function mapAutopilot(a: Autopilot) {
+  const kind = a.trigger?.kind ?? "manual";
+  const zone = a.trigger?.tz || "UTC";
+  const schedule = describeSchedule(a.trigger?.cron ?? "", zone);
   return {
     id: a.id,
     name: a.name,
@@ -153,13 +156,68 @@ export function mapAutopilot(a: Autopilot) {
     description: a.description,
     prompt: a.prompt,
     enabled: a.enabled,
-    trigger: a.trigger?.kind ?? "manual",
+    trigger: kind,
+    kind,
     cron: a.trigger?.cron ?? "",
-    tz: a.trigger?.tz ?? "",
+    tz: zone,
+    zone,
+    source: a.trigger?.source || (kind === "schedule" ? "BotInc" : "Manual"),
+    cadence: schedule.cadence,
+    time: schedule.time,
+    triggerText: kind === "schedule" ? schedule.label : kind === "manual" ? "Started manually" : "",
+    nextText: describeNextRun(a.enabled, a.next_run_at, zone),
     lastRun: a.last_run_at,
     nextRun: a.next_run_at,
     model: a.model === "auto" ? "Auto" : a.model,
   };
+}
+
+function describeSchedule(cron: string, zone: string): { cadence: string; time: string; label: string } {
+  const [minute, hour, dayOfMonth, month, dayOfWeek] = cron.trim().split(/\s+/);
+  const clock = /^\d+$/.test(minute ?? "") && /^\d+$/.test(hour ?? "")
+    ? `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`
+    : "";
+  let cadence = cron || "Schedule";
+  let timing = cron || "Schedule configured";
+
+  if (/^\*\/\d+$/.test(minute ?? "") && hour === "*" && dayOfMonth === "*" && month === "*" && dayOfWeek === "*") {
+    const interval = minute!.slice(2);
+    cadence = `Every ${interval} minutes`;
+    timing = cadence;
+  } else if (/^\d+(,\d+)+$/.test(minute ?? "") && hour === "*" && dayOfMonth === "*" && month === "*" && dayOfWeek === "*") {
+    const minutes = minute!.split(",");
+    cadence = "Hourly";
+    timing = `Every hour at ${minutes.map(value => `:${value.padStart(2, "0")}`).join(" and ")}`;
+  } else if (clock && dayOfMonth === "*" && month === "*" && dayOfWeek === "*") {
+    cadence = "daily";
+    timing = `Every day at ${clock}`;
+  } else if (clock && dayOfMonth === "*" && month === "*" && /^\d$/.test(dayOfWeek ?? "")) {
+    const weekdays = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    cadence = "weekly";
+    timing = `Every ${weekdays[Number(dayOfWeek)]} at ${clock}`;
+  } else if (clock && /^\*\/\d+$/.test(dayOfMonth ?? "") && month === "*" && dayOfWeek === "*") {
+    const interval = dayOfMonth!.slice(2);
+    cadence = `Every ${interval} days`;
+    timing = `${cadence} at ${clock}`;
+  }
+
+  return { cadence, time: clock, label: `${timing} · ${zone}` };
+}
+
+function describeNextRun(enabled: boolean, nextRun: string | null, zone: string): string {
+  if (!enabled) return "Paused";
+  if (!nextRun) return "Ready";
+  try {
+    const formatted = new Intl.DateTimeFormat(undefined, {
+      weekday: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: zone,
+    }).format(new Date(nextRun));
+    return `Next ${formatted}`;
+  } catch {
+    return "Next run scheduled";
+  }
 }
 
 /* The design's model-account row. `limits` drives the capacity meters, so it

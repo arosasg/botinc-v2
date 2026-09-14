@@ -198,8 +198,30 @@ describe("mapAutopilot", () => {
     const row = mapAutopilot(a);
     expect(row.trigger).toBe("schedule");
     expect(row.cron).toBe("0 9 * * *");
+    expect(row.kind).toBe("schedule");
+    expect(row.cadence).toBe("daily");
+    expect(row.time).toBe("09:00");
+    expect(row.zone).toBe("Europe/Madrid");
+    expect(row.source).toBe("BotInc");
+    expect(row.triggerText).toBe("Every day at 09:00 · Europe/Madrid");
+    expect(row.nextText).toMatch(/^Next /);
     expect(row.model).toBe("Auto");
     expect(row.enabled).toBe(true);
+  });
+
+  it("describes migrated interval schedules without undefined fields", () => {
+    const a: Autopilot = {
+      id: "r2", name: "Merge Warden", description: "", prompt: "Merge.",
+      trigger: { kind: "schedule", cron: "*/10 * * * *", tz: "Europe/Madrid" },
+      workflow_id: null, model: "auto", enabled: false,
+      last_run_at: null, next_run_at: null,
+    };
+
+    const row = mapAutopilot(a);
+
+    expect(row.triggerText).toBe("Every 10 minutes · Europe/Madrid");
+    expect(row.nextText).toBe("Paused");
+    expect(row.source).toBe("BotInc");
   });
 });
 
