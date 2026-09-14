@@ -4,14 +4,16 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"github.com/arosasg/botinc-v2/server/internal/httpx"
-	"github.com/google/uuid"
 	"io"
 	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/google/uuid"
+
+	"github.com/arosasg/botinc-v2/server/internal/httpx"
 )
 
 type attachmentRow struct {
@@ -127,6 +129,38 @@ func (s *Server) downloadAttachment(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, 404, "attachment not found")
 		return
 	}
+	s.serveAttachmentFile(w, r, id, name)
+}
+
+func (s *Server) runtimeDownloadAttachment(w http.ResponseWriter, r *http.Request) {
+	rn := runOf(r)
+	id, ok := idParam(r, "id")
+	if !ok {
+		httpx.Error(w, 404, "attachment not found")
+		return
+	}
+	query := ""
+	var target uuid.UUID
+	if rn.ConversationID != nil {
+		target = *rn.ConversationID
+		query = `select filename from attachments where id=$1 and workspace_id=$2 and conversation_id=$3 and message_id is not null`
+	} else if rn.IssueID != nil {
+		target = *rn.IssueID
+		query = `select a.filename from attachments a where a.id=$1 and a.workspace_id=$2 and
+			(a.issue_id=$3 or a.comment_id in (select id from issue_comments where issue_id=$3))`
+	} else {
+		httpx.Error(w, 404, "attachment not found")
+		return
+	}
+	var name string
+	if err := s.pool.QueryRow(r.Context(), query, id, rn.WorkspaceID, target).Scan(&name); err != nil {
+		httpx.Error(w, 404, "attachment not found")
+		return
+	}
+	s.serveAttachmentFile(w, r, id, name)
+}
+
+func (s *Server) serveAttachmentFile(w http.ResponseWriter, r *http.Request, id uuid.UUID, name string) {
 	f, err := os.Open(filepath.Join(s.cfg.AttachmentDir, id.String()))
 	if err != nil {
 		httpx.Error(w, 404, "attachment file is unavailable")

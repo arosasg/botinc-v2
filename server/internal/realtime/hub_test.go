@@ -3,8 +3,6 @@ package realtime
 import (
 	"context"
 	"encoding/json"
-	"github.com/google/uuid"
-	"github.com/gorilla/websocket"
 	"io"
 	"log/slog"
 	"net/http"
@@ -12,6 +10,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/google/uuid"
+	"github.com/gorilla/websocket"
 )
 
 func TestBroadcastInvalidatesWithoutPrivatePayload(t *testing.T) {
@@ -44,5 +45,34 @@ func TestBroadcastInvalidatesWithoutPrivatePayload(t *testing.T) {
 	c.Close()
 	for i := 0; i < 100; i++ {
 		h.Publish(ws, "run.updated", nil)
+	}
+}
+
+func TestWebSocketOriginAllowsConfiguredAndSameHostOnly(t *testing.T) {
+	h := New(slog.New(slog.NewTextHandler(io.Discard, nil)), "https://botinc.ai")
+	ws := uuid.New()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h.Serve(context.Background(), w, r, ws)
+	}))
+	defer srv.Close()
+	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http")
+
+	for _, origin := range []string{"https://botinc.ai", srv.URL} {
+		header := http.Header{"Origin": []string{origin}}
+		conn, response, err := websocket.DefaultDialer.Dial(wsURL, header)
+		if err != nil {
+			t.Fatalf("origin %q should be accepted: response=%v err=%v", origin, response, err)
+		}
+		conn.Close()
+	}
+
+	header := http.Header{"Origin": []string{"https://evil.example"}}
+	conn, response, err := websocket.DefaultDialer.Dial(wsURL, header)
+	if err == nil {
+		conn.Close()
+		t.Fatal("cross-site origin should be rejected")
+	}
+	if response == nil || response.StatusCode != http.StatusForbidden {
+		t.Fatalf("cross-site origin response = %v, want 403", response)
 	}
 }

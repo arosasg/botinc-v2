@@ -1,11 +1,17 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
+
+	"github.com/arosasg/botinc-v2/runtime/internal/protocol"
 )
 
 func TestRunReportsSpecFailureAfterClaim(t *testing.T) {
@@ -53,5 +59,39 @@ func TestRunReportsSpecFailureAfterClaim(t *testing.T) {
 	}
 	if finished["error"] != `spec: GET /spec: 409 Conflict: {"error":"account needs reconnect"}` {
 		t.Fatalf("finish error = %v", finished["error"])
+	}
+}
+
+func TestMaterializeAttachmentsAndExposeThemInChatPrompt(t *testing.T) {
+	const contents = "tab labels: Issue and Workflow"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/runtime/runs/run-1/attachments/attachment-1" || r.Header.Get("Authorization") != "Bearer brt_test" {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write([]byte(contents))
+	}))
+	defer server.Close()
+
+	spec := protocol.Spec{
+		Messages: []protocol.Message{{ID: "message-1", Role: "user", Body: "Read the image."}},
+		Attachments: []protocol.Attachment{{
+			ID: "attachment-1", MessageID: "message-1", Filename: "screen.png",
+			ContentType: "image/png", SizeBytes: int64(len(contents)),
+		}},
+	}
+	workdir := t.TempDir()
+	client := protocol.New(server.URL, "run-1", "brt_test")
+	if err := materializeAttachments(context.Background(), client, &spec, workdir); err != nil {
+		t.Fatal(err)
+	}
+	wantPath := filepath.Join(workdir, "attachments", "attachment-1-screen.png")
+	got, err := os.ReadFile(wantPath)
+	if err != nil || string(got) != contents {
+		t.Fatalf("materialized attachment = %q, %v", got, err)
+	}
+	prompt := chatPrompt(spec)
+	if !strings.Contains(prompt, `Attachment "screen.png" (image/png, 30 bytes) is available at `+wantPath) {
+		t.Fatalf("attachment path missing from prompt: %s", prompt)
 	}
 }

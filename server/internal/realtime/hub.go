@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -66,7 +68,14 @@ func (h *Hub) upgrader() websocket.Upgrader {
 		WriteBufferSize: 4096,
 		CheckOrigin: func(r *http.Request) bool {
 			o := r.Header.Get("Origin")
-			return o == "" || o == h.origin
+			if o == "" || o == h.origin {
+				return true
+			}
+			// The web and API are reverse-proxied behind the same public host.
+			// Accept that exact same-origin host too, so production aliases such
+			// as test.botinc.ai work without weakening the cross-site check.
+			parsed, err := url.Parse(o)
+			return err == nil && parsed.Host != "" && strings.EqualFold(parsed.Host, r.Host)
 		},
 	}
 }

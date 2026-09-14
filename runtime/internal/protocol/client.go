@@ -120,8 +120,19 @@ type Issue struct {
 }
 
 type Message struct {
+	ID   string `json:"id"`
 	Role string `json:"role"`
 	Body string `json:"body"`
+}
+
+type Attachment struct {
+	ID          string `json:"id"`
+	MessageID   string `json:"message_id"`
+	CommentID   string `json:"comment_id"`
+	Filename    string `json:"filename"`
+	ContentType string `json:"content_type"`
+	SizeBytes   int64  `json:"size_bytes"`
+	Path        string `json:"-"`
 }
 
 type Repository struct {
@@ -156,6 +167,7 @@ type Spec struct {
 	Steps        []Step          `json:"steps"`
 	Issue        *Issue          `json:"issue"`
 	Messages     []Message       `json:"messages"`
+	Attachments  []Attachment    `json:"attachments"`
 	Repositories []Repository    `json:"repositories"`
 	Credential   *Credential     `json:"credential"`
 }
@@ -180,6 +192,31 @@ func (c *Client) Spec(ctx context.Context) (Spec, error) {
 	var s Spec
 	err := c.call(ctx, http.MethodGet, "/spec", nil, &s)
 	return s, err
+}
+
+func (c *Client) DownloadAttachment(ctx context.Context, id string, dst io.Writer) (int64, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.path("/attachments/"+url.PathEscape(id)), nil)
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.Token)
+	res, err := c.HTTP.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode == http.StatusUnauthorized || res.StatusCode == http.StatusForbidden {
+		return 0, fmt.Errorf("%w: attachment download", ErrUnauthorized)
+	}
+	if res.StatusCode >= 300 {
+		raw, _ := io.ReadAll(io.LimitReader(res.Body, 4096))
+		return 0, fmt.Errorf("GET attachment: %s: %s", res.Status, strings.TrimSpace(string(raw)))
+	}
+	written, err := io.Copy(dst, io.LimitReader(res.Body, (64<<20)+1))
+	if err == nil && written > 64<<20 {
+		err = errors.New("attachment exceeds 64 MB")
+	}
+	return written, err
 }
 
 type Event struct {
