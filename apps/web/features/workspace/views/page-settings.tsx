@@ -1542,7 +1542,7 @@ export function PageSettings({ v }: { v: Vals }) {
                           </Fragment>
                         ))}
                       </div>
-                      {v.repoConnected14 ? (
+                      {v.repoConfigAvailable14 ? (
                         <>
                           <div className="repo-actions14">
                             <button className="small-button primary" onClick={v.optimizeStartup14}>
@@ -1578,6 +1578,9 @@ export function PageSettings({ v }: { v: Vals }) {
                           </div>
                         </>
                       ) : null}
+                      {v.repoConnected14 && !v.repoConfigAvailable14 ? (
+                        <p className="fine">Repository access and the default branch are live. Sandbox startup settings are not stored by this deployment.</p>
+                      ) : null}
                       {!v.repoConnected14 ? (
                         <>
                           <div className="repo-revoked14">
@@ -1601,7 +1604,7 @@ export function PageSettings({ v }: { v: Vals }) {
                         </>
                       ) : null}
                     </section>
-                    {v.repoConnected14 ? (
+                    {v.repoConfigAvailable14 ? (
                       <>
                         <section className="repo-block14">
                           <header className="repo-block-head14">

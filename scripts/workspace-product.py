@@ -107,3 +107,12 @@ if 'v.liveIssueFiles' not in s:
  old=s[pos+len(start):end]
  s=s[:pos+len(start)]+"{v.liveIssueFiles ? v.liveIssueFiles.map((file: any) => <a key={file.id} className=\"small-button\" href={file.url} target=\"_blank\" rel=\"noopener noreferrer\">{file.filename}</a>) : <>"+old+"</>}"+s[end:]
 p.write_text(s)
+
+p=Path("apps/web/features/workspace/views/page-settings.tsx")
+s=p.read_text()
+s=s.replace("{v.repoConnected14 ? (\n                        <>\n                          <div className=\"repo-actions14\">", "{v.repoConfigAvailable14 ? (\n                        <>\n                          <div className=\"repo-actions14\">")
+s=s.replace("{v.repoConnected14 ? (\n                      <>\n                        <section className=\"repo-block14\">", "{v.repoConfigAvailable14 ? (\n                      <>\n                        <section className=\"repo-block14\">")
+marker='''                      {!v.repoConnected14 ? ('''
+notice='''                      {v.repoConnected14 && !v.repoConfigAvailable14 ? (\n                        <p className="fine">Repository access and the default branch are live. Sandbox startup settings are not stored by this deployment.</p>\n                      ) : null}\n'''
+if notice not in s:s=s.replace(marker,notice+marker)
+p.write_text(s)
