@@ -6530,6 +6530,11 @@ button{font-family:inherit}button .ui-icon{color:inherit}
 .app .message-markdown a{text-decoration:underline;text-decoration-color:color-mix(in srgb,var(--blue) 34%,transparent);text-underline-offset:2px}
 .app .message-mention{display:inline-flex;align-items:center;padding:1px 6px;border-radius:5px;background:var(--wash,var(--blue-soft));color:var(--blue);font-weight:500;white-space:nowrap}
 .app .entry13.human13>.message-markdown{font-size:13px;line-height:1.65}
+.app .pane-section13>.message-markdown{font-size:12px;line-height:1.75;margin:12px 0 0;color:var(--muted);gap:8px}
+.app .pane-section13>.message-markdown h2,.app .pane-section13>.message-markdown h3{font-size:12px;line-height:1.5;color:var(--ink)}
+.app .pane-section13>.message-markdown ul,.app .pane-section13>.message-markdown ol{padding-left:18px;gap:4px}
+.app .t9-request>.message-markdown{font-size:14px;line-height:23px;margin:8px 0 0;color:var(--ink)}
+.app .i8-block>.message-markdown,.app .detail-panel .message-markdown{font-size:13px;line-height:1.7;color:var(--muted)}
 .app .live-pr19,.app .live-runs19{display:grid;gap:14px}
 .app .live-pr19>.brand12{width:24px;height:24px}
 .app .live-pr19 h2{font-size:19px;line-height:1.35;font-weight:500;margin:0}

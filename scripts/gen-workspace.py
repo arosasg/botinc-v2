@@ -138,6 +138,10 @@ import { MessageText } from "../message-text";
 for name, fslug, jsx in files:
     body = pretty(jsx)
     body = body.replace('<p>{interp(m.text)}</p>', '<MessageText text={String(m.text ?? "")} />')
+    body = body.replace('<p>{interp(v.issue?.description)}</p>', '<MessageText text={String(v.issue?.description ?? "")} />')
+    body = body.replace('<p className="i8-prose">{interp(v.issue?.description)}</p>', '<MessageText text={String(v.issue?.description ?? "")} />')
+    body = body.replace('<p className="prose">{interp(v.issue?.description)}</p>', '<MessageText text={String(v.issue?.description ?? "")} />')
+    body = body.replace('<p>{interp(v.inspectorDescription10)}</p>', '<MessageText text={String(v.inspectorDescription10 ?? "")} />')
     body = body.replace('<header className="dock-head15">', '<header className="dock-head15" onPointerDown={v.dockMove16}>')
     body = body.replace('Connect a custom tool to your personal Operator. Read-only by default.', 'Connect a custom tool to this workspace&apos;s Operator. Review its capabilities before use.')
     body = body.replace('<span>Tools</span>', '<span>Capabilities</span>')

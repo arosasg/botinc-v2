@@ -688,7 +688,7 @@ export function PageWorkConversation({ v }: { v: Vals }) {
                           <use href="/i15.svg#chevron-down" />
                         </svg>
                       </summary>
-                      <p>{interp(v.issue?.description)}</p>
+                      <MessageText text={String(v.issue?.description ?? "")} />
                     </details>
                     <article className="t9-message">
                       <div className="message-author">

@@ -4,6 +4,7 @@
 import { Fragment } from "react";
 import type { Vals } from "../vals";
 import { interp } from "@/lib/dc/interp";
+import { MessageText } from "../message-text";
 
 export function PageIssueDetail({ v }: { v: Vals }) {
   return (
@@ -346,7 +347,7 @@ export function PageIssueDetail({ v }: { v: Vals }) {
             ) : null}
             <section className="i8-block">
               <h3>Description</h3>
-              <p className="i8-prose">{interp(v.issue?.description)}</p>
+              <MessageText text={String(v.issue?.description ?? "")} />
             </section>
             <section className="i8-block">
               <h3>Acceptance criteria</h3>
