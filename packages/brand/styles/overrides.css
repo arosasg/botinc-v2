@@ -22,3 +22,19 @@
   .issue-v8 .i8-rail { min-width:0; }
   .issue-v8 .i8-main, .issue-v8 .i8-rail { overflow-wrap:anywhere; }
 }
+
+/* 4. Owner request (2026-09-14): the landing read too narrow on a wide display.
+      The hero and its dot field capped at 1280px and every band at 1200px, so
+      on a 1656px viewport the page sat in a centred column with ~190px of empty
+      gutter either side. Widen the page measure to 1600px (100rem) for the hero,
+      the routing strip and every band/footer, while the nav keeps its full-width
+      40px gutter. The two-tier 1200/1280 measure collapses to one, so the dotted
+      ground and the content below it now share the same edges. */
+.l4 .hero,
+.l4 .route-strip,
+.l4 .band,
+.l4 .close,
+.l4 .rail,
+.l4 .inv-inner,
+.l4 .foot-grid,
+.l4 .foot-bottom { width:min(1600px,100%); }
