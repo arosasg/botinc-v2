@@ -143,12 +143,13 @@ export function mapAccount(a: Account) {
     label: a.label || a.provider,
     plan: a.plan,
     kind: a.kind,
-    identity: "",
+    identity: a.email || a.label || a.provider,
     where: "BotInc Cloud",
     added: "",
     enabled: a.status === "connected",
     active: a.status === "connected",
     status: a.status === "connected" ? "ok" : a.status,
+    runtimeRoutable: a.status === "connected" && ["claude", "codex", "openrouter"].includes(a.provider),
     limits: (a.quota ?? [])
       .filter((w) => w && w.limit > 0)
       .map((w) => ({
@@ -156,7 +157,7 @@ export function mapAccount(a: Account) {
         percent: Math.round((w.used / w.limit) * 100),
         resets: w.resets_at ?? "",
       })),
-    capturedAgo: 0,
+    capturedAgo: a.quota?.length ? 0 : null,
     limitReason: "",
     limitedUntil: "",
   };

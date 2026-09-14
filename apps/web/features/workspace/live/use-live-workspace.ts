@@ -42,8 +42,8 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
    const hydrate=async()=>{
     if(!alive)return;if(refreshing){again=true;return;}refreshing=true;
     try{
-     const [issues,chats,autos,accounts,overview,members,skills,memories,credits,plugins,repos,projects,workflows,invites,sessions,keys]=await Promise.all([
-      ws.issues(undefined,abort.signal),ws.conversations(abort.signal),ws.autopilots(abort.signal),ws.accounts(abort.signal),ws.overview(abort.signal),ws.members(abort.signal),ws.skills(abort.signal),ws.memories(abort.signal),ws.credits(abort.signal),ws.plugins(abort.signal),ws.repositories(abort.signal),ws.projects(abort.signal),ws.workflows(abort.signal),ws.invitations(abort.signal),api.request<{sessions:Vals[]}>("GET","/api/me/sessions",undefined,abort.signal),api.request<{keys:Vals[]}>("GET","/api/me/keys",undefined,abort.signal),
+     const [issues,chats,autos,accounts,routing,overview,members,skills,memories,credits,plugins,repos,projects,workflows,invites,sessions,keys]=await Promise.all([
+      ws.issues(undefined,abort.signal),ws.conversations(abort.signal),ws.autopilots(abort.signal),ws.accounts(abort.signal),ws.routing(abort.signal),ws.overview(abort.signal),ws.members(abort.signal),ws.skills(abort.signal),ws.memories(abort.signal),ws.credits(abort.signal),ws.plugins(abort.signal),ws.repositories(abort.signal),ws.projects(abort.signal),ws.workflows(abort.signal),ws.invitations(abort.signal),api.request<{sessions:Vals[]}>("GET","/api/me/sessions",undefined,abort.signal),api.request<{keys:Vals[]}>("GET","/api/me/keys",undefined,abort.signal),
      ]);
      if(!alive)return;
      for(const p of members.members)people.set(p.user_id,{name:p.name,email:p.email});
@@ -64,7 +64,7 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
       const run=detail.runs.at(-1);const phase=phaseFor(run?.status);
       const apiOrigin=new URL(api.baseURL||"/",window.location.origin);
       const attachments=detail.attachments.map(a=>({...a,url:new URL(a.url,apiOrigin).toString()}));
-      patch.chats[member]=patch.chats[member].map((c:Vals)=>c.id===active?{...mapConversation(detail.conversation,detail.messages,me,people,attachments),phase,runId:run?.id,runError:run?.error||"",cost:detail.runs.reduce((sum,r)=>sum+r.cost_cents,0)/100,taskLimit:(run?.task_limit_cents||0)/100}:c);
+      patch.chats[member]=patch.chats[member].map((c:Vals)=>c.id===active?{...mapConversation(detail.conversation,detail.messages,me,people,attachments),phase,runId:run?.id,runError:run?.error||"",cost:detail.runs.reduce((sum,r)=>sum+r.cost_cents,0)/100,taskLimit:(run?.task_limit_cents??routing.default_task_limit_cents)/100}:c);
       patch.phase=phase;
       if(run?.error)patch.error=run.error;
      }
@@ -103,6 +103,8 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
  const routeURL=(view:string,patch:Vals={},replace=false)=>{const url=new URL(window.location.href);url.pathname="/w";url.searchParams.set("workspace",ws.slug);url.searchParams.set("view",view);for(const key of ["conversation","issue","autopilot","section","workflow"])url.searchParams.delete(key);const state:Vals={...logic.state,...patch,view};if(view==="chat"&&uuid(state.activeChat))url.searchParams.set("conversation",state.activeChat);if(["issue","thread9"].includes(view)&&state.activeIssue)url.searchParams.set("issue",state.activeIssue);if(view==="auto9"&&state.activeAuto9)url.searchParams.set("autopilot",state.activeAuto9);if(view==="settings14"&&state.section)url.searchParams.set("section",state.section);window.history[replace?"replaceState":"pushState"]({},"",url)};
  const originalGo=typeof logic.go==="function"?logic.go.bind(logic):null;
  if(originalGo)bind("go",(view:string,patch:Vals={})=>{originalGo(view,patch);routeURL(view,patch)});
+ const originalAccountRoutable=typeof logic.accountRoutable14==="function"?logic.accountRoutable14.bind(logic):null;
+ if(originalAccountRoutable)bind("accountRoutable14",(account:Vals)=>typeof account.runtimeRoutable==="boolean"?account.runtimeRoutable&&account.enabled!==false:originalAccountRoutable(account));
  const write=(fn:()=>Promise<void>)=>async()=>{if(disposed)return;try{await fn();if(!disposed)await hydrate()}catch(err){if(!disposed)fail(err)}};
  let sending=false;
  const send=async(e?:{preventDefault:()=>void})=>{
@@ -217,6 +219,12 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
   const chat=logic.currentChat();
   v.conversationCost10=logic.cash(chat?.cost||0);v.routeCostShort17=v.conversationCost10;
   v.routeLimit17=logic.cash(chat?.taskLimit||0);
+  if(Array.isArray(v.conversationGroups12))v.conversationGroups12=v.conversationGroups12.map((group:Vals)=>({...group,rows:(group.rows||[]).map((row:Vals)=>{
+   const id=String(row.id||"");
+   if(id.startsWith("chat:")&&uuid(id.slice(5)))return{...row,open:()=>{void openChat(id.slice(5))}};
+   if(id.startsWith("issue:")){const issue=id.slice(6);return{...row,open:()=>{logic.setState({activeIssue:issue,view:"issue",issueComment:"",liveIssueDetail:null,liveIssueFiles:[]});routeURL("issue",{activeIssue:issue});void hydrate().catch(fail)}}}
+   return row;
+  })}));
   for(const key of ["sendMessage","sendComposer10","sendComposer11","sendThreadMessage9"])v[key]=send;
   v.editComposer10=(event:Event)=>{const value=(event.target as HTMLTextAreaElement).value;logic.setState({draft:value});saveDraft(ws.slug,s.activeChat,value)};
   v.composerKey12=(event:KeyboardEvent)=>{if(event.key==="Enter"&&!event.shiftKey&&!event.isComposing){event.preventDefault();void send(event)}};
