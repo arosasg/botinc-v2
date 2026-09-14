@@ -12,6 +12,8 @@ export type Logic = Vals & { state: Vals; setState: (patch: Vals) => void; rende
 declare global { interface Window { __BOTINC__?: { apiURL?: string } } }
 export function apiBaseURL(): string { return typeof window === "undefined" ? "" : (window.__BOTINC__?.apiURL ?? "").trim(); }
 const titleCase = (s: string) => s ? s[0]!.toUpperCase() + s.slice(1) : "";
+const pluginKey = (s: unknown) => String(s??"").toLowerCase().replace(/^mcp:/,"").replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
+const catalogPluginKeys = new Set(["github","slack","gmail","google-drive","notion","claude-design","figma","sentry","google-calendar","jira","confluence","gitlab","bitbucket","discord","microsoft-teams","dropbox","onedrive","airtable","posthog"]);
 const uuid = (s: unknown): s is string => typeof s === "string" && /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(s);
 const phaseFor = (s?: string) => s && ["queued", "provisioning", "running"].includes(s) ? "working" : s === "waiting" ? "paused" : "done";
 const draftKey = (workspace: string, conversation?: unknown) => `botinc:draft:v2:${workspace}:${uuid(conversation) ? conversation : "new"}`;
@@ -69,6 +71,7 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
      patch.autopilots9=autos.autopilots.map(a=>({...mapAutopilot(a),owner:member,kind:a.trigger.kind,status:a.enabled?"active":"paused",history:[],limit:2,daily:20}));
      patch.accounts10=accounts.accounts.map(mapAccount);patch.modelAccounts={[member]:patch.accounts10};
      patch.connections={[member]:Object.fromEntries(plugins.plugins.map(p=>[titleCase(p.kind.replace(/^mcp:/,"")),p.status==="connected"]))};
+     patch.customPlugins10=plugins.plugins.filter(p=>p.kind.startsWith("mcp:")&&!catalogPluginKeys.has(pluginKey(p.kind))).map(p=>({name:String((p.account as Vals)?.name||titleCase(p.kind.slice(4).replace(/-/g," "))),owner:member,category:"Custom",copy:"Workspace MCP server",icon:"code-xml"}));
      patch.plan=titleCase(overview.workspace.plan);patch.monthly=0;patch.purchased=credits.balance_cents/100;patch.runningRuns=overview.running_runs;
      patch.paymentsEnabled=credits.payments_enabled;patch.paymentsTestMode=credits.payments_test_mode;patch.workspaceRole=overview.workspace.role||first.role;
      patch.ledger=credits.entries.map((e,i)=>({id:String(i),kind:e.kind,label:e.note,title:e.note,amount:e.amount_cents/100,date:e.created_at,when:e.created_at}));
@@ -125,8 +128,18 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
  bind("commitRename16",write(async()=>{const s=logic.state;const title=String(s.renameDraft16||"").trim();if(!title)throw new Error("Enter a name");if(uuid(s.renameId16))await ws.updateConversation(s.renameId16,{title});else await api.request("PATCH",`/api/w/${ws.slug}/issues/${s.renameId16}`,{title});logic.setState({renameId16:null})}));
  bind("archiveRow16",(id:string)=>write(async()=>{if(!uuid(id))throw new Error("Open the issue to change its status");await ws.updateConversation(id,{archived:true});if(logic.state.activeChat===id)logic.newChat()})());
  bind("shareRow16",(row:Vals)=>write(async()=>{const url=new URL("/w",window.location.origin);url.searchParams.set("workspace",ws.slug);if(uuid(row.id)){await ws.updateConversation(row.id,{shared:true});url.searchParams.set("view","chat");url.searchParams.set("conversation",row.id)}else{const issue=row.uuid||row.issueId||String(row.id||"").replace(/^issue:/,"");if(!issue)throw new Error("Open a record before sharing it");url.searchParams.set("view","issue");url.searchParams.set("issue",issue)}await navigator.clipboard.writeText(url.toString());logic.toast("Workspace link copied")})());
- bind("pluginConnected10",(name:string)=>(logic.state.livePlugins||[]).some((p:Vals)=>p.kind.replace(/^mcp:/,"")===name.toLowerCase()&&p.status==="connected"));
+ bind("pluginConnected10",(name:string)=>(logic.state.livePlugins||[]).some((p:Vals)=>pluginKey(p.kind)===pluginKey(name)&&p.status==="connected"));
  bind("connect",(name:string)=>logic.showPlugin10(name));
+ bind("submitMcp10",write(async()=>{
+  const name=String(logic.state.mcpName10||"").trim();const rawURL=String(logic.state.mcpUrl10||"").trim();let endpoint:URL;
+  try{endpoint=new URL(rawURL);if(endpoint.protocol!=="https:"||endpoint.username||endpoint.password||!name)throw new Error()}
+  catch{logic.setState({mcpError10:"Use a name and an HTTPS server URL without credentials."});return}
+  if(logic.state.mcpAuth10!=="none"){logic.setState({mcpError10:"Use the provider connection for OAuth. Custom MCP URLs currently support no-authentication servers."});return}
+  if(!logic.state.mcpReview10){logic.setState({mcpReview10:true,mcpError10:""});return}
+  const key=pluginKey(name);if(!key){logic.setState({mcpError10:"Use a name containing letters or numbers."});return}
+  await api.request("POST",`/api/w/${ws.slug}/plugins`,{kind:`mcp:${key}`,account:{name,source:"custom"},secret:JSON.stringify({url:endpoint.toString()})});
+  logic.setState({dialog:null,mcpName10:"",mcpUrl10:"",mcpReview10:false,mcpError10:""});
+ }));
  bind("finishChat",()=>{});bind("skillFixture16",()=>[]);
  const repo=logic.repo14;
  bind("repo14",()=>repo.call(logic)||{id:"",name:"No repository connected",connected:false,meta:"Add a repository to start coding work",branch:"",state:"Not connected",tone:""});
@@ -183,18 +196,23 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
   v.checkoutNotice=s.paymentsTestMode?"Stripe test checkout. Test payments add staging credit only.":"Secure checkout with Stripe. Credit is added after payment is confirmed.";
   v.checkoutBusy=!!s.checkoutBusy;v.payLabel=s.checkoutBusy?"Opening checkout…":"Continue to Stripe";
   v.payTopup=async()=>{if(s.checkoutBusy)return;logic.setState({checkoutBusy:true});try{if(!s.paymentsEnabled)throw new Error("Payments are not configured for this environment");const out=await api.request<{url:string}>("POST",`/api/w/${ws.slug}/billing/checkout`,{amount_cents:Math.round(Number(s.topupAmount)*100)});window.location.assign(out.url)}catch(err){fail(err);logic.setState({checkoutBusy:false})}};
-  v.liveGitHub=s.plugin10==="GitHub";v.livePluginSecret=s.livePluginSecret||"";v.liveRepoName=s.liveRepoName||"";
+  const selectedPlugins=(s.livePlugins||[]).filter((p:Vals)=>pluginKey(p.kind)===pluginKey(s.plugin10));
+  const isSelectedPluginConnected=selectedPlugins.some((p:Vals)=>p.status==="connected");
+  v.liveGitHub=s.plugin10==="GitHub"&&!isSelectedPluginConnected;v.livePluginSecret=s.livePluginSecret||"";v.liveRepoName=s.liveRepoName||"";
+  v.customMcp10=()=>logic.setState({dialog:"mcp10",mcpName10:"",mcpUrl10:"",mcpAuth10:"none",mcpReview10:false,mcpError10:""});
+  v.mcpSubmitLabel10=s.mcpReview10?"Connect MCP server":"Review connection";
   v.editLivePluginSecret=(e:Event)=>logic.setState({livePluginSecret:(e.target as HTMLInputElement).value});
   v.editLiveRepoName=(e:Event)=>logic.setState({liveRepoName:(e.target as HTMLInputElement).value});
-  v.pluginButton10="Save connection";
+  v.pluginButton10=isSelectedPluginConnected?"Use in a conversation":s.plugin10==="GitHub"?"Save connection":`Connect ${s.plugin10}`;
   v.pluginConnect10=write(async()=>{
-   if(s.plugin10!=="GitHub")throw new Error("This plugin still requires its provider integration");
+   if(isSelectedPluginConnected){const draft=`Use ${s.plugin10} to `;logic.newChat();logic.setState({draft,dialog:null});saveDraft(ws.slug,null,draft);return}
+   if(s.plugin10!=="GitHub"){logic.setState({dialog:"mcp10",mcpName10:s.plugin10,mcpUrl10:"",mcpAuth10:"none",mcpReview10:false,mcpError10:""});return}
    if(s.livePluginSecret)await api.request("POST",`/api/w/${ws.slug}/plugins`,{kind:"github",secret:s.livePluginSecret});
    if(s.liveRepoName)await api.request("POST",`/api/w/${ws.slug}/repositories`,{full_name:String(s.liveRepoName).trim()});
    if(!s.livePluginSecret&&!s.liveRepoName)throw new Error("Enter a token or repository name");
    logic.setState({livePluginSecret:"",liveRepoName:"",dialog:null});
   });
-  v.pluginDisconnect10=write(async()=>{const p=s.livePlugins.find((p:Vals)=>p.kind===String(s.plugin10).toLowerCase());if(p)await api.request("DELETE",`/api/w/${ws.slug}/plugins/${p.id}`);logic.setState({dialog:null})});
+  v.pluginDisconnect10=write(async()=>{for(const plugin of selectedPlugins)await api.request("DELETE",`/api/w/${ws.slug}/plugins/${plugin.id}`);logic.setState({dialog:null})});
   v.repoFromGithub16=()=>logic.showPlugin10("GitHub");v.repoConnect14=v.repoFromGithub16;
   const chat=logic.currentChat();
   v.conversationCost10=logic.cash(chat?.cost||0);v.routeCostShort17=v.conversationCost10;
