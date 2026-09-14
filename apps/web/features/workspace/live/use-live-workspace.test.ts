@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { hydrationIssueKey, openNewChatWithDraft, routineTrigger, saveDraft, threadInspectorPatch } from "./use-live-workspace";
+import { hydrationIssueKey, openNewChatWithDraft, readDraft, routineTrigger, saveDraft, threadInspectorPatch } from "./use-live-workspace";
 
 describe("new conversation drafts", () => {
   const values = new Map<string, string>();
@@ -34,6 +34,33 @@ describe("new conversation drafts", () => {
     });
 
     expect(state).toEqual({ activeChat: null, draft: "saved new conversation" });
+  });
+
+  it("keeps drafts isolated by workspace and conversation", () => {
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: {
+        localStorage: {
+          getItem: (key: string) => values.get(key) ?? null,
+          removeItem: (key: string) => values.delete(key),
+          setItem: (key: string, value: string) => values.set(key, value),
+        },
+      },
+    });
+
+    const firstConversation = "a25d7fc7-4e36-4aeb-8622-6d64f250c5bb";
+    const secondConversation = "f270ca09-3b7f-4789-befb-2ef34d066881";
+    saveDraft("workspace-a", firstConversation, "first draft");
+    saveDraft("workspace-a", secondConversation, "second draft");
+    saveDraft("workspace-b", firstConversation, "other workspace");
+
+    expect(readDraft("workspace-a", firstConversation)).toBe("first draft");
+    expect(readDraft("workspace-a", secondConversation)).toBe("second draft");
+    expect(readDraft("workspace-b", firstConversation)).toBe("other workspace");
+
+    saveDraft("workspace-a", firstConversation, "");
+    expect(readDraft("workspace-a", firstConversation)).toBe("");
+    expect(readDraft("workspace-a", secondConversation)).toBe("second draft");
   });
 });
 
