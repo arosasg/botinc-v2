@@ -8,7 +8,9 @@ with replacement as (
   where provider = 'openrouter'
     and status = 'connected'
     and secret_ref <> ''
-  order by workspace_id, created_at
+  order by workspace_id,
+    case when lower(label) like '%deepseek%' then 0 else 1 end,
+    created_at
 )
 update model_accounts as deepseek
 set secret_ref = replacement.secret_ref,

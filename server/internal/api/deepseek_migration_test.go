@@ -13,11 +13,14 @@ func TestDeepSeekMigrationReusesWorkspaceOpenRouterSecret(t *testing.T) {
 	h := newHarness(t)
 	h.signIn(uniqueEmail(t))
 
-	var openRouter, legacy, reconnected struct {
+	var generic, openRouter, legacy, reconnected struct {
 		Account Account `json:"account"`
 	}
 	h.decode(h.do("POST", h.w("/accounts"), map[string]any{
-		"provider": "openrouter", "kind": "api_key", "secret": "workspace-openrouter-key",
+		"provider": "openrouter", "kind": "api_key", "label": "Personal", "secret": "generic-openrouter-key",
+	}, 201), &generic)
+	h.decode(h.do("POST", h.w("/accounts"), map[string]any{
+		"provider": "openrouter", "kind": "api_key", "label": "OpenRouter - DeepSeek", "secret": "workspace-openrouter-key",
 	}, 201), &openRouter)
 	h.decode(h.do("POST", h.w("/accounts"), map[string]any{
 		"provider": "deepseek", "kind": "api_key", "secret": "legacy-placeholder",
@@ -39,7 +42,10 @@ func TestDeepSeekMigrationReusesWorkspaceOpenRouterSecret(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var openRouterRef, legacyRef, reconnectedRef, status, kind, credentialKind, refreshError string
+	var genericRef, openRouterRef, legacyRef, reconnectedRef, status, kind, credentialKind, refreshError string
+	if err := testPool.QueryRow(t.Context(), `select secret_ref from model_accounts where id=$1`, generic.Account.ID).Scan(&genericRef); err != nil {
+		t.Fatal(err)
+	}
 	if err := testPool.QueryRow(t.Context(), `select secret_ref from model_accounts where id=$1`, openRouter.Account.ID).Scan(&openRouterRef); err != nil {
 		t.Fatal(err)
 	}
@@ -52,6 +58,9 @@ func TestDeepSeekMigrationReusesWorkspaceOpenRouterSecret(t *testing.T) {
 	}
 	if openRouterRef == "" || legacyRef != openRouterRef {
 		t.Fatal("the legacy harness did not inherit its workspace OpenRouter credential reference")
+	}
+	if legacyRef == genericRef {
+		t.Fatal("the legacy harness inherited the generic account instead of the explicitly named DeepSeek account")
 	}
 	if status != "connected" || kind != "api_key" || credentialKind != "api_key" || refreshError != "" {
 		t.Fatalf("the legacy harness was not restored: status=%s kind=%s credential_kind=%s error=%q", status, kind, credentialKind, refreshError)
