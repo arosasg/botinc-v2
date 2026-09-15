@@ -3,7 +3,7 @@
 // The design is a presentation adapter. All durable state and writes come
 // from the API; fixtures remain available only when no API is configured.
 import { useEffect, useRef } from "react";
-import { Client, type User, type WorkspaceClient, type WorkflowGraph } from "@botinc/api";
+import { Client, type Account, type User, type WorkspaceClient, type WorkflowGraph } from "@botinc/api";
 import type { Vals } from "../vals";
 import { clampConversationPaneWidth, conversationPaneBounds, normalizePublicAssets } from "./layout";
 import { mapAccount, mapAutopilot, mapConversation, mapIssue, mapIssueTimeline, mapMessage, mapRun, mapWorkflowSteps, type PeopleIndex } from "./map";
@@ -32,6 +32,10 @@ export function conversationRoutingPatch(member: string, conversation?: { model?
  const effort=String(run?.effort||"").trim();
  const funding=run?.funding?run.funding==="credits"?"credits":"subscription":"";
  return{model,...effort?{reasoning:effort}:{},...funding?{funding:{[member]:funding}}:{}};
+}
+export function accountHydrationPatch(member: string, accounts: Account[]): Vals {
+ const rows=accounts.map(mapAccount);
+ return{accounts10:rows,modelAccounts:{[member]:rows}};
 }
 export function issueThinkingLabel(view: unknown, current: unknown, run?: { effort?: string }): string {
  if(view!=="issue"&&view!=="thread9")return String(current||"Not recorded");
@@ -100,12 +104,13 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
    const ws=api.workspace(first.slug);const people:PeopleIndex=new Map();const member=me.name.trim()||me.email.split("@")[0]||"You";
    let bootIssueDetail:Awaited<ReturnType<WorkspaceClient["issue"]>>|null=null;
    let bootConversationDetail:Awaited<ReturnType<WorkspaceClient["conversation"]>>|null=null;
+   let bootConversationAccounts:Awaited<ReturnType<WorkspaceClient["accounts"]>>|null=null;
    let refreshing=false,again=false;
    const hydrate=async()=>{
     if(!alive)return;if(refreshing){again=true;return;}refreshing=true;
     try{
      const [issues,chats,autos,accounts,routing,overview,members,skills,memories,credits,usage,plugins,repos,projects,workflows,invites,sessions,keys]=await Promise.all([
-      ws.issues(undefined,abort.signal),ws.conversations(abort.signal),ws.autopilots(abort.signal),ws.accounts(abort.signal),ws.routing(abort.signal),ws.overview(abort.signal),ws.members(abort.signal),ws.skills(abort.signal),ws.memories(abort.signal),ws.credits(abort.signal),ws.usage(abort.signal),ws.plugins(abort.signal),ws.repositories(abort.signal),ws.projects(abort.signal),ws.workflows(abort.signal),ws.invitations(abort.signal),api.request<{sessions:Vals[]}>("GET","/api/me/sessions",undefined,abort.signal),api.request<{keys:Vals[]}>("GET","/api/me/keys",undefined,abort.signal),
+      ws.issues(undefined,abort.signal),ws.conversations(abort.signal),ws.autopilots(abort.signal),bootConversationAccounts??ws.accounts(abort.signal),ws.routing(abort.signal),ws.overview(abort.signal),ws.members(abort.signal),ws.skills(abort.signal),ws.memories(abort.signal),ws.credits(abort.signal),ws.usage(abort.signal),ws.plugins(abort.signal),ws.repositories(abort.signal),ws.projects(abort.signal),ws.workflows(abort.signal),ws.invitations(abort.signal),api.request<{sessions:Vals[]}>("GET","/api/me/sessions",undefined,abort.signal),api.request<{keys:Vals[]}>("GET","/api/me/keys",undefined,abort.signal),
      ]);
      if(!alive)return;
      for(const p of members.members)people.set(p.user_id,{name:p.name,email:p.email});
@@ -152,7 +157,7 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
      patch.autopilots9=autos.autopilots.map(a=>({...mapAutopilot(a),owner:member,kind:a.trigger.kind,status:a.enabled?"active":"paused",history:[],limit:2,daily:20}));
      const activeAutopilot=String(logic.state.activeAuto9||initialRoute.autopilot||"");
      if(uuid(activeAutopilot)&&autos.autopilots.some(a=>a.id===activeAutopilot)){const detail=await ws.autopilot(activeAutopilot,abort.signal);patch.autopilots9=patch.autopilots9.map((autopilot:Vals)=>autopilot.id===activeAutopilot?{...autopilot,history:detail.runs.map(run=>({title:titleCase(run.status),detail:run.summary||run.run_id||"Run recorded",when:new Date(run.created_at).toLocaleString(),status:run.status}))}:autopilot)}
-     patch.accounts10=accounts.accounts.map(mapAccount);patch.modelAccounts={[member]:patch.accounts10};
+     Object.assign(patch,accountHydrationPatch(member,accounts.accounts));
      patch.connections={[member]:Object.fromEntries(plugins.plugins.map(p=>[titleCase(p.kind.replace(/^mcp:/,"")),p.status==="connected"]))};
      patch.customPlugins10=plugins.plugins.filter(p=>p.kind.startsWith("mcp:")&&!catalogPluginKeys.has(pluginKey(p.kind))).map(p=>({name:String((p.account as Vals)?.name||titleCase(p.kind.slice(4).replace(/-/g," "))),owner:member,category:"Custom",copy:"Workspace MCP server",icon:"code-xml"}));
      patch.plan=titleCase(overview.workspace.plan);patch.monthly=0;patch.purchased=credits.balance_cents/100;patch.runningRuns=overview.running_runs;
@@ -211,7 +216,7 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
    // inventories finish. The full hydration reuses this response, so a cold
    // chat does not pay for the detail request twice.
    if(initialRoute.view==="chat"&&uuid(initialRoute.conversation)){
-    bootConversationDetail=await ws.conversation(initialRoute.conversation,abort.signal);if(!alive)return;
+    [bootConversationDetail,bootConversationAccounts]=await Promise.all([ws.conversation(initialRoute.conversation,abort.signal),ws.accounts(abort.signal)]);if(!alive)return;
     const run=bootConversationDetail.runs.at(-1);const phase=phaseFor(run?.status);
     const apiOrigin=new URL(api.baseURL||"/",window.location.origin);
     const attachments=bootConversationDetail.attachments.map(a=>({...a,url:new URL(a.url,apiOrigin).toString()}));
@@ -226,6 +231,7 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
      liveWorkspaces:workspaces,workspace16:first.name,workspaceName:first.name,member,signed:true,
      chats:{[member]:[conversation]},activeChat:initialRoute.conversation,view:"chat",phase,
      draft:readDraft(ws.slug,initialRoute.conversation),inspector10:false,mobileInspector10:false,
+     ...accountHydrationPatch(member,bootConversationAccounts.accounts),
      ...conversationRoutingPatch(member,bootConversationDetail.conversation,run),...runFailurePatch(run),
     });
     report("live");
