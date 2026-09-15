@@ -1204,6 +1204,29 @@ class Component extends window.BotincMotionWorkspace19(window.BotincFlowWorkspac
     });
   }
 
+  // ------------------------------------------------------- the usage ring
+  // The sidebar ring draws what is spent, not what is left: the arc grows
+  // clockwise as the pooled allowance is used, over a track that stays visible
+  // when nothing is used or nothing is reported. The spoken label says the
+  // same thing the ring shows.
+  usageRing19(p) {
+    const left = /^\d+%$/.test(String(p.index14)) ? parseInt(p.index14, 10) : null;
+    const used = left === null ? null : Math.max(0, Math.min(100, 100 - left));
+    const total = (p.rows || []).length;
+    return {
+      ringStyle14: "--used14:" + (used === null ? "0" : (used * 3.6).toFixed(1)) + "deg;--remaining:" +
+        (left === null ? "0" : (left * 3.6).toFixed(1)) + "deg",
+      usedLabel19: used === null ? "Usage not reported" : used + "% used",
+      aria14: p.name + " \u00b7 " +
+        (used === null ? "usage not reported" : used + "% of capacity used on average \u00b7 " + left + "% left") +
+        " across " + p.includedCount14 + " of " + total + " accounts \u00b7 " + p.routableCount14 + " can take a run now",
+    };
+  }
+
+  errorState19(kind) {
+    this.setState({ designError19: kind });
+  }
+
   renderVals() {
     const v = super.renderVals();
     // The older prototype layer still emits route-relative provider artwork.
@@ -1958,9 +1981,39 @@ class Component extends window.BotincMotionWorkspace19(window.BotincFlowWorkspac
     if (Array.isArray(v.providerGroups13)) {
       v.providerGroups13 = v.providerGroups13.map((p) => ({
         ...p,
+        ...this.usageRing19(p),
         open: go,
-        rows: (p.rows || []).map((r) => ({
+        rows: (p.rows || []).map((r) => {
+          const wins = (r.windows || []).map((w) => ({
+            ...w,
+            initial14: String(w.short14 || w.label || "").charAt(0).toUpperCase(),
+            resetShort14: String(w.resetShort14 || "")
+              .replace(/^(\w{3}),?\s+/, "$1 ")
+              .replace(/\s*·\s*/g, ", "),
+            // "Sep 21, 00:00" -> "21 00:00"; a bare time stays as is.
+            // Day + time only ("21 00:00"); the month lives in the tooltip. A bare time (today) gets today's day.
+            resetDay19: (function (s) {
+              s = String(s || "").replace(/\s*·\s*/g, ", ").trim();
+              if (/^\d{1,2}:\d{2}$/.test(s)) {
+                const d = new Date();
+                return String(d.getDate()) + " " + s;
+              }
+              return s.replace(/^\w{3},?\s+(\d{1,2}),?\s*/, "$1 ");
+            })(w.resetShort14),
+          }));
+          // The bar and the reset note follow the binding window: the one with the least left.
+          const bind = wins
+            .map((w) => ({ w, n: parseInt(w.leftLabel14, 10) }))
+            .filter((x) => !isNaN(x.n))
+            .reduce((a, b) => (a && a.n <= b.n ? a : b), null);
+          return {
           ...r,
+          windows: wins,
+          barStyle19: "width:" + (bind ? Math.max(0, Math.min(100, bind.n)) : 0) + "%",
+          barTone19: bind ? bind.w.tone14 : "muted14",
+          hasReset19: !!(bind && bind.w.resetShort14),
+          resetNote19: bind ? "Resets " + bind.w.resetShort14 : "",
+          resetTitle19: bind ? (bind.w.label || "") + " \u00b7 " + (bind.w.reset || "") : "",
           open13: go,
           select13: go,
           brand14: p.brand12,
@@ -1972,14 +2025,8 @@ class Component extends window.BotincMotionWorkspace19(window.BotincFlowWorkspac
           statusShort14: String(r.status || "")
             .replace("Cloud sign-in needed", "Cloud sign-in")
             .replace("Refresh usage", "Stale"),
-          windows: (r.windows || []).map((w) => ({
-            ...w,
-            initial14: String(w.short14 || w.label || "").charAt(0).toUpperCase(),
-            resetShort14: String(w.resetShort14 || "")
-              .replace(/^(\w{3}),?\s+/, "$1 ")
-              .replace(/\s*·\s*/g, " "),
-          })),
-        })),
+          };
+        }),
       }));
     }
 

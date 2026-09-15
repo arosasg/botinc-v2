@@ -53,7 +53,6 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
                 <h1>
                   Coding that never stops.
                   <br />
-                  {" "}
                   <span>Fixes that never ship unreviewed.</span>
                 </h1>
                 <p className="lead">
@@ -1271,6 +1270,10 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
               steps={v.lSteps}
               msgs={v.msgs}
               introRows={v.introRows}
+              arriving={v.arriving}
+              callOn={v.callOn}
+              callText={v.callText}
+              callEnd={v.callEnd}
               view={v.appView}
               setView={v.setAppView}
               theme={v.theme}
@@ -1291,6 +1294,7 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
           </div>
         </>
       ) : null}
+      <footer className={v.footCls} aria-hidden="true" style={{ visibility: "hidden" }} />
       {v.dialogOpen ? (
         <>
           <div

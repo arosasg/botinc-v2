@@ -20,7 +20,7 @@ html.l4-page,html.l4-page body{overflow:auto!important;height:auto!important}
 .l4 .hero{width:min(1280px,100%);margin:0 auto;padding:28px 40px 0;display:grid;grid-template-columns:minmax(0,4fr) minmax(0,9fr);gap:40px;align-items:center}
 .l4 .kicker{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}.l4 .kicker i{width:8px;height:8px;border-radius:99px;background:var(--blue);animation:l4pulse 1.5s ease-in-out infinite}
 .l4 .hero h1{font-size:clamp(36px,3.8vw,52px);line-height:1.02;letter-spacing:-.035em;margin-top:18px;text-wrap:balance}.l4 .hero h1 span{color:var(--muted)}
-.l4 .lead{font-size:15.5px;line-height:1.5;color:var(--muted);margin-top:18px;max-width:400px;text-wrap:pretty}
+.l4 .lead{font-size:16px;line-height:1.5;color:var(--muted);margin-top:20px;max-width:400px;text-wrap:pretty}.l4 .hero h1{margin-top:0}.l4 .demo-caption .tbtn{font-size:12.5px}
 .l4 .hero-cta{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:28px}.l4 .hero small{display:block;font-size:13px;color:var(--muted);margin-top:14px}
 .l4 .logos{display:flex;gap:8px;flex-wrap:wrap;margin-top:24px}.l4 .logos span{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--muted);border:1px solid var(--line);border-radius:8px;padding:5px 9px 5px 6px}.l4 .logos img{width:15px;height:15px;border-radius:3px}.l4 .glyph{width:15px;height:15px;border-radius:3px;background:var(--ink);color:var(--bg);font-family:var(--mono);font-size:8px;font-style:normal;display:grid;place-items:center;letter-spacing:-.02em}
 /* the app demo — the real shell, scaled */
@@ -92,7 +92,7 @@ html.l4-page,html.l4-page body{overflow:auto!important;height:auto!important}
 .l4 .d1{animation-delay:.05s}.l4 .d2{animation-delay:.12s}.l4 .d3{animation-delay:.19s}.l4 .d4{animation-delay:.26s}.l4 .d5{animation-delay:.33s}.l4 .d6{animation-delay:.4s}
 @keyframes l4rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 /* live app */
-.l4 .appwrap{position:fixed;inset:0;z-index:10;background:var(--bg)}.l4 .appwrap>*{width:100%;height:100%}
+.l4 .appwrap{position:fixed;inset:0;z-index:10;background:var(--bg);animation:l4fade .45s ease-out both}@keyframes l4fade{from{opacity:0}to{opacity:1}}.l4 .appwrap>*{width:100%;height:100%}
 .l4 .preview-foot{height:34px;flex-shrink:0;padding:0 20px;display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--muted);border-top:1px solid var(--line)}.l4 .preview-foot button{color:var(--blue)}.l4 .preview-foot.fixed{position:fixed;left:0;right:0;bottom:0;z-index:20;background:var(--bg)}
 /* dialogs: v19's shell, with fallbacks */
 .l4 .modal-shade.l4-dlg{position:fixed!important;inset:0;height:auto!important;background:#0f11147a!important;display:grid!important;place-items:center;padding:20px;z-index:60;font-size:14px}
@@ -120,7 +120,7 @@ html.l4-page,html.l4-page body{overflow:auto!important;height:auto!important}
 /* platforms under hero */
 .l4 .platforms{display:flex;gap:18px;flex-wrap:wrap;margin-top:12px;font-size:13px}.l4 .platforms .tbtn{font-size:13px}
 /* rail (steps) */
-.l4 .rail{width:min(1200px,100%);margin:64px auto 0;padding:0 40px}
+.l4 .rail{width:min(1200px,100%);margin:88px auto 0;padding:0 40px}
 .l4 .rail-head{display:flex;justify-content:space-between;align-items:baseline;gap:16px;flex-wrap:wrap;margin-bottom:34px}.l4 .rail-head h2{font-size:clamp(24px,2.8vw,32px);letter-spacing:-.025em;line-height:1.1}.l4 .rail-head p{font-size:14px;color:var(--muted)}
 .l4 .rail-track{position:relative;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:24px;padding-top:18px}
 .l4 .rail-line{position:absolute;left:18px;right:18px;top:35px;height:2px;background:var(--line);z-index:0}
@@ -369,4 +369,104 @@ html.l4-page,html.l4-page body{overflow:auto!important;height:auto!important}
 .l4shell .l4-page9 .w8-row .w8-source.l4-src16 img{width:16px!important;height:16px!important;min-width:16px;flex:0 0 16px!important}
 .l4shell .l4-page9 .w8-row .w8-source.l4-src16>span{flex:1;min-width:0}
 .l4shell .l4-plug{width:100%;justify-self:stretch}
+/* workspace switcher */
+.l4shell .l4-ws{position:relative}
+.l4shell .l4-wsglyph{width:22px;height:22px;border-radius:6px;background:var(--ink);color:var(--bg);font:10.5px/22px 'IBM Plex Mono',ui-monospace,monospace;text-align:center;display:inline-block;flex:none}
+.l4shell .workspace-button>.l4-wsglyph{flex:0 0 22px;width:22px;height:22px;display:inline-grid;place-items:center;line-height:1}
+.l4shell .workspace-button>span:not(.l4-wsglyph){flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.l4shell .l4-wsscrim{position:fixed;inset:0;z-index:40;background:transparent;border:0;cursor:default;padding:0}
+.l4shell .l4-wsmenu{position:absolute!important;top:calc(100% + 4px);left:0;right:0;min-width:0;z-index:50;animation:l4pop .3s cubic-bezier(.22,.61,.36,1) both}
+@keyframes l4pop{from{opacity:0;transform:translateY(-4px) scale(.98)}to{opacity:1;transform:none}}
+.l4shell .l4-wsrow{display:flex;align-items:center;gap:10px;width:100%;padding:7px 8px;border:0;background:transparent;border-radius:7px;text-align:left;color:var(--ink);cursor:pointer;font:inherit}
+.l4shell .l4-wsrow:hover,.l4shell .l4-wsrow:focus-visible{background:var(--hover14,#eceff3)}
+.l4shell .l4-wscopy{flex:1;min-width:0}.l4shell .l4-wscopy strong{display:block;font-size:13px;font-weight:400;line-height:18px}.l4shell .l4-wscopy small{display:block;font-size:11px;color:var(--muted);line-height:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.l4shell .l4-wsrow .ui-icon{opacity:0;color:var(--accent14,#007fff);flex:none;width:14px;height:14px}.l4shell .l4-wsrow.on .ui-icon{opacity:1}
+.l4shell .l4-wsmenu .menu-cta15{font-weight:400;font-size:13px}
+/* loading: a progress line, a skeleton beat, then rows rise */
+.l4shell .app-main{position:relative}
+.l4shell .l4-progress{position:absolute;left:0;top:0;height:2px;background:var(--accent14,#007fff);z-index:5;border-radius:0 2px 2px 0;animation:l4prog 1.3s cubic-bezier(.22,.61,.36,1) both}
+@keyframes l4prog{0%{width:0;opacity:1}55%{width:64%;opacity:1}88%{width:100%;opacity:1}100%{width:100%;opacity:0}}
+.l4shell[data-load="full"] .workspace-body>*:not(.l4-skel),.l4shell[data-load="beat"] .workspace-body>*:not(.l4-skel){display:none!important}
+.l4shell .l4-skel{flex:1;min-width:0;display:flex;flex-direction:column;padding:26px 30px 20px;animation:l4fadein .2s ease-out both}
+@keyframes l4fadein{from{opacity:0}to{opacity:1}}
+.l4shell .l4-skel i{display:block;border-radius:7px;background:linear-gradient(90deg,var(--skel19,#eceef0) 0%,var(--skel-hi19,#f5f6f7) 45%,var(--skel19,#eceef0) 60%) 0 0/200% 100%;animation:shimmer19 1.6s linear infinite}
+.l4shell .l4-skel-head{display:flex;flex-direction:column;gap:10px;padding-bottom:22px;border-bottom:1px solid var(--rule,#f0f1f3);margin-bottom:26px}
+.l4shell .l4-skel-head i:nth-child(1){width:140px;height:11px}.l4shell .l4-skel-head i:nth-child(2){width:min(380px,70%);height:22px}.l4shell .l4-skel-head i:nth-child(3){width:220px;height:11px}
+.l4shell .l4-skel-log{display:flex;flex-direction:column;gap:18px;flex:1}
+.l4shell .l4-skel-log i:nth-child(1){width:62%;height:48px}.l4shell .l4-skel-log i:nth-child(2){width:44%;height:40px}.l4shell .l4-skel-log i:nth-child(3){width:70%;height:56px}.l4shell .l4-skel-log i:nth-child(4){width:36%;height:40px;align-self:flex-end}
+.l4shell .l4-skel-composer{height:92px;border-radius:12px;border:1px solid var(--line);margin-top:20px}
+.l4shell[data-load="full"] .c9-scroll16 :is(.c9-row,.c9-group>h3){color:transparent!important;background:linear-gradient(90deg,var(--skel19,#eceef0) 0%,var(--skel-hi19,#f5f6f7) 45%,var(--skel19,#eceef0) 60%) 0 0/200% 100%!important;animation:shimmer19 1.6s linear infinite;border-radius:7px;pointer-events:none;box-shadow:none!important}
+.l4shell[data-load="full"] .c9-scroll16 :is(.c9-row,.c9-group>h3)>*{visibility:hidden}
+.l4shell[data-load="full"] .nav-main .count{color:transparent;background:var(--skel19,#eceef0);border-radius:5px}
+.l4shell[data-load="settled"] :is(.t9-heading,.entry13,.t9-artifact,.d9-card,.l4-apps,.l4-welcome,.v7-page-heading,.w8-bar16,.w8-group,.l4-psec,.composer10-wrap){animation:l4rise .5s cubic-bezier(.22,.61,.36,1) both}
+.l4shell[data-load="settled"] :is(.entry13,.w8-group,.l4-psec,.c9-row):nth-child(2){animation-delay:38ms}
+.l4shell[data-load="settled"] :is(.entry13,.w8-group,.l4-psec,.c9-row):nth-child(3){animation-delay:76ms}
+.l4shell[data-load="settled"] :is(.entry13,.w8-group,.l4-psec):nth-child(4){animation-delay:114ms}
+.l4shell[data-load="settled"] :is(.entry13,.w8-group,.l4-psec):nth-child(5){animation-delay:152ms}
+.l4shell[data-load="settled"] :is(.entry13,.w8-group,.l4-psec):nth-child(n+6){animation-delay:190ms}
+.l4shell[data-load="settled"] .composer10-wrap{animation-delay:120ms}
+@media(prefers-reduced-motion:reduce){.l4shell .l4-skel i,.l4shell .l4-progress,.l4shell .l4-wsmenu,.l4shell[data-load="settled"] *{animation:none!important}}
 .l4shell img[src*="simpleicons.org"]{padding:2px;background:#fff;border:1px solid var(--line);object-fit:contain}
+
+/* Onboarding intro: issues file themselves into the sidebar while Operator talks you through them. */
+.l4shell .l4-arrive h3 .c9-gicon16{color:var(--accent14,#007fff)}
+.l4shell .l4-pop{animation:l4-pop 520ms cubic-bezier(.22,.61,.36,1) both}
+@keyframes l4-pop{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:none}}
+.l4shell .l4-pop .c9-row{align-items:flex-start;padding-top:7px;padding-bottom:7px}
+.l4shell .l4-pop .c9-row-copy{display:flex;flex-direction:column;gap:1px;min-width:0}
+.l4shell .l4-arrive-meta{display:block;font-family:var(--mono);font-size:9.5px;letter-spacing:.018em;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.l4shell .l4-pop .c9-status.high{color:var(--stop14,#b4402f)}
+.l4shell .l4-pop .c9-status.medium{color:var(--care14,#ad6818)}
+.l4shell .workspace-body{position:relative}
+.l4shell .l4-call{position:relative;inset:auto;transform:none;max-width:none;flex:none;z-index:6;display:flex;align-items:center;gap:12px;width:min(560px,calc(100% - 48px));margin:0 auto 10px;
+  padding:10px 12px 10px 14px;border-radius:999px;background:#0c0a08;color:#f2efec;box-shadow:0 18px 50px rgb(12 10 8 / .32);animation:l4-callin 420ms cubic-bezier(.22,.61,.36,1) both}
+@keyframes l4-callin{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+.l4shell .l4-call .cb-orb16{width:30px;height:30px;flex:none;border-radius:50%;background:radial-gradient(circle at 38% 34%,#7fbfff 0%,#007fff 46%,#0047a8 100%);box-shadow:0 0 18px rgb(0 127 255 / .5);animation:l4-breathe 2.4s ease-in-out infinite}
+@keyframes l4-breathe{0%,100%{transform:scale(.94)}50%{transform:scale(1.06)}}
+.l4shell .l4-call .cb-copy16{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:2px}
+.l4shell .l4-call .cb-copy16 strong{font-size:12.5px;font-weight:400;color:#a2a8b0}
+.l4shell .l4-call .cb-copy16 small{font-family:inherit;font-size:14px;line-height:1.35;color:#f2efec;text-wrap:pretty;letter-spacing:0;text-transform:none}
+.l4shell .l4-call .cb-copy16 strong{font-family:inherit;letter-spacing:0;text-transform:none}
+.l4shell .l4-call .cb-btn16{width:36px;height:36px;flex:none;border:0;border-radius:50%;background:rgb(255 255 255 / .12);color:#f2efec;display:grid;place-items:center}
+.l4shell .l4-call .cb-btn16 .ui-icon{width:16px;height:16px}
+.l4shell .l4-call .cb-end16{background:#d9433a;color:#fff}
+@media (prefers-reduced-motion:reduce){.l4shell .l4-pop,.l4shell .l4-call,.l4shell .l4-call .cb-orb16{animation:none!important}}
+
+/* New chat on the web: the welcome sits in the middle of the free space and the composer directly beneath it, like the workspace's own new chat. */
+.l4shell main.thread9:has(.l4-welcome){display:flex;flex-direction:column}
+.l4shell main.thread9:has(.l4-welcome) .t9-scroll{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;justify-content:flex-end;overflow:hidden;padding-bottom:6px}
+.l4shell main.thread9:has(.l4-welcome) .t9-cols15,.l4shell main.thread9:has(.l4-welcome) .t9-inner{display:flex;flex-direction:column;justify-content:flex-end;flex:0 0 auto}
+.l4shell main.thread9:has(.l4-welcome) .l4-welcome{padding:24px 20px 18px;gap:10px}
+.l4shell main.thread9:has(.l4-welcome) .l4-welcome img{margin-bottom:4px}
+.l4shell main.thread9:has(.l4-welcome) .l4-suggest{margin-top:6px}
+.l4shell main.thread9:has(.l4-welcome) .l4-suggest .small-button{border-radius:999px;min-height:36px;padding:0 14px;border:1px solid var(--line);background:var(--bg)}
+.l4shell main.thread9:has(.l4-welcome) .composer10-wrap{flex:none;margin-top:0!important}
+/* On a wide screen the group floats in the middle; the composer stays with it. */
+@media (min-width:900px){.l4shell main.thread9:has(.l4-welcome) .t9-scroll{justify-content:center}
+  .l4shell main.thread9:has(.l4-welcome) .composer10-wrap{margin-bottom:max(24px,calc(50cqh - 300px))!important}}
+
+
+
+/* New chat = the workspace's new chat: mark, two-line title, one line, composer, three actions, connected tools. */
+.l4shell main.thread9:has(.l4-welcome) .l4-welcome h1{font-size:40px;letter-spacing:-.025em;line-height:1.05}
+.l4shell main.thread9:has(.l4-welcome) .l4-welcome p{font-size:14px;color:var(--muted)}
+.l4shell main.thread9:has(.l4-welcome) .l4-welcome img{width:28px;height:28px}
+.l4shell .l4-wa{display:flex;flex-wrap:wrap;justify-content:center;gap:10px;width:min(760px,calc(100% - 48px));margin:22px auto 0}
+.l4shell .l4-wa>button{display:inline-flex;align-items:center;gap:8px;min-height:38px;padding:0 14px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font-size:13.5px}
+.l4shell .l4-wa>button .ui-icon{width:15px;height:15px;color:var(--muted)}
+.l4shell .l4-wa>button>span{font-family:var(--mono);font-size:10.5px;color:var(--accent14,#007fff);background:var(--accent-wash,#e8f2ff);border-radius:999px;padding:1px 7px}
+.l4shell .l4-wa>button:hover{border-color:var(--ink)}
+.l4shell .l4-wp{display:flex;align-items:center;justify-content:center;gap:12px;margin:18px auto 28px;font-size:12.5px;color:var(--muted)}
+.l4shell .l4-wp .welcome-plugin-tile16{display:inline-grid;place-items:center;width:34px;height:34px;border-radius:10px;background:var(--bg);border:1px solid var(--line)}
+.l4shell .l4-wp .welcome-plugin-tile16 .brand12{width:16px;height:16px}
+.l4shell .l4-wp .text-button{display:inline-flex;align-items:center;gap:6px;color:var(--ink);font-size:12.5px}
+.l4shell .l4-wp .text-button .ui-icon{width:13px;height:13px}
+.l4shell main.thread9:has(.l4-welcome) .composer10-wrap{margin-bottom:0!important}
+@media (min-width:900px){.l4shell main.thread9:has(.l4-welcome) .composer10-wrap{margin-bottom:0!important}
+  .l4shell main.thread9:has(.l4-welcome){justify-content:center}.l4shell main.thread9:has(.l4-welcome) .t9-scroll{flex:0 1 auto}}
+
+/* The welcome block is always visible above the composer: a fixed share of the column, never scrolled away. */
+.l4shell main.thread9:has(.l4-welcome) .t9-scroll{flex:0 0 auto!important;overflow:visible!important;min-height:0}
+.l4shell main.thread9:has(.l4-welcome){justify-content:center!important;overflow:auto}
+.l4shell main.thread9:has(.l4-welcome) .l4-welcome{padding:8px 20px 22px!important}
+.l4shell .l4-wp .welcome-plugin-tile16 img{width:18px;height:18px;object-fit:contain}

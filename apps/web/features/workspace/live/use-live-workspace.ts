@@ -5,7 +5,7 @@
 import { useEffect, useRef } from "react";
 import { Client, type Account, type User, type WorkspaceClient, type WorkflowGraph } from "@botinc/api";
 import type { Vals } from "../vals";
-import { clampConversationPaneWidth, conversationPaneBounds, formatUsageReset, normalizePublicAssets, usageRingStyleFromCapacity } from "./layout";
+import { bindingWindowFields, clampConversationPaneWidth, conversationPaneBounds, formatUsageReset, normalizePublicAssets, resetDayLabel, usageRingStyleFromCapacity } from "./layout";
 import { mapAccount, mapAutopilot, mapConversation, mapIssue, mapIssueTimeline, mapMessage, mapRun, mapWorkflowSteps, type PeopleIndex } from "./map";
 import { parseWorkspaceRoute, workspacePath, type WorkspaceRoute } from "./routes";
 import { installPerformanceGuards } from "./perf";
@@ -25,7 +25,7 @@ export function liveConnectedConnectorNames(plugins: Vals[] = []): string[] {
 }
 export function liveRoutineConnectorNames(autopilot: Vals | undefined, plugins: Vals[] = []): string[] {
  const selected=new Set(Array.isArray(autopilot?.pluginIds)?autopilot.pluginIds:[]);
- return plugins.filter(plugin=>selected.has(plugin.id)).map(plugin=>String((plugin.account as Vals)?.name||titleCase(pluginKey(plugin.kind).replaceAll("-"," "))));
+ return plugins.filter(plugin=>selected.has(plugin.id)&&plugin.status==="connected").map(plugin=>String((plugin.account as Vals)?.name||titleCase(pluginKey(plugin.kind).replaceAll("-"," "))));
 }
 export function runFailurePatch(run?: { status?: string; error?: string }): Vals {
  const error=run?.status==="failed"?String(run.error||"").trim():"";
@@ -55,7 +55,8 @@ export function lastReportedProviderRing(group: Vals, accounts: Vals[]): Vals {
   ...group,
   index14:`${left}%`,
   indexTone14:"muted14 reported14",
-  ringStyle14:`--remaining:${left*3.6}deg`,
+  ringStyle14:usageRingStyleFromCapacity(left),
+  usedLabel19:`${100-left}% used`,
   aria14:`${group.name} - last reported average capacity left ${left}% across ${capacity.length} account${capacity.length===1?"":"s"}`,
  };
 }
@@ -473,16 +474,19 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
  bind("renderVals",()=>{
   const v=render.call(logic);const s=logic.state;
   v.workspaceName= s.workspace16||"BotInc";v.previewCard15=false;
+  /* The welcome strip says "Connected tools": show the workspace's connected connectors, not the
+     design's featured catalog. */
+  v.featuredPlugins10=liveConnectedConnectorNames(s.livePlugins||[]).slice(0,4).map((name)=>{const brand=typeof logic.brand12==="function"?logic.brand12(name):{};return {name,brand12:brand.brand12||"",brandClass12:brand.brandClass12||"",open:()=>logic.showPlugin10(name)}});
   v.providerGroups13=(v.providerGroups13||[]).map((provider:Vals)=>({
    ...provider,
    ringStyle14:usageRingStyleFromCapacity(provider.index14),
-   rows:(provider.rows||[]).map((account:Vals)=>({
-    ...account,
-    windows:(account.windows||[]).map((window:Vals)=>({
-     ...window,
-     resetShort14:formatUsageReset(window.resetShort14||window.reset),
-    })),
-   })),
+   rows:(provider.rows||[]).map((account:Vals)=>{
+    const windows=(account.windows||[]).map((window:Vals)=>{
+     const resetShort14=formatUsageReset(window.resetShort14||window.reset);
+     return {...window,resetShort14,resetDay19:resetDayLabel(window.reset||window.resetShort14)};
+    });
+    return {...account,windows,...bindingWindowFields(windows)};
+   }),
   }));
   if(v.autopilotForm10){
    const available=(s.livePlugins||[]).filter((plugin:Vals)=>plugin.kind?.startsWith("mcp:"));
@@ -492,7 +496,12 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
    const selectedNames=available.filter((plugin:Vals)=>selectedSet.has(plugin.id)).map(label);
    let connectorTrigger:EventTarget|null=null;
    const openConnectorMenu=()=>{
-    const rows=available.map((plugin:Vals)=>{const name=label(plugin);const brand=typeof logic.brand12==="function"?logic.brand12(name):{};return{label:name,logo:brand.brand12||"",logoClass:brand.brandClass12||"",on:selectedSet.has(plugin.id),disabled:plugin.status!=="connected",hint:plugin.status==="connected"?"":plugin.status==="needs_reauth"?"Reconnect":"Unavailable",run:()=>{const ids=selectedSet.has(plugin.id)?selectedIDs.filter((id)=>id!==plugin.id):[...selectedIDs,plugin.id];logic.setState({autoDraft9:{...logic.state.autoDraft9,pluginIds:ids}});setTimeout(openConnectorMenu,0)}}});
+    // Read the draft each time the menu is (re)built: the menu reopens after a pick, and the
+    // closure's snapshot from render time would otherwise discard the previous choice.
+    const currentIDs:string[]=Array.isArray(logic.state.autoDraft9?.pluginIds)?logic.state.autoDraft9.pluginIds:[];
+    const currentSet=new Set(currentIDs);
+    // A connector that became unavailable while selected stays removable; only unselected unavailable rows are inert.
+    const rows=available.map((plugin:Vals)=>{const name=label(plugin);const brand=typeof logic.brand12==="function"?logic.brand12(name):{};const on=currentSet.has(plugin.id);return{label:name,logo:brand.brand12||"",logoClass:brand.brandClass12||"",on,disabled:plugin.status!=="connected"&&!on,hint:plugin.status==="connected"?"":plugin.status==="needs_reauth"?"Reconnect":"Unavailable",run:()=>{const ids=on?currentIDs.filter((id)=>id!==plugin.id):[...currentIDs,plugin.id];logic.setState({autoDraft9:{...logic.state.autoDraft9,pluginIds:ids}});setTimeout(openConnectorMenu,0)}}});
     if(!rows.length)rows.push({label:"No connectors in this workspace",disabled:true});
     logic.openMenu14(null,{currentTarget:connectorTrigger},rows,"Connectors",{kind:"routine-connectors",cls:"menu-rich15 menu-plugins16",search:rows.length>6?"Search connectors":"",cta:{label:"Add a connector",icon:logic.icon14?.("plus"),run:()=>{logic.setState({dialog:null});logic.openPlugins10("all")}}});
    };
@@ -523,10 +532,10 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
   }
   const detail=s.liveIssueDetail;const currentIssue=logic.issue();
   /* The issue page carries its own execution rail (Execution / Source and output / People). The
-     conversation inspector has no live bindings on this view, so a preference left open by a
-     thread rendered as an empty third column that squeezed the page. Hide it here the way the
-     design hides it on top-level pages. */
-  if(s.view==="issue"&&v.inspectorShown16){v.inspectorOpen10=false;v.inspectorShown16=false;v.panelOpenClass="";v.rootClass=String(v.rootClass||"").replace(/\s*\binspector-open10\b/g,"").replace(/\s*\bmobile-inspector10\b/g,"")}
+     conversation inspector reads the issue's run, so an issue without one (every imported v1
+     issue before its first run) rendered it as an empty third column that squeezed the page.
+     Hide it for those the way the design hides it on top-level pages. */
+  if(s.view==="issue"&&v.inspectorShown16&&!(Array.isArray(detail?.runs)&&detail.runs.length)){v.inspectorOpen10=false;v.inspectorShown16=false;v.panelOpenClass="";v.rootClass=String(v.rootClass||"").replace(/\s*\binspector-open10\b/g,"").replace(/\s*\bmobile-inspector10\b/g,"")}
   /* Unassigned and not-yet-selected issues have no owner; the design's placeholder then read "Message undefined's agents". */
   {const owner=String(currentIssue.owner||"");const whose=!owner||owner===String(s.member||"")?"your":owner+"\u2019s";v.i8CommentPlaceholder=`Message ${whose} agents${currentIssue.id?` about ${currentIssue.id}`:""}\u2026`}
   v.i8Computer="Remote";v.i8Agent="Operator";

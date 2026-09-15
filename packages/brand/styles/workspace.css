@@ -6068,6 +6068,19 @@ button{font-family:inherit}button .ui-icon{color:inherit}
 .mgroup-more18[aria-expanded="true"] .ui-icon{transform:rotate(180deg)}
 
 /* ===== Workspace v19.css ===== */
+/* Sidebar bottom already gets its top hairline from .provider-strip13 —
+   the wrapper's own border-top (added in v9) doubled it up. */
+.app .sidebar .sidebar-bottom,.app-v9 .sidebar9 .sidebar-bottom,.sidebar-bottom{border-top:0!important}
+
+/* The provider capacity flyout must paint above everything in the main
+   column. It is position:fixed, but the v19 rise animation leaves a
+   transform/filter on .sidebar-bottom that traps it in that stacking
+   context, so the thread painted over it. Exempt the bottom block from the
+   walk-in (it fades only) and lift the flyout above the Operator dock (430)
+   and call bar (440). */
+.app-v19 .sidebar>.sidebar-bottom{animation:none!important;transform:none!important;filter:none!important;opacity:1!important}
+.app .provider-hover13,.provider-hover13{z-index:500}
+
 /* V19 — motion. Screens settle in: a skeleton beat, then rows rise in order.
    Panes slide, widths ease, overlays pop. 300ms for what a pointer caused,
    500ms for what the page decided, cubic-bezier(.22,.61,.36,1) for big moves.
@@ -6193,6 +6206,8 @@ button{font-family:inherit}button .ui-icon{color:inherit}
 .app-v19 .hacct16 .hacct-line16{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px 12px;padding-left:21px}
 .app-v19 .hacct16 .hw16{display:grid;grid-template-columns:11px 32px minmax(0,1fr);gap:4px;min-width:0}
 .app-v19 .hacct16 .hw-r16{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.app-v19 .sidebar{transition:width 320ms var(--ease19),flex-basis 320ms var(--ease19)}
+.app-v19.sb-dragging19 .sidebar{transition:none}
 .app-v19 .inspector-tabs10>button{transition:color 160ms,border-color 160ms}
 :where(.app-v19) .inspector-content10>*{animation:fade19 260ms var(--ease19) both}
 
@@ -6270,6 +6285,10 @@ button{font-family:inherit}button .ui-icon{color:inherit}
   margin:3px 0 0;font-size:10.5px;line-height:1.45;color:var(--muted);text-wrap:pretty}
 .app .gform19 .gf-note19:empty{display:none}
 .app .gform19 .gf-toggle19{
+
+
+
+
   display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:6px;
   padding-top:8px;border-top:1px solid var(--rule,var(--line))}
 .app .gform19 .gf-toggle19 span{display:flex;flex-direction:column;gap:1px;min-width:0}
@@ -6467,9 +6486,13 @@ button{font-family:inherit}button .ui-icon{color:inherit}
 .app .ug-row19{display:flex;align-items:center;gap:12px;width:100%;text-align:left;
   padding:10px 12px;border:1px solid var(--line);border-radius:10px;margin-bottom:6px;
   background:var(--panel,transparent);color:var(--ink);font:inherit}
+
 .app .ug-row19>span:nth-child(2){display:flex;flex-direction:column;gap:1px;flex:1;min-width:0}
+
 .app .ug-row19 strong{font-weight:400;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
 .app .ug-row19 small{font-size:11px;color:var(--muted)}
+
 .app .ug-row19 b{font-weight:400;font-family:var(--mono14,var(--mono));font-size:11.5px}
 .app .ug-task19{cursor:pointer;transition:border-color 160ms ease-out,background-color 160ms ease-out}
 .app .ug-task19:hover{border-color:var(--blue,#007FFF);background:var(--hover14,var(--canvas))}
@@ -6566,34 +6589,6 @@ button{font-family:inherit}button .ui-icon{color:inherit}
 .app .pane-section13>.message-markdown ul,.app .pane-section13>.message-markdown ol{padding-left:18px;gap:4px}
 .app .t9-request>.message-markdown{font-size:14px;line-height:23px;margin:8px 0 0;color:var(--ink)}
 .app .i8-block>.message-markdown,.app .detail-panel .message-markdown{font-size:13px;line-height:1.7;color:var(--muted)}
-
-/* Regular chat, Work chat, the update rail and the composer share one
-   reading axis. The optional 290px context peek sits beside that axis and
-   never stretches the messages or the composer. */
-.app-v19 .chat10-scroll{padding:24px 32px}
-.app-v19 .chat10-scroll{scrollbar-gutter:stable both-edges}
-.app-v19 .chat10-scroll>.t9-cols15{box-sizing:border-box;margin-left:auto;margin-right:auto}
-.app-v19 .chat10-scroll>.t9-cols15:not(:has(>.side-col15)){max-width:790px}
-.app-v19 .chat10-scroll>.t9-cols15:has(>.side-col15){max-width:1102px}
-.app-v19 .chat10-col15{width:100%;max-width:790px;margin-left:auto;margin-right:auto}
-.app-v19 .chat10-col15>*{animation:none!important}
-.app-v19 .chat10 .message10{width:100%;max-width:790px!important;margin-bottom:22px}
-.app-v19 .chat10 .message10.user-message{width:auto;max-width:min(88%,700px)!important;margin-left:auto;margin-right:auto}
-.app-v19 .chat10>.composer10-wrap{
-  box-sizing:border-box;width:calc(100% - 48px);max-width:790px!important;
-  margin:0 auto 14px!important;padding:0!important}
-.app-v19 .thread9>.jump-row13{
-  box-sizing:border-box;width:100%;max-width:790px;margin-left:auto;margin-right:auto;padding-left:32px;padding-right:32px}
-.app-v19 .af-connectnote19{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:10px 0 0;padding-left:168px}
-.app-v19 .af-connectnote19 .text-button{flex:none;color:var(--blue)}
-@media(min-width:1181px){
-  .app-v19 .chat10-scroll>.t9-cols15:has(>.side-col15)>.chat10-col15{margin-left:0;margin-right:0}
-  .app-v19 .chat10:has(.chat10-scroll .side-col15)>.composer10-wrap{
-    max-width:1102px!important;padding-right:312px!important}}
-@media(max-width:760px){
-  .app-v19 .chat10-scroll{padding:20px 18px}
-  .app-v19 .chat10>.composer10-wrap{width:calc(100% - 24px);margin-bottom:7px!important}
-  .app-v19 .thread9>.jump-row13{padding-left:17px;padding-right:17px}}
 @media(max-width:760px){.app-v19 .af-connectnote19{align-items:flex-start;flex-direction:column;padding-left:0;gap:8px}}
 .app .live-pr19,.app .live-runs19{display:grid;gap:14px}
 .app .live-pr19>.brand12{width:24px;height:24px}
@@ -6654,4 +6649,121 @@ button{font-family:inherit}button .ui-icon{color:inherit}
     min-width:0;max-width:100%;flex:0 0 auto!important;background:var(--bg);
     box-shadow:-18px 0 48px rgb(0 0 0 / 8%)}
   .app-v19 .inspector11 .pane-divider11{display:none}
+}
+
+
+
+/* Live routine connector scope and zero-render drag feedback. */
+.app .af-connectnote19{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:10px 0 0;padding-left:168px}
+.app .af-connectnote19 .text-button{flex:none;color:var(--blue)}
+.app .dock-float16.dragging16,.app .callbar16.dragging16{animation:none!important;transition:none!important;user-select:none}
+@media(max-width:760px){.app .af-connectnote19{align-items:flex-start;flex-direction:column;padding-left:0;gap:8px}}
+
+
+
+/* Explicit 404, 500 and recoverable-load states. */
+.app.error-state19>:not(.error-design19){display:none!important}
+.error-design19{min-height:100vh;display:grid;place-items:center;padding:24px;background:var(--surface,#f7f8fa);color:var(--ink,#171a20)}
+.error-card19{width:min(430px,100%);padding:42px;border:1px solid var(--line,#e5e8ed);border-radius:20px;background:var(--paper,#fff);box-shadow:0 24px 80px #18202b12;text-align:center}
+.error-card19>img{width:42px;height:42px;margin-bottom:18px}.error-card19>span{display:block;font:10px/1.4 "IBM Plex Mono",monospace;letter-spacing:.12em;color:var(--muted,#747b87)}
+.error-card19 h1{margin:12px 0 10px;font-size:29px;line-height:1.15;letter-spacing:-.7px;font-weight:500}.error-card19 p{margin:0 auto;color:var(--muted,#747b87);font-size:14px;line-height:1.65;max-width:330px}
+.error-card19>div{display:flex;align-items:center;justify-content:center;gap:10px;margin-top:26px}.error-card19>small{display:block;margin-top:22px;color:var(--muted,#9299a3);font:10px/1.4 "IBM Plex Mono",monospace}
+@media(max-width:520px){.error-design19{padding:14px}.error-card19{padding:34px 24px;border-radius:16px}}
+
+
+/* The welcome plugin strip only says what is connected; it is not a picker. */
+.app .welcome-plugins10 .welcome-plugin-tile16{display:inline-grid;place-items:center;width:30px;height:30px;border-radius:8px;background:var(--bg);border:1px solid var(--line);cursor:default}
+.app .welcome-plugins10 .welcome-plugin-tile16 .brand12{width:16px;height:16px}
+.app .welcome-plugins10 .welcome-plugin-tile16 .ui-icon{width:15px;height:15px;color:var(--muted)}
+.app .plugin-connected16{display:flex;align-items:center;justify-content:center;gap:8px;margin:6px 0 2px;padding:10px 14px;border:1px solid var(--line);border-radius:10px;font-size:13px;color:var(--good14,#218145)}
+.app .plugin-connected16 .ui-icon{width:15px;height:15px}
+
+
+/* ------------------------------------ 11. review fixes (round 19f) -- */
+
+/* The workflow editor on a phone: the back link, then the name on a row of
+   its own, then the actions on a third row. Ask Operator and Test keep their
+   glyph and their spoken label but drop the visible word, the divider goes,
+   and nothing runs past the right edge. The footer stacks: the note wraps,
+   the pay-with button sits under it, and the duplicate summary stays out. */
+@media(max-width:600px){
+  .app .graph-head14{align-items:center;padding:9px 12px;gap:9px}
+  .app .graph-head14>.text-button:first-child{order:1}
+  .app .gh-name16{order:2;flex-basis:100%}
+  .app .gh-acts16{order:3;width:100%!important;margin-left:0;justify-content:flex-end;gap:6px}
+  .app .gh-ask16{width:34px;height:34px;padding:0;justify-content:center;font-size:0}
+  .app .gh-seg16>.small-button:last-child{width:34px;padding:0;justify-content:center;font-size:0}
+  .app .gh-rule16{display:none}
+  .app .graph-foot14{display:grid;grid-template-columns:minmax(0,1fr);align-items:start;gap:8px;padding:9px 12px}
+  .app .graph-foot14>span:first-child{display:flex;min-width:0;white-space:normal}
+  .app .graph-foot14>.gh-fund17{justify-self:start;margin-left:0}
+  .app .graph-foot14>.composer-spacer,.app .graph-foot14>span:last-child{display:none}}
+
+
+/* ------------------------------------ 12. review fixes (round 19g) -- */
+
+/* The inspector divider: a 16px grab zone over a quiet 1px rule that sits on
+   the pane's own edge. It thickens to 2px of blue only while the pointer is
+   on it, it has keyboard focus, or a drag is in progress - never a thumb. */
+.app-v19 .inspector10 .pane-divider11{left:-8px;width:16px}
+.app-v19 .inspector10 .pane-divider11:after{width:1px;inset:0 auto 0 8px;background:var(--line);
+  transition:background-color 120ms ease-out,width 120ms ease-out,left 120ms ease-out}
+.app-v19 .inspector10 .pane-divider11:hover:after,
+.app-v19 .inspector10 .pane-divider11:focus-visible:after,
+.app-v19.pane-dragging11 .inspector10 .pane-divider11:after{width:2px;left:7px;background:var(--blue)}
+@media(prefers-reduced-motion:reduce){.app-v19 .inspector10 .pane-divider11:after{transition:none}}
+
+/* Every provider in the sidebar strip wears an explicit usage ring: a 2.5px
+   arc that grows clockwise from twelve as the pooled allowance is spent, over
+   a neutral track that stays visible when nothing is used or reported. The
+   v13 border and the v16 disc fill go; the ring is its own layer behind the
+   mark. --used14 comes from usageRing19; the tone classes still pick the
+   arc colour. */
+.app-v19 .provider-orbit13.orbit14{--track14:var(--line);position:relative;width:32px;height:32px;
+  border:0;padding:0;background:none;overflow:visible}
+.app-v19 .provider-orbit13.orbit14:before{content:"";position:absolute;inset:0;border-radius:999px;z-index:0;
+  background:conic-gradient(from -90deg,var(--ring) 0 var(--used14,0deg),var(--track14) var(--used14,0deg) 360deg);
+  -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 3.5px),#000 calc(100% - 2.5px));
+  mask:radial-gradient(farthest-side,transparent calc(100% - 3.5px),#000 calc(100% - 2.5px))}
+.app-v19 .provider-orbit13.orbit14.muted14{background:none}
+.app-v19 .provider-orbit13.orbit14.muted14:before{--used14:0deg}
+/* Hand edit (a436add, kept through the v19 refresh): a stale but real quota
+   observation is muted AND reported, and keeps its arc - the design's muted
+   reset above must not zero it. */
+.app-v19 .provider-orbit13.orbit14.muted14.reported14:before{--used14:inherit}
+.app-v19 .provider-orbit13.orbit14 .brand12{position:relative;z-index:1;width:19px;height:19px;padding:3px;
+  background:var(--panel);border-radius:999px;box-sizing:content-box}
+.app-v19 .provider-group13:hover .provider-orbit13.orbit14,
+.app-v19 .provider-group13:focus-within .provider-orbit13.orbit14{--track14:color-mix(in srgb,var(--blue) 30%,var(--line))}
+
+/* The capacity card: one line per account for who it is, one line for how
+   much is left. The second line opens with a 3px bar of the binding window
+   (the one with the least left), then the three windows as key + percent,
+   then that window's reset on the right. Full resets stay in the tooltips. */
+.app-v19 .hover-account13.hacct16{gap:3px;padding:6px 12px}
+.app-v19 .hacct16 .hacct-top16{gap:6px}
+.app-v19 .hacct16 .hacct-top16>strong{font-size:12px}
+.app-v19 .hacct16 .hacct-left16{font-size:11.5px}
+.app-v19 .hacct16 .hacct-line16.hl19{display:flex;flex-wrap:nowrap;align-items:center;gap:0 10px;
+  padding-left:0;min-width:0}
+/* Each cell: key, a 14px bar of what is left, the percent, an arrow, the
+   reset as day + time (the month is in the tooltip). One row, always; the
+   reset ellipsizes last if a pane is narrower than the cells. */
+.app-v19 .hacct16 .hl19 .hw16{display:flex;flex:0 1 auto;align-items:center;gap:3px;min-width:0;
+  font-family:var(--mono);font-size:9.5px;letter-spacing:-0.01em;white-space:nowrap;cursor:help}
+.app-v19 .hacct16 .hl19 .hw-k16{flex:none;min-width:0;color:var(--faint)}
+.app-v19 .hacct16 .hwbar19{flex:none;display:block;width:14px;height:2px;border-radius:1px;
+  background:var(--line);overflow:hidden}
+.app-v19 .hacct16 .hwbar19>b{display:block;height:100%;border-radius:1px;background:var(--blue);
+  transition:width var(--dur-state,500ms) ease-out}
+.app-v19 .hacct16 .hwbar19>b.warn14{background:var(--care14)}
+.app-v19 .hacct16 .hwbar19>b.bad14{background:var(--stop14)}
+.app-v19 .hacct16 .hwbar19>b.muted14{background:var(--muted)}
+.app-v19 .hacct16 .hl19 .hw-v16{flex:none;min-width:0;font-variant-numeric:tabular-nums}
+.app-v19 .hacct16 .hl19 .hw-arrow19{flex:none;color:var(--faint)}
+.app-v19 .hacct16 .hl19 .hw-r16{flex:0 1 auto;min-width:0;color:var(--mute2,var(--muted));
+  font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis}
+.app-v19 .hacct16 .hl19 .hw-none16{flex:none;font-size:9.5px}
+@container (max-width:330px){
+  .app-v19 .hacct16 .hl19 .hw-arrow19,.app-v19 .hacct16 .hl19 .hw-r16{display:none}
 }

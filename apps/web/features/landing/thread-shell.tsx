@@ -36,6 +36,11 @@ export type ThreadShellProps = {
   balance?: string;
   showAppsNote?: boolean;
   loading?: boolean;
+  arriving?: { key: string; title: string; meta: string; tone: string; icon: string }[];
+  callOn?: boolean;
+  callTitle?: string;
+  callText?: string;
+  callEnd?: () => void;
 };
 
 const noop = () => {};
@@ -87,6 +92,8 @@ function useShellVals(p: ThreadShellProps) {
     crumbA: view === "schedule" ? "Schedule" : view === "plugins" ? "Plugins" : view === "chat" ? "New chat" : view === "intro" ? "Getting to work" : "Work",
     pluginCount: 6, plugins, needsCount: needs ? 1 : 0, doneCount: merged ? 2 : 1, workGroups: groups, routines,
     loadState:p.loading?"loading":"ready",loading:!!p.loading,fullLoading:false,crumbThread:view==="thread",
+    arriving:p.arriving||[],hasArriving:!!(p.arriving&&p.arriving.length),arrivingCount:(p.arriving||[]).length,
+    callOn:!!p.callOn,callTitle:p.callTitle||"Operator is on the line",callText:p.callText||"",callEnd:p.callEnd||(()=>{}),
     wsOpen:isWorkspaceMenuOpen,toggleWs:()=>setIsWorkspaceMenuOpen((open)=>!open),closeWs:()=>setIsWorkspaceMenuOpen(false),
     wsInitial:"B",wsName:"BotInc",workspaces:[
       {initial:"B",name:"BotInc",sub:"Current workspace",cls:"on",on:true,pick:()=>setIsWorkspaceMenuOpen(false)},
@@ -327,6 +334,56 @@ export function ThreadShell(p: ThreadShellProps) {
                 </button>
               </div>
             </section>
+            {v.hasArriving ? (
+              <>
+                <section className="c9-group l4-arrive">
+                  <h3>
+                    <span className="c9-gicon16 st-progress16">
+                      <svg
+                        className="ui-icon use14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.75"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                      >
+                        <use href="/i15.svg#zap" />
+                      </svg>
+                    </span>
+                    <b>Filed just now</b>
+                    <span>{interp(v.arrivingCount)}</span>
+                  </h3>
+                  {(v.arriving ?? []).map((a: any, i: number) => (
+                    <Fragment key={i}>
+                      <div className="sidebar-item12 l4-pop">
+                        <button className="c9-row" aria-label={a.title}>
+                          <span className={`c9-status ${a.tone}`}>
+                            <svg
+                              className="ui-icon use14"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.75"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              aria-hidden="true"
+                            >
+                              <use href={a.icon} />
+                            </svg>
+                          </span>
+                          <span className="c9-row-copy fade16">
+                            <strong>{interp(a.title)}</strong>
+                            <small className="l4-arrive-meta">{interp(a.meta)}</small>
+                          </span>
+                        </button>
+                      </div>
+                    </Fragment>
+                  ))}
+                </section>
+              </>
+            ) : null}
             <section className="c9-group">
               <h3>
                 <span className="c9-gicon16 st-progress16">
@@ -737,22 +794,12 @@ export function ThreadShell(p: ThreadShellProps) {
                         <>
                           <section className="l4-welcome">
                             <img src="/assets/logo/botinc-mark.svg" alt="" />
-                            <h1>What can I take off your plate, Alex?</h1>
-                            <p>
-                              Ask anything, paste an issue, or say what to change. Runs route across your subscriptions and
-                              never stop at a limit.
-                            </p>
-                            <div className="l4-suggest">
-                              <button className="small-button" onClick={v.viewThread}>
-                                Why did BOT-42 happen?
-                              </button>
-                              <button className="small-button" onClick={v.viewSchedule}>
-                                Add a weekly dependency-bump routine
-                              </button>
-                              <button className="small-button" onClick={v.viewWork}>
-                                What is waiting for me?
-                              </button>
-                            </div>
+                            <h1>
+                              What can I take
+                              <br />
+                              off your plate?
+                            </h1>
+                            <p>One conversation. From idea to done.</p>
                           </section>
                         </>
                       ) : null}
@@ -1035,6 +1082,50 @@ export function ThreadShell(p: ThreadShellProps) {
                     </div>
                   </div>
                 </div>
+                {v.callOn ? (
+                  <>
+                    <div
+                      className="callbar16 l4-call"
+                      role="dialog"
+                      aria-label="Call with your Operator"
+                      aria-live="polite"
+                    >
+                      <span className="cb-orb16 cb-live16" aria-hidden="true" />
+                      <span className="cb-copy16">
+                        <strong>{interp(v.callTitle)}</strong>
+                        <small>{interp(v.callText)}</small>
+                      </span>
+                      <button type="button" className="cb-btn16" aria-label="Turn the microphone off">
+                        <svg
+                          className="ui-icon use14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.75"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                        >
+                          <use href="/i15.svg#mic" />
+                        </svg>
+                      </button>
+                      <button type="button" className="cb-btn16 cb-end16" aria-label="End call" onClick={v.callEnd}>
+                        <svg
+                          className="ui-icon use14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.75"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                        >
+                          <use href="/i15.svg#phone-off" />
+                        </svg>
+                      </button>
+                    </div>
+                  </>
+                ) : null}
                 <div className="composer10-wrap composer11-wrap">
                   <form className={v.composerCls} onSubmit={v.send}>
                     <div className="route-head17 ok17">
@@ -1169,6 +1260,87 @@ export function ThreadShell(p: ThreadShellProps) {
                     </div>
                   </form>
                 </div>
+                {v.isChat ? (
+                  <>
+                    <div className="welcome-actions10 l4-wa">
+                      <button onClick={v.viewWork}>
+                        <svg
+                          className="ui-icon use14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.75"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                        >
+                          <use href="/i15.svg#message-square" />
+                        </svg>
+                        Clear what needs me<span>3</span>
+                      </button>
+                      <button onClick={v.viewThread}>
+                        <svg
+                          className="ui-icon use14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.75"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                        >
+                          <use href="/i15.svg#code" />
+                        </svg>
+                        Build something
+                      </button>
+                      <button onClick={v.viewChat}>
+                        <svg
+                          className="ui-icon use14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.75"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                        >
+                          <use href="/i15.svg#search" />
+                        </svg>
+                        Research an idea
+                      </button>
+                    </div>
+                    <div className="welcome-plugins10 l4-wp">
+                      <span>Connected tools</span>
+                      <span className="welcome-plugin-tile16" title="GitHub">
+                        <img className="brand12" src="/assets/connectors/github.png" alt="" />
+                      </span>
+                      <span className="welcome-plugin-tile16" title="Slack">
+                        <img className="brand12" src="/assets/connectors/slack.png" alt="" />
+                      </span>
+                      <span className="welcome-plugin-tile16" title="Gmail">
+                        <img className="brand12" src="/assets/connectors/gmail.png" alt="" />
+                      </span>
+                      <span className="welcome-plugin-tile16" title="Notion">
+                        <img className="brand12" src="/assets/connectors/notion.png" alt="" />
+                      </span>
+                      <button className="text-button" onClick={v.viewPlugins}>
+                        Browse plugins{" "}
+                        <svg
+                          className="ui-icon use14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.75"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                        >
+                          <use href="/i15.svg#arrow-right" />
+                        </svg>
+                      </button>
+                    </div>
+                  </>
+                ) : null}
               </main>
             </>
           ) : null}

@@ -11,5 +11,7 @@ s=s.replace('Preview only. Connections are simulated; nothing is read from your 
 s=s.replace('Simulated authorization. No real account is connected.','Sign in to authorize this connection securely.')
 s=s.replace('This opens a simulated provider authorization. No credentials are requested or stored in the design.','Sign in to continue to the provider&apos;s secure authorization screen.')
 s=s.replace('Sample figures. No live model ran.','Illustrative usage. Actual receipts come from completed runs.')
-s=re.sub(r'\s*<footer className=\{v\.footCls\}>.*?</footer>', '', s, flags=re.S)
+# The design's bottom bar ("Interactive preview" toggle, "Sample work · simulated actions") is
+# prototype-only copy, but its 34px box is what centres the onboarding card: keep the box, hide the bar.
+s=re.sub(r'<footer className=\{v\.footCls\}>.*?</footer>', '<footer className={v.footCls} aria-hidden="true" style={{ visibility: "hidden" }} />', s, flags=re.S)
 p.write_text(s)
