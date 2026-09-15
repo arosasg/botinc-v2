@@ -67,7 +67,7 @@ func TestMCPOAuthAuthorizationAndTools(t *testing.T) {
 		"response_type":         {"code"},
 		"state":                 {"state-123"},
 		"scope":                 {"read write"},
-		"resource":              {resource},
+		"resource":              {resource + "/"},
 		"code_challenge":        {challenge},
 		"code_challenge_method": {"S256"},
 	}
@@ -141,6 +141,20 @@ func TestMCPOAuthAuthorizationAndTools(t *testing.T) {
 	ping := doMCPRequest(t, h, http.MethodPost, "/api/mcp", newAccess, "application/json", `{"jsonrpc":"2.0","id":5,"method":"ping"}`)
 	if ping.Code != http.StatusOK {
 		t.Fatalf("refreshed access token failed: %d %s", ping.Code, ping.Body.String())
+	}
+}
+
+func TestMCPResourceIndicatorCanonicalization(t *testing.T) {
+	h := newHarness(t)
+	for _, resource := range []string{"http://api.test/api/mcp", "http://api.test/api/mcp/", "HTTP://API.TEST/api/mcp/"} {
+		if !h.server.isMCPResource(resource) {
+			t.Fatalf("expected equivalent MCP resource %q to be accepted", resource)
+		}
+	}
+	for _, resource := range []string{"http://api.test", "http://api.test/api/mcp/other", "http://api.test/api/mcp?workspace=other", "http://other.test/api/mcp"} {
+		if h.server.isMCPResource(resource) {
+			t.Fatalf("expected unrelated MCP resource %q to be rejected", resource)
+		}
 	}
 }
 

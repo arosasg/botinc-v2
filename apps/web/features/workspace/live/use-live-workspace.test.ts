@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { accountHydrationPatch, conversationRoutingPatch, hydrationIssueKey, issueThinkingLabel, liveConnectedConnectorNames, livePersonaDefaults, openNewChatWithDraft, readDraft, routineTrigger, runFailurePatch, saveDraft, threadInspectorPatch } from "./use-live-workspace";
+import { accountHydrationPatch, conversationRoutingPatch, hydrationIssueKey, issueThinkingLabel, liveConnectedConnectorNames, livePersonaDefaults, normalizeScheduleSourceLogo, openNewChatWithDraft, readDraft, routineTrigger, runFailurePatch, saveDraft, threadInspectorPatch } from "./use-live-workspace";
 
 describe("new conversation drafts", () => {
   const values = new Map<string, string>();
@@ -93,6 +93,15 @@ describe("routine triggers", () => {
   it("preserves an imported interval cron the editor cannot express", () => {
     expect(routineTrigger({ kind: "schedule", cadence: "Every 10 minutes", cron: "*/10 * * * *", zone: "UTC" })).toEqual({
       kind: "schedule", cron: "*/10 * * * *", tz: "UTC",
+    });
+  });
+
+  it("uses the icon fallback when a routine source has no resolved brand logo", () => {
+    expect(normalizeScheduleSourceLogo({ source: "BotInc", sourceLogo: "", hasSourceLogo: true })).toEqual({
+      source: "BotInc", sourceLogo: "", hasSourceLogo: false,
+    });
+    expect(normalizeScheduleSourceLogo({ source: "GitHub", sourceLogo: "/brands/github.svg", hasSourceLogo: false })).toEqual({
+      source: "GitHub", sourceLogo: "/brands/github.svg", hasSourceLogo: true,
     });
   });
 });

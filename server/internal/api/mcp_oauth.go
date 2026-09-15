@@ -46,6 +46,20 @@ func (s *Server) mcpResource() string {
 	return strings.TrimRight(s.cfg.PublicAPIURL, "/") + "/api/mcp"
 }
 
+func (s *Server) isMCPResource(raw string) bool {
+	resource, err := url.Parse(raw)
+	if err != nil || !resource.IsAbs() || resource.User != nil || resource.Fragment != "" || resource.RawQuery != "" {
+		return false
+	}
+	expected, err := url.Parse(s.mcpResource())
+	if err != nil {
+		return false
+	}
+	return strings.EqualFold(resource.Scheme, expected.Scheme) &&
+		strings.EqualFold(resource.Host, expected.Host) &&
+		strings.TrimRight(resource.EscapedPath(), "/") == strings.TrimRight(expected.EscapedPath(), "/")
+}
+
 func (s *Server) mcpAuthorizationServer() string {
 	return strings.TrimRight(s.cfg.PublicAPIURL, "/")
 }
@@ -201,9 +215,10 @@ func (s *Server) readMCPAuthorizationRequest(ctx context.Context, values url.Val
 	if values.Get("code_challenge_method") != "S256" || len(request.CodeChallenge) < 43 || len(request.CodeChallenge) > 128 {
 		return request, errors.New("PKCE with code_challenge_method S256 is required")
 	}
-	if request.Resource != s.mcpResource() {
+	if !s.isMCPResource(request.Resource) {
 		return request, errors.New("resource must identify this MCP server")
 	}
+	request.Resource = s.mcpResource()
 	var redirectsRaw []byte
 	if err := s.pool.QueryRow(ctx, `select name,redirect_uris from oauth_clients where id=$1`, request.ClientID).Scan(&request.ClientName, &redirectsRaw); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -340,10 +355,11 @@ func (s *Server) mcpToken(w http.ResponseWriter, r *http.Request) {
 		oauthError(w, http.StatusBadRequest, "invalid_request", "could not parse token request")
 		return
 	}
-	if r.Form.Get("resource") != s.mcpResource() {
+	if !s.isMCPResource(r.Form.Get("resource")) {
 		oauthError(w, http.StatusBadRequest, "invalid_target", "resource must identify this MCP server")
 		return
 	}
+	r.Form.Set("resource", s.mcpResource())
 	switch r.Form.Get("grant_type") {
 	case "authorization_code":
 		s.exchangeMCPAuthorizationCode(w, r)
