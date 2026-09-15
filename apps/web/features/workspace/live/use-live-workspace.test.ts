@@ -138,7 +138,10 @@ describe("work conversation layout", () => {
   });
 
   it("leaves the mobile conversation full width", () => {
-    expect(threadInspectorPatch(false)).toEqual({});
+    expect(threadInspectorPatch(false)).toEqual({
+      inspector10: false,
+      mobileInspector10: false,
+    });
   });
 });
 
