@@ -75,7 +75,7 @@ type WindowRow = Record<string, unknown>;
 export function resetDayLabel(reset: unknown): string {
   const text = String(reset || "").trim();
   if (!text) return "";
-  const instant = new Date(text);
+  const instant = /^\d{4}-\d{2}-\d{2}[T ]/.test(text) ? new Date(text) : new Date(Number.NaN);
   if (!Number.isNaN(instant.getTime())) {
     const time = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(instant);
     return `${instant.getDate()} ${time}`;
