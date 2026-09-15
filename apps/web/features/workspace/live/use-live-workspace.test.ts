@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { hydrationIssueKey, livePersonaDefaults, openNewChatWithDraft, readDraft, routineTrigger, saveDraft, threadInspectorPatch } from "./use-live-workspace";
+import { hydrationIssueKey, livePersonaDefaults, openNewChatWithDraft, readDraft, routineTrigger, runFailurePatch, saveDraft, threadInspectorPatch } from "./use-live-workspace";
 
 describe("new conversation drafts", () => {
   const values = new Map<string, string>();
@@ -111,5 +111,17 @@ describe("work conversation layout", () => {
 
   it("leaves the mobile conversation full width", () => {
     expect(threadInspectorPatch(false)).toEqual({});
+  });
+});
+
+describe("failed conversation runs", () => {
+  it("surfaces the backend failure beside the composer", () => {
+    expect(runFailurePatch({ status: "failed", error: "codex exited non-zero: exit status 2" })).toEqual({
+      composerError10: "Run failed: codex exited non-zero: exit status 2",
+    });
+  });
+
+  it("clears an earlier failure after a successful run", () => {
+    expect(runFailurePatch({ status: "done", error: "" })).toEqual({ composerError10: "" });
   });
 });

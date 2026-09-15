@@ -87,7 +87,10 @@ var Adapters = map[string]Adapter{
 	"codex": {
 		Provider: "codex", Binary: "codex",
 		Args: func(prompt, model string) []string {
-			args := []string{"exec", "--json", "--full-auto", prompt}
+			// Every BotInc run already executes inside a one-run E2B sandbox.
+			// Codex 0.154 removed --full-auto; this is its supported flag for
+			// non-interactive automation in an externally isolated environment.
+			args := []string{"exec", "--json", "--dangerously-bypass-approvals-and-sandbox", prompt}
 			if model != "" && model != "auto" {
 				args = append(args, "--model", model)
 			}
