@@ -204,7 +204,9 @@ func run(ctx context.Context) error {
 		select distinct on (workspace_id) workspace_id, secret_ref
 		from model_accounts
 		where provider='openrouter' and status='connected' and secret_ref <> ''
-		order by workspace_id, created_at
+		order by workspace_id,
+			case when lower(label) like '%deepseek%' then 0 else 1 end,
+			created_at
 	)
 	update model_accounts d set secret_ref=r.secret_ref, kind='api_key', credential_kind='api_key',
 		status='connected', refresh_error='', updated_at=now()
