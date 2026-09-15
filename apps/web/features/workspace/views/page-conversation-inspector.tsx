@@ -3625,35 +3625,189 @@ export function PageConversationInspector({ v }: { v: Vals }) {
             ) : null}
             {v.conversationPane12 ? (
               <>
-                <h2>{interp(v.inspectorTitle10)}</h2>
-                <p>
-                  Private to {interp(v.memberName)}. Turn this conversation into shared work when there is something to
-                  track.
-                </p>
-                <button className="small-button primary" onClick={v.promoteChat12}>
-                  Create issue from chat
-                </button>
-                <details className="metadata12">
-                  <summary>
-                    Context{" "}
-                    <svg
-                      className="ui-icon use14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.75"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      aria-hidden="true"
-                    >
-                      <use href="/i15.svg#chevron-down" />
-                    </svg>
-                  </summary>
-                  <p>{interp(v.contextMeter12)}</p>
-                  <button className="text-button" onClick={v.compactContext12}>
-                    Compact context
-                  </button>
-                </details>
+                <div className="issue-pane13 chat-pane19">
+                  <div className="pane-eyebrow13">
+                    <span>{interp(v.inspectorId10)}</span>
+                    <span>
+                      <svg
+                        className="ui-icon use14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.75"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                      >
+                        <use href="/i15.svg#lock" />
+                      </svg>{" "}
+                      Only you
+                    </span>
+                  </div>
+                  <h2>{interp(v.inspectorTitle10)}</h2>
+                  <div className="properties13">
+                    <div>
+                      <svg
+                        className="ui-icon use14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.75"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                      >
+                        <use href="/i15.svg#circle-dot" />
+                      </svg>
+                      <span>Status</span>
+                      <strong>{interp(v.chatStatus19)}</strong>
+                    </div>
+                    <div>
+                      <svg
+                        className="ui-icon use14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.75"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                      >
+                        <use href="/i15.svg#user" />
+                      </svg>
+                      <span>Owner</span>
+                      <strong>{interp(v.memberName)}</strong>
+                    </div>
+                    <div>
+                      <svg
+                        className="ui-icon use14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.75"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                      >
+                        <use href="/i15.svg#bot" />
+                      </svg>
+                      <span>Agent</span>
+                      <strong>{interp(v.chatAgent19)}</strong>
+                    </div>
+                    <div>
+                      <svg
+                        className="ui-icon use14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.75"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                      >
+                        <use href="/i15.svg#sparkles" />
+                      </svg>
+                      <span>Model</span>
+                      <strong>{interp(v.chatModel19)}</strong>
+                    </div>
+                    <div>
+                      <svg
+                        className="ui-icon use14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.75"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                      >
+                        <use href="/i15.svg#clock" />
+                      </svg>
+                      <span>Created</span>
+                      <strong>{interp(v.chatCreated19)}</strong>
+                    </div>
+                    <div>
+                      <svg
+                        className="ui-icon use14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.75"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                      >
+                        <use href="/i15.svg#history" />
+                      </svg>
+                      <span>Updated</span>
+                      <strong>{interp(v.chatUpdated19)}</strong>
+                    </div>
+                  </div>
+                  <section className="pane-section13">
+                    <h3>About this conversation</h3>
+                    <p>{interp(v.chatAbout19)}</p>
+                  </section>
+                  <section className="pane-section13 relations13">
+                    <header>
+                      <h3>Related work</h3>
+                      <button className="icon-button" aria-label="Create issue from chat" onClick={v.promoteChat12}>
+                        <svg
+                          className="ui-icon use14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.75"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                        >
+                          <use href="/i15.svg#plus" />
+                        </svg>
+                      </button>
+                    </header>
+                    <button className="subissue-empty13" onClick={v.promoteChat12}>
+                      <svg
+                        className="ui-icon use14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.75"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                      >
+                        <use href="/i15.svg#circle-dot" />
+                      </svg>{" "}
+                      Create issue from chat
+                    </button>
+                    <p className="fine">
+                      Private to {interp(v.memberName)}. Turn this conversation into shared work when there is something to
+                      track.
+                    </p>
+                  </section>
+                  <section className="pane-section13 context-usage13">
+                    <header>
+                      <h3>Context</h3>
+                      <span>{interp(v.contextShort12)}</span>
+                    </header>
+                    <p>{interp(v.contextMeter12)}</p>
+                    <button className="text-button" onClick={v.compactContext12}>
+                      Compact context{" "}
+                      <svg
+                        className="ui-icon use14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.75"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                      >
+                        <use href="/i15.svg#arrow-right" />
+                      </svg>
+                    </button>
+                  </section>
+                </div>
               </>
             ) : null}
             {v.activityPane12 ? (

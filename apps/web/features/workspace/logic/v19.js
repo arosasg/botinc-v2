@@ -1204,6 +1204,52 @@ class Component extends window.BotincMotionWorkspace19(window.BotincFlowWorkspac
     });
   }
 
+  // The chat conversation reads exactly like the work conversation: the same
+  // log and entry rows (mark or initial, name, time, hover tools), the same
+  // history line above it, and a Details pane shaped like the issue pane.
+  chatVals19d(v) {
+    const st = this.state;
+    const chat = typeof this.currentChat === "function" ? this.currentChat() : null;
+    const me = v.memberName || st.member || "You";
+    const msgs = Array.isArray(v.messages) ? v.messages : [];
+    const clock = (i) => { const m = 41 + i * 3; return (9 + Math.floor(m / 60)) + ":" + String(m % 60).padStart(2, "0"); };
+    v.chatEntries19 = msgs.map((m, i) => {
+      const human = !m.hasAvatar;
+      const text = String(m.text || "");
+      const copy = () => { if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text); this.toast("Message copied."); };
+      const quote = () => { this.setDraft12("> " + text + "\n\n"); const c = document.querySelector("#unified-composer"); if (c && c.focus) c.focus(); };
+      const fork = () => { if (m.fork12) m.fork12(); };
+      const branch = () => { if (m.edit12) m.edit12(); };
+      const who = m.author || (human ? me : "Operator");
+      return {
+        cls: human ? "human13" : "", human, operator: !human,
+        initial: String(who)[0] || "?", who,
+        hasModel: !human && !!m.model, model: m.model || "",
+        time: m.time || m.when || clock(i), text,
+        hasAttachments11: !!m.hasAttachments11, attachments11: m.attachments11 || [],
+        quote, copy, fork14: fork, branch14: branch,
+        more14: (ev) => this.openMenu14(null, ev, [
+          { label: "Fork a new conversation from here", run: fork },
+          { label: "Edit this message as a branch", disabled: !human, run: branch },
+          { label: "Quote in a reply", run: quote },
+          { label: "Copy message", run: copy },
+        ], who),
+      };
+    });
+    const n = msgs.length;
+    v.chatHasLog19 = n > 0;
+    v.chatHistory19 = this.countLabel19(n, "message", "messages") + (chat && chat.model ? " \u00b7 " + chat.model : "");
+    v.chatReadStart19 = () => { const s = document.querySelector(".chat10-scroll"); if (s && s.scrollTo) s.scrollTo({ top: 0, behavior: "smooth" }); };
+    v.chatStatus19 = v.chatting ? "Working" : v.chatPaused ? "Paused" : v.chatQueued ? "Queued" : v.chatNeedsCredits ? "Needs credit" : "Idle";
+    const agent = (chat && chat.agent) || "operator";
+    v.chatAgent19 = agent.charAt(0).toUpperCase() + agent.slice(1);
+    v.chatModel19 = (chat && chat.model) || v.modelLabel11 || "Auto";
+    v.chatCreated19 = "Sep 14 \u00b7 " + me;
+    v.chatUpdated19 = n ? (v.chatEntries19[n - 1].time === clock(n - 1) ? "Today " + clock(n - 1) : v.chatEntries19[n - 1].time) : "\u2014";
+    const first = msgs.find((m) => !m.hasAvatar);
+    v.chatAbout19 = first ? String(first.text) : "Nothing asked yet. The first message becomes the summary.";
+  }
+
   // ------------------------------------------------------- the usage ring
   // The sidebar ring draws what is spent, not what is left: the arc grows
   // clockwise as the pooled allowance is used, over a track that stays visible
@@ -2720,6 +2766,7 @@ class Component extends window.BotincMotionWorkspace19(window.BotincFlowWorkspac
     this.usageVals19b(v);
     this.dockVals19c(v);
     this.tabVals19c(v);
+    this.chatVals19d(v);
     return v;
   }
 }

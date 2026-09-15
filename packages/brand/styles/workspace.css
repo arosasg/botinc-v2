@@ -6081,6 +6081,32 @@ button{font-family:inherit}button .ui-icon{color:inherit}
 .app-v19 .sidebar>.sidebar-bottom{animation:none!important;transform:none!important;filter:none!important;opacity:1!important}
 .app .provider-hover13,.provider-hover13{z-index:500}
 
+/* The chat conversation shares the work conversation's frame. Its scroll
+   region was still capped at 780px (v11), so the 290px context column had
+   to squeeze inside it and the messages column collapsed to ~470px. The
+   scroll region is now full width like .t9-scroll; the messages column takes
+   .t9-inner's measure and padding; the composer sits on the same axis and
+   reserves the context column when it shows; messages drop the bubble and
+   read like .t9-message — author row, time, hover tools. */
+.app-v19.app .chat10:not(.welcome-state10)>.chat10-scroll{max-width:none!important;width:100%!important;margin:0!important;padding:0!important}
+.app-v19.app .chat10 .t9-cols15>.chat10-col15{flex:1;min-width:0;max-width:790px;margin:0 auto;padding:24px 32px 32px;box-sizing:border-box}
+.app-v19.app .chat10:not(.welcome-state10)>.composer10-wrap{width:100%!important;max-width:790px!important;box-sizing:border-box;margin:0 auto!important;padding:9px 32px 4px!important}
+@media(min-width:1181px){
+  .app-v19.app:not(.dock-open15) .chat10:has(.t9-cols15>.side-col15)>.composer10-wrap{max-width:1080px!important;padding-right:322px!important}}
+@media(max-width:720px){
+  .app-v19.app .chat10 .t9-cols15>.chat10-col15{padding:20px 17px 36px}
+  .app-v19.app .chat10:not(.welcome-state10)>.composer10-wrap{padding:8px 17px 2px!important}}
+.app-v19.app .chat10 .message10{max-width:none;margin:0 0 24px;font-size:14px;line-height:1.8;animation:none}
+.app-v19.app .chat10 .message10.user-message{background:none;padding:0;border-radius:0;margin-left:0;max-width:none;border:0;box-shadow:none}
+.app-v19.app .chat10 .message10.user-message p{background:none;padding:0;border-radius:0}
+.app-v19.app .chat10 .user-message .message-author{display:flex}
+.app-v19.app .chat10 .message10 .message-author{display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:0}
+.app-v19.app .chat10 .message10 .message-author strong{font-size:12px;font-weight:400}
+.app-v19.app .chat10 .message10 .message-author small{font-size:10px;color:var(--muted)}
+.app-v19.app .chat10 .message10 p{font-size:14px;line-height:24px;margin:12px 0 0;white-space:pre-wrap}
+.app-v19.app .chat10 .message10 .message-actions11{opacity:0;transition:opacity 120ms;margin-top:6px}
+.app-v19.app .chat10 .message10:hover .message-actions11,.app-v19.app .chat10 .message10:focus-within .message-actions11{opacity:1}
+
 /* V19 — motion. Screens settle in: a skeleton beat, then rows rise in order.
    Panes slide, widths ease, overlays pop. 300ms for what a pointer caused,
    500ms for what the page decided, cubic-bezier(.22,.61,.36,1) for big moves.
@@ -6584,6 +6610,9 @@ button{font-family:inherit}button .ui-icon{color:inherit}
 .app .message-markdown a{text-decoration:underline;text-decoration-color:color-mix(in srgb,var(--blue) 34%,transparent);text-underline-offset:2px}
 .app .message-mention{display:inline-flex;align-items:center;padding:1px 6px;border-radius:5px;background:var(--wash,var(--blue-soft));color:var(--blue);font-weight:500;white-space:nowrap}
 .app .entry13.human13>.message-markdown{font-size:13px;line-height:1.65}
+/* The design's phone rule (.app-v13 .entry13>p, max-width:760px) sets 13px/1.75 on every entry,
+   human rows included; the markdown wrapper must follow it or long replies wrap one line more. */
+@media(max-width:760px){.app-v13 .entry13>.message-markdown,.app-v13 .entry13.human13>.message-markdown{font-size:13px;line-height:1.75}}
 .app .pane-section13>.message-markdown{font-size:12px;line-height:1.75;margin:12px 0 0;color:var(--muted);gap:8px}
 .app .pane-section13>.message-markdown h2,.app .pane-section13>.message-markdown h3{font-size:12px;line-height:1.5;color:var(--ink)}
 .app .pane-section13>.message-markdown ul,.app .pane-section13>.message-markdown ol{padding-left:18px;gap:4px}
@@ -6767,3 +6796,13 @@ button{font-family:inherit}button .ui-icon{color:inherit}
 @container (max-width:330px){
   .app-v19 .hacct16 .hl19 .hw-arrow19,.app-v19 .hacct16 .hl19 .hw-r16{display:none}
 }
+
+/* The chat conversation is the work conversation's log. Rows are .entry13; the
+   model sits after the name like the author row did; the Details pane is the
+   issue pane's shape. */
+.app-v19.app .chat10 .conversation-log13{margin-bottom:8px}
+.app-v19.app .chat10 .entry13>header .entry-model19{font-size:10px;color:var(--muted)}
+.app-v19.app .chat10 .entry13 .message-attachments11{margin-top:10px}
+.app-v19.app .chat10 .history-nav13{margin-bottom:22px}
+.app-v19.app .chat-pane19 .pane-eyebrow13>span:last-child{display:inline-flex;align-items:center;gap:5px}
+.app-v19.app .chat-pane19 .relations13 .fine{margin:8px 0 0;font-size:11px;color:var(--muted);line-height:1.5}

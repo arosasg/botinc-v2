@@ -6,7 +6,7 @@ import { useEffect, useRef } from "react";
 import { Client, type Account, type User, type WorkspaceClient, type WorkflowGraph } from "@botinc/api";
 import type { Vals } from "../vals";
 import { bindingWindowFields, clampConversationPaneWidth, conversationPaneBounds, formatUsageReset, normalizePublicAssets, resetDayLabel, usageRingStyleFromCapacity } from "./layout";
-import { mapAccount, mapAutopilot, mapConversation, mapIssue, mapIssueTimeline, mapMessage, mapRun, mapWorkflowSteps, type PeopleIndex } from "./map";
+import { dayLabel, mapAccount, mapAutopilot, mapConversation, mapIssue, mapIssueTimeline, mapMessage, mapRun, mapWorkflowSteps, whenLabel, type PeopleIndex } from "./map";
 import { parseWorkspaceRoute, workspacePath, type WorkspaceRoute } from "./routes";
 import { installPerformanceGuards } from "./perf";
 
@@ -507,6 +507,18 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
  bind("renderVals",()=>{
   const v=render.call(logic);const s=logic.state;
   v.workspaceName= s.workspace16||"BotInc";v.previewCard15=false;
+  /* The design's chat Details pane stamps a fixture day; a live conversation shows the day it was
+     opened, who opened it, and when it last moved. Message times already come from the rows. */
+  if(s.view==="chat"&&s.activeChat){
+   const chat=((s.chats||{})[s.member]||[]).find((row:Vals)=>row.id===s.activeChat);
+   if(chat&&chat.createdAt){
+    const rows:Vals[]=chat.messages||[];
+    const opener=rows.find((row:Vals)=>!row.hasAvatar);
+    v.chatCreated19=`${dayLabel(String(chat.createdAt))} · ${opener?.author||s.member}`;
+    const last=rows[rows.length-1];
+    v.chatUpdated19=whenLabel(String(last?.createdAt||chat.updatedAt||chat.createdAt));
+   }
+  }
   /* The welcome strip says "Connected tools": show the workspace's connected connectors, not the
      design's featured catalog. */
   v.featuredPlugins10=liveFeaturedConnectorNames(s.livePlugins||[]).map((name)=>{const brand=typeof logic.brand12==="function"?logic.brand12(name):{};return {name,brand12:brand.brand12||"",brandClass12:brand.brandClass12||"",open:()=>logic.showPlugin10(name)}});

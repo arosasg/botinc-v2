@@ -184,6 +184,35 @@ export function mapIssueTimeline(
   return rows.sort((left, right) => left.sortAt.localeCompare(right.sortAt));
 }
 
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function parseWhen(iso: string): Date | null {
+  if (!iso) return null;
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+/* The design stamps a message with "9:41": the viewer's local clock, no
+   leading zero, no meridiem. */
+export function clockLabel(iso: string): string {
+  const date = parseWhen(iso);
+  return date ? `${date.getHours()}:${String(date.getMinutes()).padStart(2, "0")}` : "";
+}
+
+/* "Sep 14": the day a conversation was opened, as the Details pane writes it. */
+export function dayLabel(iso: string): string {
+  const date = parseWhen(iso);
+  return date ? `${MONTHS[date.getMonth()]} ${date.getDate()}` : "";
+}
+
+/* "Today 9:41" or "Sep 14 · 9:41": when a conversation last moved. */
+export function whenLabel(iso: string, now: Date = new Date()): string {
+  const date = parseWhen(iso);
+  if (!date) return "";
+  const sameDay = date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate();
+  return sameDay ? `Today ${clockLabel(iso)}` : `${dayLabel(iso)} · ${clockLabel(iso)}`;
+}
+
 export function mapMessage(m: Message, me: User | null, people: PeopleIndex, attachments: Attachment[] = []) {
   const mine = m.role === "user";
   const messageAttachments = attachments.filter((attachment) => attachment.message_id === m.id).map((attachment) => ({
@@ -206,6 +235,7 @@ export function mapMessage(m: Message, me: User | null, people: PeopleIndex, att
     cls: mine ? "message user-message" : "message assistant-message",
     text: m.body,
     createdAt: m.created_at,
+    time: clockLabel(m.created_at),
     hasAttachments11: messageAttachments.length > 0,
     attachments11: messageAttachments,
   };
@@ -219,6 +249,8 @@ export function mapConversation(c: Conversation, messages: Message[], me: User |
     model: c.model === "auto" ? "Auto" : c.model,
     phase: "done",
     result: false,
+    createdAt: c.created_at,
+    updatedAt: c.updated_at,
     messages: messages.map((m) => mapMessage(m, me, people, attachments)),
   };
 }

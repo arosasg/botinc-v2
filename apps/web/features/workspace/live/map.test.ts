@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Account, Attachment, Autopilot, Conversation, Issue, IssueComment, Message, Run, User, WorkflowVersion } from "@botinc/api";
-import { mapAccount, mapAutopilot, mapConversation, mapIssue, mapIssueTimeline, mapWorkflowSteps, type PeopleIndex } from "./map";
+import { clockLabel, dayLabel, mapAccount, mapAutopilot, mapConversation, mapIssue, mapIssueTimeline, mapWorkflowSteps, whenLabel, type PeopleIndex } from "./map";
 
 /* The workspace logic does not treat status as free text: it groups the
    sidebar by comparing against a fixed set of sentences, and anything outside
@@ -198,6 +198,15 @@ describe("mapConversation", () => {
     expect(rows[1]!.author).toBe("Operator");
   });
 
+  it("stamps each row with the design's clock and carries the conversation's dates", () => {
+    const at = new Date(2026, 8, 14, 9, 41).toISOString();
+    const mapped = mapConversation(conversation({ created_at: at, updated_at: at }), [message({ created_at: at })], me, people);
+    expect(mapped.messages[0]!.time).toBe("9:41");
+    expect(mapped.createdAt).toBe(at);
+    expect(mapped.updatedAt).toBe(at);
+    expect(mapConversation(conversation(), [message()], me, people).messages[0]!.time).toBe("");
+  });
+
   it("renders only the attachments linked to each message", () => {
     const attachments: Attachment[] = [
       {
@@ -219,6 +228,26 @@ describe("mapConversation", () => {
         meta: "2 KB · Image",
       },
     ]);
+  });
+});
+
+describe("conversation time labels", () => {
+  const morning = new Date(2026, 8, 14, 9, 5).toISOString();
+
+  it("writes the clock without a leading zero and the day as the pane does", () => {
+    expect(clockLabel(morning)).toBe("9:05");
+    expect(dayLabel(morning)).toBe("Sep 14");
+  });
+
+  it("says Today for the current day and dates everything else", () => {
+    expect(whenLabel(morning, new Date(2026, 8, 14, 18, 0))).toBe("Today 9:05");
+    expect(whenLabel(morning, new Date(2026, 8, 15, 8, 0))).toBe("Sep 14 · 9:05");
+  });
+
+  it("leaves a missing or invalid stamp blank instead of inventing one", () => {
+    expect(clockLabel("")).toBe("");
+    expect(dayLabel("not a date")).toBe("");
+    expect(whenLabel("")).toBe("");
   });
 });
 

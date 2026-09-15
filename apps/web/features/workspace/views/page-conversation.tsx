@@ -65,112 +65,166 @@ export function PageConversation({ v }: { v: Vals }) {
               <div className="chat10-scroll">
                 <div className="t9-cols15">
                   <div className="chat10-col15">
-                    {(v.messages ?? []).map((m: any, i: number) => (
-                      <Fragment key={i}>
-                        <article className={`message10 ${m.cls}`}>
-                          <div className="message-author">
-                            {m.hasAvatar ? (
+                    {v.chatHasLog19 ? (
+                      <>
+                        <div className="history-nav13">
+                          <span>{interp(v.chatHistory19)}</span>
+                          <button className="text-button" onClick={v.chatReadStart19}>
+                            Read from start{" "}
+                            <svg
+                              className="ui-icon use14"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.75"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              aria-hidden="true"
+                            >
+                              <use href="/i15.svg#arrow-up" />
+                            </svg>
+                          </button>
+                        </div>
+                      </>
+                    ) : null}
+                    <div className="conversation-log13" aria-label="Conversation history">
+                      {(v.chatEntries19 ?? []).map((m: any, i: number) => (
+                        <Fragment key={i}>
+                          <article className={`entry13 ${m.cls}`}>
+                            <header>
+                              {m.operator ? (
+                                <>
+                                  <img src="/assets/logo/botinc-mark.svg" alt="" />
+                                </>
+                              ) : null}
+                              {m.human ? (
+                                <>
+                                  <span className="person13">{interp(m.initial)}</span>
+                                </>
+                              ) : null}
+                              <strong>{interp(m.who)}</strong>
+                              {m.hasModel ? (
+                                <>
+                                  <small className="entry-model19">{interp(m.model)}</small>
+                                </>
+                              ) : null}
+                              <time>{interp(m.time)}</time>
+                            </header>
+                            <MessageText text={String(m.text ?? "")} />
+                            {m.hasAttachments11 ? (
                               <>
-                                <img src={m.avatar} alt="" />
+                                <div className="message-attachments11">
+                                  {(m.attachments11 ?? []).map((a: any, i: number) => (
+                                    <Fragment key={i}>
+                                      <button onClick={a.open}>
+                                        {a.image ? (
+                                          <>
+                                            <img src={a.url} alt={a.name} />
+                                          </>
+                                        ) : null}
+                                        {!a.image ? (
+                                          <>
+                                            <svg
+                                              className="ui-icon use14"
+                                              viewBox="0 0 24 24"
+                                              fill="none"
+                                              stroke="currentColor"
+                                              strokeWidth="1.75"
+                                              strokeLinecap="round"
+                                              strokeLinejoin="round"
+                                              aria-hidden="true"
+                                            >
+                                              <use href="/i15.svg#file-text" />
+                                            </svg>
+                                          </>
+                                        ) : null}
+                                        <span>{interp(a.name)}</span>
+                                      </button>
+                                    </Fragment>
+                                  ))}
+                                </div>
                               </>
                             ) : null}
-                            <strong>{interp(m.author)}</strong>
-                            <small>{interp(m.model)}</small>
-                          </div>
-                          <MessageText text={String(m.text ?? "")} />
-                          {m.hasAttachments11 ? (
-                            <>
-                              <div className="message-attachments11">
-                                {(m.attachments11 ?? []).map((a: any, i: number) => (
-                                  <Fragment key={i}>
-                                    <button onClick={a.open}>
-                                      {a.image ? (
-                                        <>
-                                          <img src={a.url} alt={a.name} />
-                                        </>
-                                      ) : null}
-                                      {!a.image ? (
-                                        <>
-                                          <svg
-                                            className="ui-icon use14"
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            strokeWidth="1.75"
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                            aria-hidden="true"
-                                          >
-                                            <use href="/i15.svg#file-text" />
-                                          </svg>
-                                        </>
-                                      ) : null}
-                                      <span>{interp(a.name)}</span>
-                                    </button>
-                                  </Fragment>
-                                ))}
-                              </div>
-                            </>
-                          ) : null}
-                          {m.canEdit12 ? (
-                            <>
-                              <div className="message-actions11">
-                                <button className="text-button" onClick={m.edit12}>
-                                  Edit prompt
-                                </button>
-                                <button className="text-button" onClick={m.fork12}>
-                                  Fork from here
-                                </button>
-                              </div>
-                            </>
-                          ) : null}
-                          {m.isOperator11 ? (
-                            <>
-                              <div className="message-actions11">
-                                <button
-                                  className="icon-button"
-                                  aria-label="Copy response"
-                                  title="Copy response"
-                                  onClick={m.copy11}
+                            <footer className="entry-actions13">
+                              <button aria-label="Quote message" onClick={m.quote}>
+                                <svg
+                                  className="ui-icon use14"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="1.75"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  aria-hidden="true"
                                 >
-                                  <svg
-                                    className="ui-icon use14"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="1.75"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    aria-hidden="true"
-                                  >
-                                    <use href="/i15.svg#copy" />
-                                  </svg>
-                                </button>
-                                <button
-                                  className="icon-button"
-                                  aria-label="Use response as draft"
-                                  title="Use as draft"
-                                  onClick={m.quote11}
+                                  <use href="/i15.svg#quote" />
+                                </svg>
+                              </button>
+                              <button aria-label="Copy message" onClick={m.copy}>
+                                <svg
+                                  className="ui-icon use14"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="1.75"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  aria-hidden="true"
                                 >
-                                  <svg
-                                    className="ui-icon use14"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="1.75"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    aria-hidden="true"
-                                  >
-                                    <use href="/i15.svg#corner-up-left" />
-                                  </svg>
-                                </button>
-                              </div>
-                            </>
-                          ) : null}
-                        </article>
-                      </Fragment>
-                    ))}
+                                  <use href="/i15.svg#copy" />
+                                </svg>
+                              </button>
+                              <button aria-label="Fork a new conversation from this message" onClick={m.fork14}>
+                                <svg
+                                  className="ui-icon use14"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="1.75"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  aria-hidden="true"
+                                >
+                                  <use href="/i15.svg#git-fork" />
+                                </svg>
+                              </button>
+                              {m.human ? (
+                                <>
+                                  <button aria-label="Edit this message as a branch" onClick={m.branch14}>
+                                    <svg
+                                      className="ui-icon use14"
+                                      viewBox="0 0 24 24"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeWidth="1.75"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      aria-hidden="true"
+                                    >
+                                      <use href="/i15.svg#square-pen" />
+                                    </svg>
+                                  </button>
+                                </>
+                              ) : null}
+                              <button aria-label="More actions for this message" onClick={m.more14}>
+                                <svg
+                                  className="ui-icon use14"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="1.75"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  aria-hidden="true"
+                                >
+                                  <use href="/i15.svg#ellipsis" />
+                                </svg>
+                              </button>
+                            </footer>
+                          </article>
+                        </Fragment>
+                      ))}
+                    </div>
                     {v.chatting ? (
                       <>
                         <div className="activity-inline10">
