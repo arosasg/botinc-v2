@@ -14,6 +14,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
 	"time"
 )
@@ -59,12 +61,94 @@ func Clone(ctx context.Context, root, fullName, defaultBranch, token, branch str
 	if _, err := c.git(ctx, dir, "config", "user.email", c.authorE); err != nil {
 		return nil, err
 	}
+	if err := c.configureCredentialHelper(ctx); err != nil {
+		return nil, err
+	}
 	if branch != "" {
 		if _, err := c.git(ctx, dir, "checkout", "-b", branch); err != nil {
 			return nil, err
 		}
 	}
 	return c, nil
+}
+
+func (c *Checkout) configureCredentialHelper(ctx context.Context) error {
+	if c.credentialFile == "" {
+		return nil
+	}
+	_, err := c.git(ctx, c.Dir, "config", "credential.helper", "store --file="+c.credentialFile)
+	return err
+}
+
+var environmentKey = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+// WriteEnvironment materializes repository-scoped values without making them
+// stageable. A tracked .env is refused because overwriting it could put a
+// credential into the next commit even when the repository ignores new files.
+func (c *Checkout) WriteEnvironment(ctx context.Context, values map[string]string) (string, error) {
+	if len(values) == 0 {
+		return "", nil
+	}
+	tracked, err := c.git(ctx, c.Dir, "ls-files", "--", ".env")
+	if err != nil {
+		return "", err
+	}
+	if tracked != "" {
+		return "", errors.New("refusing to overwrite tracked .env with repository secrets")
+	}
+	keys := make([]string, 0, len(values))
+	for key, value := range values {
+		if !environmentKey.MatchString(key) {
+			return "", fmt.Errorf("invalid environment key %q", key)
+		}
+		if strings.IndexByte(value, 0) >= 0 {
+			return "", fmt.Errorf("environment value for %s contains a NUL byte", key)
+		}
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	var body strings.Builder
+	for _, key := range keys {
+		fmt.Fprintf(&body, "%s=\"%s\"\n", key, escapeDotenv(values[key]))
+	}
+	exclude := filepath.Join(c.Dir, ".git", "info", "exclude")
+	existing, err := os.ReadFile(exclude)
+	if err != nil && !os.IsNotExist(err) {
+		return "", err
+	}
+	if !containsLine(string(existing), ".env") {
+		if len(existing) > 0 && existing[len(existing)-1] != '\n' {
+			existing = append(existing, '\n')
+		}
+		existing = append(existing, ".env\n"...)
+		if err := os.WriteFile(exclude, existing, 0o600); err != nil {
+			return "", err
+		}
+	}
+	path := filepath.Join(c.Dir, ".env")
+	temporary := path + ".botinc-partial"
+	if err := os.WriteFile(temporary, []byte(body.String()), 0o600); err != nil {
+		return "", err
+	}
+	if err := os.Rename(temporary, path); err != nil {
+		_ = os.Remove(temporary)
+		return "", err
+	}
+	return path, nil
+}
+
+func escapeDotenv(value string) string {
+	replacer := strings.NewReplacer(`\`, `\\`, `"`, `\"`, "\n", `\n`, "\r", `\r`)
+	return replacer.Replace(value)
+}
+
+func containsLine(body, want string) bool {
+	for _, line := range strings.Split(body, "\n") {
+		if strings.TrimSpace(line) == want {
+			return true
+		}
+	}
+	return false
 }
 
 // writeCredentials stores the token in a 0600 file and points git at it. The

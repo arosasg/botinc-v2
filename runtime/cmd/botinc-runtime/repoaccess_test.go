@@ -73,8 +73,9 @@ func TestChatPromptNamesConnectedRepositoriesAndHowToReachThem(t *testing.T) {
 		"- didit-protocol/fe-application-console (default branch main)",
 		"Git is authenticated for github.com",
 		"GITHUB_TOKEN and GH_TOKEN",
-		"git clone https://github.com/OWNER/NAME.git",
-		"Never print the token.",
+		"botinc-runtime checkout arosasg/botinc-v2",
+		"encrypted environment as an ignored .env file",
+		"Never print credentials or .env values.",
 		"User: Review the open pull requests on all my repositories.",
 	} {
 		if !strings.Contains(prompt, want) {

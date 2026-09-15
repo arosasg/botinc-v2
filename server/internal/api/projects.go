@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 	"regexp"
 	"strings"
@@ -66,18 +67,20 @@ func (s *Server) createProject(w http.ResponseWriter, r *http.Request) {
 }
 
 type Repository struct {
-	ID             uuid.UUID  `json:"id"`
-	ProjectID      *uuid.UUID `json:"project_id"`
-	Provider       string     `json:"provider"`
-	FullName       string     `json:"full_name"`
-	DefaultBranch  string     `json:"default_branch"`
-	InstallationID *int64     `json:"installation_id"`
-	CreatedAt      time.Time  `json:"created_at"`
+	ID                      uuid.UUID  `json:"id"`
+	ProjectID               *uuid.UUID `json:"project_id"`
+	Provider                string     `json:"provider"`
+	FullName                string     `json:"full_name"`
+	DefaultBranch           string     `json:"default_branch"`
+	InstallationID          *int64     `json:"installation_id"`
+	EnvironmentVariableKeys []string   `json:"environment_variable_keys"`
+	EnvironmentSecretKeys   []string   `json:"environment_secret_keys"`
+	CreatedAt               time.Time  `json:"created_at"`
 }
 
 func (s *Server) listRepositories(w http.ResponseWriter, r *http.Request) {
 	sc := scopeOf(r.Context())
-	rows, err := s.pool.Query(r.Context(), `select id, project_id, provider, full_name, default_branch, installation_id, created_at from repositories where workspace_id=$1 order by full_name`, sc.WorkspaceID)
+	rows, err := s.pool.Query(r.Context(), `select id, project_id, provider, full_name, default_branch, installation_id, setup, created_at from repositories where workspace_id=$1 order by full_name`, sc.WorkspaceID)
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -86,9 +89,26 @@ func (s *Server) listRepositories(w http.ResponseWriter, r *http.Request) {
 	out := []Repository{}
 	for rows.Next() {
 		var rp Repository
-		if err := rows.Scan(&rp.ID, &rp.ProjectID, &rp.Provider, &rp.FullName, &rp.DefaultBranch, &rp.InstallationID, &rp.CreatedAt); err != nil {
+		var rawSetup []byte
+		if err := rows.Scan(&rp.ID, &rp.ProjectID, &rp.Provider, &rp.FullName, &rp.DefaultBranch, &rp.InstallationID, &rawSetup, &rp.CreatedAt); err != nil {
 			s.fail(w, err)
 			return
+		}
+		var setup struct {
+			VariableKeys []string `json:"environment_variable_keys"`
+			SecretKeys   []string `json:"environment_secret_keys"`
+		}
+		if err := json.Unmarshal(rawSetup, &setup); err != nil {
+			s.fail(w, err)
+			return
+		}
+		rp.EnvironmentVariableKeys = setup.VariableKeys
+		rp.EnvironmentSecretKeys = setup.SecretKeys
+		if rp.EnvironmentVariableKeys == nil {
+			rp.EnvironmentVariableKeys = []string{}
+		}
+		if rp.EnvironmentSecretKeys == nil {
+			rp.EnvironmentSecretKeys = []string{}
 		}
 		out = append(out, rp)
 	}

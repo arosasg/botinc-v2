@@ -28,6 +28,12 @@ GitHub repository URLs from the saved workspace are normalized and imported
 idempotently. A repository becomes runnable only when the migrated workspace's
 GitHub connection still authorizes that repository.
 
+After the workspace import, `migrate-accounts` transfers model accounts, workspace MCP connectors, and every repository-scoped environment group.
+Repository variables are decrypted only inside the migration process, immediately re-encrypted with the v2 workspace key, and stored as a secret reference on the matching repository.
+An exact repository owner/name match is preferred; a unique repository-name match preserves environments whose organization changed during migration.
+The command is idempotent and replaces the prior encrypted repository payload instead of retaining stale secret rows.
+Set `REPOSITORY_ENVIRONMENTS_ONLY=true` when refreshing repository environments after the account and connector migration has already completed.
+
 The importer creates a separate `v1-<workspace ID prefix>` workspace. Identical
 snapshot replay is a no-op; a changed snapshot is refused so it cannot overwrite
 new v2 edits. A separate delta migration is required before eventual cutover.

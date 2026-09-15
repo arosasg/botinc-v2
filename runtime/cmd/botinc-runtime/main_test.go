@@ -77,7 +77,8 @@ func TestMaterializeAttachmentsAndExposeThemInChatPrompt(t *testing.T) {
 	defer server.Close()
 
 	spec := protocol.Spec{
-		Messages: []protocol.Message{{ID: "message-1", Role: "user", Body: "Read the image."}},
+		Messages:     []protocol.Message{{ID: "message-1", Role: "user", Body: "Read the image."}},
+		Repositories: []protocol.Repository{{FullName: "acme/api", DefaultBranch: "main", Token: "github-secret"}, {FullName: "acme/web", DefaultBranch: "development", Token: "github-secret"}},
 		Attachments: []protocol.Attachment{{
 			ID: "attachment-1", MessageID: "message-1", Filename: "screen.png",
 			ContentType: "image/png", SizeBytes: int64(len(contents)),
@@ -100,6 +101,11 @@ func TestMaterializeAttachmentsAndExposeThemInChatPrompt(t *testing.T) {
 	if !strings.Contains(prompt, "Do not wait indefinitely for external CI") {
 		t.Fatalf("chat prompt does not tell the agent to return before asynchronous work exhausts the run: %s", prompt)
 	}
+	for _, want := range []string{"acme/api (default branch main)", "acme/web (default branch development)", "botinc-runtime checkout acme/api"} {
+		if !strings.Contains(prompt, want) {
+			t.Fatalf("chat prompt does not expose repository checkout contract %q: %s", want, prompt)
+		}
+	}
 }
 
 func TestVisibleTimeoutAnswerPreservesTheLatestVerifiedUpdate(t *testing.T) {
@@ -112,6 +118,24 @@ func TestVisibleTimeoutAnswerPreservesTheLatestVerifiedUpdate(t *testing.T) {
 func TestVisibleTimeoutAnswerIgnoresOrdinaryFailures(t *testing.T) {
 	if got := visibleTimeoutAnswer("partial", errors.New("provider rejected the request")); got != "" {
 		t.Fatalf("ordinary failure produced a timeout answer: %q", got)
+	}
+}
+
+func TestCheckoutRejectsRepositoryOutsideRunAllowlist(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/runtime/runs/run-checkout/spec" || r.Header.Get("Authorization") != "Bearer brt_test" {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write([]byte(`{"repositories":[{"full_name":"acme/allowed","default_branch":"main","token":"github-secret"}]}`))
+	}))
+	defer server.Close()
+	t.Setenv("BOTINC_API_URL", server.URL)
+	t.Setenv("BOTINC_RUN_ID", "run-checkout")
+	t.Setenv("BOTINC_RUN_TOKEN", "brt_test")
+	t.Setenv("BOTINC_WORKDIR", t.TempDir())
+	if err := runCheckout("acme/not-allowed"); err == nil || !strings.Contains(err.Error(), "not connected to this workspace") {
+		t.Fatalf("outside-allowlist checkout error = %v", err)
 	}
 }
 

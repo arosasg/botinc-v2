@@ -166,6 +166,55 @@ func TestTokenStaysOutOfTheRepositoryConfig(t *testing.T) {
 	}
 }
 
+func TestRepositoryEnvironmentIsPrivateIgnoredAndExact(t *testing.T) {
+	c := cloneLocal(t, originRepo(t), "botinc/env")
+	path, err := c.WriteEnvironment(context.Background(), map[string]string{
+		"PLAIN":  "value with spaces",
+		"SECRET": "line one\nline \"two\"\\end",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("repository .env must be 0600, got %v", info.Mode().Perm())
+	}
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "PLAIN=\"value with spaces\"\nSECRET=\"line one\\nline \\\"two\\\"\\\\end\"\n"
+	if string(body) != want {
+		t.Fatalf("repository .env = %q, want %q", body, want)
+	}
+	dirty, err := c.Dirty(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dirty {
+		t.Fatal("materialized repository .env must not be stageable")
+	}
+}
+
+func TestRepositoryEnvironmentRefusesTrackedDotenv(t *testing.T) {
+	c := cloneLocal(t, originRepo(t), "botinc/env-tracked")
+	if err := os.WriteFile(filepath.Join(c.Dir, ".env"), []byte("SAFE=tracked\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitInit(t, c.Dir, "add", ".env", "-f")
+	gitInit(t, c.Dir, "commit", "-m", "track dotenv")
+	if _, err := c.WriteEnvironment(context.Background(), map[string]string{"SECRET": "never-write"}); err == nil {
+		t.Fatal("tracked .env must be refused")
+	}
+	body, err := os.ReadFile(filepath.Join(c.Dir, ".env"))
+	if err != nil || string(body) != "SAFE=tracked\n" {
+		t.Fatalf("tracked .env changed: %q, %v", body, err)
+	}
+}
+
 func TestOpenPullRequestNeedsAToken(t *testing.T) {
 	c := &Checkout{FullName: "a/b", Branch: "x", DefaultBranch: "main"}
 	if _, err := c.OpenPullRequest(context.Background(), "t", "b"); err == nil {

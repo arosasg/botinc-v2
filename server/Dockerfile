@@ -7,6 +7,7 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/botinc-server ./cmd/server
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/migrate-v1 ./cmd/migrate-v1
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/migrate-accounts ./cmd/migrate-accounts
 
 FROM public.ecr.aws/docker/library/node:22-alpine
 WORKDIR /opt/botinc
@@ -15,6 +16,7 @@ RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
 COPY scripts/e2b-launch.mjs ./e2b-launch.mjs
 COPY --from=build /out/botinc-server /botinc-server
 COPY --from=build /out/migrate-v1 /migrate-v1
+COPY --from=build /out/migrate-accounts /migrate-accounts
 ENV BOTINC_E2B_LAUNCHER=/opt/botinc/e2b-launch.mjs
 ENV BOTINC_ATTACHMENT_DIR=/var/lib/botinc/attachments
 EXPOSE 8080

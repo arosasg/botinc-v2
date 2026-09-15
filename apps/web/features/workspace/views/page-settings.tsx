@@ -1579,7 +1579,7 @@ export function PageSettings({ v }: { v: Vals }) {
                         </>
                       ) : null}
                       {v.repoConnected14 && !v.repoConfigAvailable14 ? (
-                        <p className="fine">Repository access and the default branch are live. Sandbox startup settings are not stored by this deployment.</p>
+                        <p className="fine">{interp(v.repoConfigNote14)}</p>
                       ) : null}
                       {!v.repoConnected14 ? (
                         <>
