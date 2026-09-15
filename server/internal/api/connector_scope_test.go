@@ -11,8 +11,6 @@ import (
 func TestSelectedConnectorsFollowChatAndRoutineRuns(t *testing.T) {
 	h := newHarness(t)
 	h.signIn(uniqueEmail(t))
-	serveTestGitHub(t, h)
-
 	var connected struct {
 		Plugin Plugin `json:"plugin"`
 	}
@@ -20,7 +18,9 @@ func TestSelectedConnectorsFollowChatAndRoutineRuns(t *testing.T) {
 		"kind":   "mcp:github",
 		"secret": `{"command":"github-mcp-server","env":{"GITHUB_PERSONAL_ACCESS_TOKEN":"authorized-test-token"}}`,
 	}, 201), &connected)
-	h.do("POST", h.w("/repositories"), map[string]any{"full_name": "arosasg/botinc-v2"}, 201)
+	if _, err := testPool.Exec(t.Context(), `insert into repositories (workspace_id,full_name,default_branch) values ($1,'arosasg/botinc-v2','main')`, mustWorkspaceID(t, h)); err != nil {
+		t.Fatal(err)
+	}
 
 	var routine struct {
 		Autopilot Autopilot `json:"autopilot"`
@@ -55,12 +55,12 @@ func TestSelectedConnectorsFollowChatAndRoutineRuns(t *testing.T) {
 	var spec struct {
 		Repositories []struct {
 			FullName string `json:"full_name"`
-			Token    string `json:"token"`
+			Token    string `json:"token,omitempty"`
 		} `json:"repositories"`
 	}
 	h.decode(specRec, &spec)
-	if len(spec.Repositories) != 1 || spec.Repositories[0].FullName != "arosasg/botinc-v2" || spec.Repositories[0].Token != "authorized-test-token" {
-		t.Fatalf("routine spec did not receive its verified repository token: %+v", spec.Repositories)
+	if len(spec.Repositories) != 1 || spec.Repositories[0].FullName != "arosasg/botinc-v2" || spec.Repositories[0].Token != "" {
+		t.Fatalf("routine spec must not receive an unrelated repository checkout credential: %+v", spec.Repositories)
 	}
 	if _, err := testPool.Exec(t.Context(), `update runs set status='done',finished_at=now() where id=$1`, fired.Run.ID); err != nil {
 		t.Fatal(err)

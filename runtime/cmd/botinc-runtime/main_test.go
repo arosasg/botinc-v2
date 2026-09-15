@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/arosasg/botinc-v2/runtime/internal/protocol"
+	"github.com/arosasg/botinc-v2/runtime/internal/workflow"
 )
 
 func TestRunReportsSpecFailureAfterClaim(t *testing.T) {
@@ -111,5 +112,35 @@ func TestVisibleTimeoutAnswerPreservesTheLatestVerifiedUpdate(t *testing.T) {
 func TestVisibleTimeoutAnswerIgnoresOrdinaryFailures(t *testing.T) {
 	if got := visibleTimeoutAnswer("partial", errors.New("provider rejected the request")); got != "" {
 		t.Fatalf("ordinary failure produced a timeout answer: %q", got)
+	}
+}
+
+func TestAutopilotPromptUsesConnectorsWithoutAssumingACheckout(t *testing.T) {
+	spec := protocol.Spec{Run: protocol.Run{Prompt: "Summarize new support mail."}}
+	prompt := autopilotPrompt(spec, workflow.Node{Key: "summarize", Kind: "task", Prompt: "Use Gmail."}, "Found three messages.", nil)
+	for _, want := range []string{"explicitly connected tools", "Summarize new support mail.", "Use Gmail.", "Found three messages."} {
+		if !strings.Contains(prompt, want) {
+			t.Fatalf("autopilot prompt missing %q: %s", want, prompt)
+		}
+	}
+	if strings.Contains(prompt, "Work in this checkout") {
+		t.Fatalf("autopilot prompt incorrectly requires a repository checkout: %s", prompt)
+	}
+}
+
+func TestRemainingBudgetSupportsUnmeteredAndBoundedRoutines(t *testing.T) {
+	if got := remainingBudget(0, 0); got != 0 {
+		t.Fatalf("unmetered budget = %d, want 0", got)
+	}
+	if got := remainingBudget(200, 63); got != 137 {
+		t.Fatalf("remaining budget = %d, want 137", got)
+	}
+}
+
+func TestAutopilotDecisionPromptNamesTheAllowedBranches(t *testing.T) {
+	graph := workflow.Graph{Edges: [][]string{{"decision", "yes", "ready"}, {"decision", "no", "blocked"}}}
+	prompt := autopilotPrompt(protocol.Spec{}, workflow.Node{Key: "decision", Kind: "condition"}, "", workflowChoices(graph, "decision"))
+	if !strings.Contains(prompt, "Respond with exactly one of: ready, blocked") {
+		t.Fatalf("decision prompt does not constrain the branch: %s", prompt)
 	}
 }

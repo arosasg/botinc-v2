@@ -362,10 +362,10 @@ func (s *Server) runtimeSpec(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		rrows.Close()
-		// Every non-chat run executes through the repository workflow. Imported
-		// routines have no issue ID, but they still need the same verified,
-		// workspace-scoped checkout credential as issue work.
-		if rn.Purpose != "chat" && len(repos) > 0 {
+		// Only repository work receives checkout credentials. Routines use their
+		// explicitly selected MCP connectors and must not be coupled to whichever
+		// repository happens to sort first in the workspace.
+		if rn.Purpose != "chat" && rn.Purpose != "autopilot" && len(repos) > 0 {
 			token, err := s.githubToken(ctx, rn.WorkspaceID)
 			if err != nil {
 				httpx.Error(w, 400, err.Error())
