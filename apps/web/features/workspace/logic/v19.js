@@ -16,7 +16,7 @@ class Component extends window.BotincMotionWorkspace19(window.BotincFlowWorkspac
     const providers = super.providerCatalog();
     if (providers.some((provider) => provider.id === "deepseek")) return providers;
     return providers.concat([{ id: "deepseek", name: "DeepSeek Harness", kind: "subscription", icon: "brain",
-      methods: ["computer", "apikey"], models: ["DeepSeek V3", "DeepSeek R1"], routable: true }]);
+      methods: ["computer", "apikey"], models: ["DeepSeek V4.1 Flash", "DeepSeek V3", "DeepSeek R1"], routable: true }]);
   }
 
   brand12(name) {

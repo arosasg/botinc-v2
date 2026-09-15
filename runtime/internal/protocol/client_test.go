@@ -102,8 +102,8 @@ func TestEventSequenceIncrements(t *testing.T) {
 func TestSpecDecodesTheWholeRun(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, `{
-			"run":{"id":"r1","purpose":"build","model":"auto","prompt":"Fix it","task_limit_cents":200},
-			"steps":[{"key":"plan","name":"Plan","kind":"task"},{"key":"approval","name":"Your approval","kind":"approval"}],
+			"run":{"id":"r1","purpose":"build","model":"auto","effort":"high","prompt":"Fix it","task_limit_cents":200},
+			"steps":[{"key":"plan","name":"Plan","kind":"task","effort":"medium"},{"key":"approval","name":"Your approval","kind":"approval"}],
 			"issue":{"identifier":"BOT-7","title":"Broken","description":"details"},
 			"repositories":[{"full_name":"a/b","default_branch":"main"}],
 			"credential":{"provider":"claude","kind":"subscription","secret":"s"}
@@ -120,6 +120,9 @@ func TestSpecDecodesTheWholeRun(t *testing.T) {
 	}
 	if len(s.Steps) != 2 || s.Steps[1].Kind != "approval" {
 		t.Fatalf("steps did not decode: %+v", s.Steps)
+	}
+	if s.Run.Effort != "high" || s.Steps[0].Effort != "medium" {
+		t.Fatalf("reasoning effort did not reach the runtime spec: run=%q step=%q", s.Run.Effort, s.Steps[0].Effort)
 	}
 	if s.Credential == nil || s.Credential.Secret != "s" {
 		t.Fatal("credential did not decode")
