@@ -50,6 +50,14 @@ describe("Client", () => {
     expect(calls[0]!.url).toContain("assignee=me");
   });
 
+  it("loads one bounded issue page for a fast first paint", async () => {
+    const { fetchImpl, calls } = stub(() => ({ body: { issues: [], has_more: true, next_offset: 80 } }));
+    const api = new Client({ baseURL: "https://api.test", fetch: fetchImpl });
+    await api.workspace("acme").issuePage({ limit: 80 });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.url).toBe("https://api.test/api/w/acme/issues?limit=80");
+  });
+
   it("surfaces the server's own error text and code", async () => {
     const { fetchImpl } = stub(() => ({ status: 409, body: { error: "a run is already working on this issue", code: "already_running" } }));
     const api = new Client({ baseURL: "https://api.test", fetch: fetchImpl });

@@ -31,6 +31,14 @@ export type ClientOptions = {
   fetch?: typeof globalThis.fetch;
 };
 
+export interface IssueQuery {
+  status?: string;
+  assignee?: "me";
+  project?: string;
+  limit?: number;
+  offset?: number;
+}
+
 export function webSocketURL(baseURL: string, path: string, origin?: string): string {
   const fallbackOrigin = origin ?? (typeof window === "undefined" ? "http://localhost" : window.location.origin);
   const url = new URL(baseURL.replace(/\/+$/, "") + path, fallbackOrigin);
@@ -160,19 +168,24 @@ export class WorkspaceClient {
   }
 
   // --- issues ---
-  async issues(params?: { status?: string; assignee?: "me"; project?: string }, signal?: AbortSignal) {
+  issuePage(params: IssueQuery = {}, signal?: AbortSignal) {
     const q = new URLSearchParams();
     if (params?.status) q.set("status", params.status);
     if (params?.assignee) q.set("assignee", params.assignee);
     if (params?.project) q.set("project", params.project);
+    if (params.limit) q.set("limit", String(params.limit));
+    if (params.offset) q.set("offset", String(params.offset));
+    const qs=q.toString();
+    return this.get<{issues:Issue[];has_more?:boolean;next_offset?:number}>(`/issues${qs?"?"+qs:""}`,signal);
+  }
+  async issues(params?: Omit<IssueQuery, "limit" | "offset">, signal?: AbortSignal) {
     const issues: Issue[]=[];const seen=new Set<string>();let offset=0;
     for(;;){
-      const qs=q.toString();
-      const page=await this.get<{issues:Issue[];has_more?:boolean;next_offset?:number}>(`/issues${qs?"?"+qs:""}`,signal);
+      const page=await this.issuePage({...params,offset},signal);
       for(const issue of page.issues){if(!seen.has(issue.id)){seen.add(issue.id);issues.push(issue)}}
       if(!page.has_more)return {issues};
       if(!page.issues.length||!Number.isInteger(page.next_offset)||page.next_offset!<=offset)throw new Error("Invalid issue pagination response");
-      offset=page.next_offset!;q.set("offset",String(offset));
+      offset=page.next_offset!;
     }
   }
   issue(id: string, signal?: AbortSignal) {

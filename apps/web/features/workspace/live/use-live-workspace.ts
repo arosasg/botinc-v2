@@ -263,14 +263,14 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
    // background and must not hold a large migrated issue list behind billing,
    // security, repository, memory and profile requests.
    if(initialRoute.view==="work"){
-    bootIssues=await ws.issues(undefined,abort.signal);if(!alive)return;
-    logic.setState({...livePersonaDefaults(member),liveWorkspaces:workspaces,workspace16:first.name,workspaceName:first.name,member,signed:true,view:"work",issues:bootIssues.issues.map(issue=>mapIssue(issue,people))});
+    const firstIssuePage=await ws.issuePage({limit:80},abort.signal);if(!alive)return;
+    logic.setState({...livePersonaDefaults(member),liveWorkspaces:workspaces,workspace16:first.name,workspaceName:first.name,member,signed:true,view:"work",issues:firstIssuePage.issues.map(issue=>mapIssue(issue,people))});
     report("live");
    }
    if(initialRoute.view==="issue"&&uuid(initialRoute.issue)){
-    [bootIssues,bootIssueDetail]=await Promise.all([ws.issues(undefined,abort.signal),ws.issue(initialRoute.issue,abort.signal)]);if(!alive)return;
+    bootIssueDetail=await ws.issue(initialRoute.issue,abort.signal);if(!alive)return;
     const mapped=mapIssue(bootIssueDetail.issue,people);
-    logic.setState({...livePersonaDefaults(member),liveWorkspaces:workspaces,workspace16:first.name,workspaceName:first.name,member,signed:true,view:"issue",activeIssue:bootIssueDetail.issue.id,issues:bootIssues.issues.map(issue=>issue.id===bootIssueDetail?.issue.id?mapped:mapIssue(issue,people)),liveIssueDetail:bootIssueDetail,inspector10:false,mobileInspector10:false});
+    logic.setState({...livePersonaDefaults(member),liveWorkspaces:workspaces,workspace16:first.name,workspaceName:first.name,member,signed:true,view:"issue",activeIssue:bootIssueDetail.issue.id,issues:[mapped],liveIssueDetail:bootIssueDetail,inspector10:false,mobileInspector10:false});
     report("live");
    }
    if(initialRoute.view==="schedule9"){

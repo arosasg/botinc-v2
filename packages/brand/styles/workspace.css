@@ -6180,6 +6180,7 @@ button{font-family:inherit}button .ui-icon{color:inherit}
 .app-v19 .sidebar>.sidebar-bottom{animation:none!important;transform:none!important;filter:none!important;opacity:1!important}
 .app .provider-hover13,.provider-hover13{z-index:500}
 .app-v19 .provider-orbit13.orbit14{width:31px;height:31px;border:0;padding:3px;background:conic-gradient(from -90deg,var(--ring) 0 var(--used),var(--line) var(--used) 360deg)}
+.app-v19 .provider-orbit13.orbit14.muted14{--ring:var(--line);background:var(--line)}
 .app-v19 .provider-orbit13.orbit14 .brand12{box-sizing:border-box;width:25px;height:25px;padding:4px;background:var(--panel);border-radius:999px}
 .app-v19 .provider-hover13{width:min(430px,calc(100vw - 32px))}
 .app-v19 .hover-account13.hacct16{padding:10px 12px;gap:6px}
