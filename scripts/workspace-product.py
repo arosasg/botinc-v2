@@ -118,3 +118,18 @@ marker='''                      {!v.repoConnected14 ? ('''
 notice='''                      {v.repoConnected14 && !v.repoConfigAvailable14 ? (\n                        <p className="fine">Repository access and the default branch are live. Sandbox startup settings are not stored by this deployment.</p>\n                      ) : null}\n'''
 if notice not in s:s=s.replace(marker,notice+marker)
 p.write_text(s)
+
+# Composers keep keystrokes local instead of re-rendering the workspace per character
+# (apps/web/features/workspace/composer-textarea.tsx). The attributes stay the design's.
+COMPOSER_IMPORT='import { ComposerTextarea } from "../composer-textarea";'
+for name in ["page-conversation.tsx","page-work-conversation.tsx","page-ask-operator.tsx"]:
+    p=Path("apps/web/features/workspace/views/"+name)
+    if not p.exists(): continue
+    s=p.read_text()
+    if "ComposerTextarea" in s: continue
+    s=re.sub(r'<textarea(\s+id="unified-composer"[^>]*?)/>', r'<ComposerTextarea\1/>', s, flags=re.S)
+    s=re.sub(r'<textarea(\s[^>]*?value=\{v\.dockDraft15\}[^>]*?)/>', r'<ComposerTextarea\1/>', s, flags=re.S)
+    if "<ComposerTextarea" in s:
+        anchor='import { interp } from "@/lib/dc/interp";'
+        s=s.replace(anchor, anchor+"\n"+COMPOSER_IMPORT, 1) if anchor in s else COMPOSER_IMPORT+"\n"+s
+    p.write_text(s)

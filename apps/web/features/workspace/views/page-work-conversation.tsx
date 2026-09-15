@@ -5,6 +5,7 @@ import { Fragment } from "react";
 import type { Vals } from "../vals";
 import { css } from "@/lib/dc/css";
 import { interp } from "@/lib/dc/interp";
+import { ComposerTextarea } from "../composer-textarea";
 import { MessageText } from "../message-text";
 
 export function PageWorkConversation({ v }: { v: Vals }) {
@@ -2033,7 +2034,7 @@ export function PageWorkConversation({ v }: { v: Vals }) {
                   </>
                 ) : null}
               </div>
-              <textarea
+              <ComposerTextarea
                 id="unified-composer"
                 rows={2}
                 aria-label="Message your Operator"
