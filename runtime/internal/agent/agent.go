@@ -155,10 +155,26 @@ type Options struct {
 	CredentialEnv   map[string]string
 	CredentialFiles map[string]string
 	MCPConfig       []byte
-	Timeout         time.Duration
-	BudgetCents     int
+	// Env is added to the CLI's process environment after the provider's own
+	// credential: run-scoped access such as git and GitHub API tokens.
+	Env map[string]string
+	// Secrets are values that must never reach the transcript, on top of the
+	// credential itself.
+	Secrets     []string
+	Timeout     time.Duration
+	BudgetCents int
 	// Emit receives every event as it is parsed.
 	Emit func(Event)
+}
+
+// envPairs renders extra environment as KEY=value pairs in a stable order.
+func envPairs(env map[string]string) []string {
+	pairs := make([]string, 0, len(env))
+	for name, value := range env {
+		pairs = append(pairs, name+"="+value)
+	}
+	sort.Strings(pairs)
+	return pairs
 }
 
 var ErrBinaryMissing = errors.New("the coding CLI is not installed in this sandbox")
@@ -364,6 +380,8 @@ func Run(ctx context.Context, a Adapter, o Options) (map[string]any, error) {
 	}
 	cmd.Env = append(os.Environ(), a.Env(o.Secret)...)
 	cmd.Env = append(cmd.Env, credentialEnv...)
+	cmd.Env = append(cmd.Env, envPairs(o.Env)...)
+	secrets = append(secrets, o.Secrets...)
 	isolate(cmd)
 	// If a descendant still holds a pipe after the process is gone, give up on
 	// the output rather than blocking the run forever.

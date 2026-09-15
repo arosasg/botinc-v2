@@ -345,8 +345,15 @@ func (s *Server) runtimeSpec(w http.ResponseWriter, r *http.Request) {
 	}
 	memoryRows.Close()
 	spec["knowledge"] = contextRows
-	// Repositories the run may touch.
-	rrows, err := s.pool.Query(ctx, `select full_name, default_branch, installation_id from repositories where workspace_id=$1 and ($2::uuid is null or project_id=$2) order by created_at limit 5`, rn.WorkspaceID, projectID)
+	// Repositories the run may touch. Repository work checks one of them out,
+	// so it needs only the first few. A conversation is workspace-wide: the
+	// Operator has to know every connected repository to act on the one the
+	// request names, or on all of them.
+	repoLimit := 5
+	if rn.Purpose == "chat" {
+		repoLimit = 200
+	}
+	rrows, err := s.pool.Query(ctx, `select full_name, default_branch, installation_id from repositories where workspace_id=$1 and ($2::uuid is null or project_id=$2) order by created_at limit $3`, rn.WorkspaceID, projectID, repoLimit)
 	if err == nil {
 		type repo struct {
 			FullName       string `json:"full_name"`
@@ -362,10 +369,27 @@ func (s *Server) runtimeSpec(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		rrows.Close()
-		// Only repository work receives checkout credentials. Routines use their
-		// explicitly selected MCP connectors and must not be coupled to whichever
-		// repository happens to sort first in the workspace.
-		if rn.Purpose != "chat" && rn.Purpose != "autopilot" && len(repos) > 0 {
+		switch {
+		case rn.Purpose == "chat" && len(repos) > 0:
+			// A conversation never gets a checkout picked for it; it gets the
+			// workspace's GitHub credential so the Operator can clone, inspect
+			// and push whichever connected repository the request is about.
+			// The per-repository authorization probes below exist to refuse a
+			// branch push up front; here git reports an unreachable repository
+			// at the moment the Operator tries it, without a GitHub round trip
+			// per repository before every reply. A workspace without GitHub
+			// still lists its repositories, so the answer can say what is
+			// missing instead of guessing.
+			if token, tokenErr := s.githubToken(ctx, rn.WorkspaceID); tokenErr == nil {
+				for i := range repos {
+					repos[i].Token = token
+				}
+			}
+		case rn.Purpose != "autopilot" && len(repos) > 0:
+			// Repository work receives checkout credentials after each repository
+			// is verified. Routines use their explicitly selected MCP connectors
+			// and must not be coupled to whichever repository happens to sort
+			// first in the workspace.
 			token, err := s.githubToken(ctx, rn.WorkspaceID)
 			if err != nil {
 				httpx.Error(w, 400, err.Error())
