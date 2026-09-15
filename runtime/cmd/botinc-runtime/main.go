@@ -127,6 +127,8 @@ func execute(ctx context.Context, c *protocol.Client, spec protocol.Spec, workdi
 	switch spec.Run.Purpose {
 	case "chat":
 		return runChat(ctx, c, spec, adapter, workdir, emit)
+	case "autopilot":
+		return runAutopilot(ctx, c, spec, adapter, workdir, emit)
 	default:
 		return runBuild(ctx, c, spec, adapter, workdir, emit)
 	}
@@ -205,6 +207,105 @@ func runChat(ctx context.Context, c *protocol.Client, spec protocol.Spec, a agen
 	}
 	_ = c.Step(ctx, protocol.StepUpdate{Key: key, Status: "done", CostCents: resultCost(out)})
 	return map[string]any{"answer": answer}, nil
+}
+
+// runAutopilot executes a routine with its selected MCP connectors. A routine
+// is general workspace automation, not an implicit code change, so it never
+// clones an arbitrary repository or opens a pull request.
+func runAutopilot(ctx context.Context, c *protocol.Client, spec protocol.Spec, a agent.Adapter, workdir string, emit func(agent.Event)) (map[string]any, error) {
+	var graph workflow.Graph
+	if len(spec.Graph) > 0 {
+		if err := json.Unmarshal(spec.Graph, &graph); err != nil {
+			return nil, err
+		}
+	} else {
+		graph.Nodes = []workflow.Node{{Key: "start", Kind: "start"}, {Key: "answer", Name: "Run routine", Kind: "task"}, {Key: "finish", Kind: "finish"}}
+		graph.Edges = [][]string{{"start", "answer"}, {"answer", "finish"}}
+	}
+
+	var cost int
+	previousOutput := ""
+	err := workflow.Execute(ctx, graph, func(node workflow.Node, attempt int) (workflow.Result, error) {
+		if node.Kind == "approval" || node.Kind == "question" {
+			status := "waiting"
+			output := map[string]any{"prompt": node.Prompt, "attempt": attempt}
+			return workflow.Result{Stop: true}, c.Step(ctx, protocol.StepUpdate{Key: node.Key, Status: status, Output: output})
+		}
+		if spec.Run.TaskLimitCents > 0 && cost >= spec.Run.TaskLimitCents {
+			return workflow.Result{}, errors.New("task budget exhausted")
+		}
+		model := node.Model
+		if model == "" || model == "auto" {
+			model = spec.Run.Model
+		}
+		effort := node.Effort
+		if effort == "" {
+			effort = spec.Run.Effort
+		}
+		if err := c.Step(ctx, protocol.StepUpdate{Key: node.Key, Status: "running", Model: model, Effort: effort}); err != nil {
+			return workflow.Result{}, err
+		}
+		prompt := autopilotPrompt(spec, node, previousOutput, workflowChoices(graph, node.Key))
+		out, runErr := agent.Run(ctx, a, agent.Options{
+			Dir: workdir, Prompt: prompt, Model: model, Effort: effort, Secret: spec.Credential.Secret,
+			CredentialEnv: spec.Credential.Env, CredentialFiles: spec.Credential.Files,
+			MCPConfig: spec.MCPConfig,
+			Timeout:   30 * time.Minute, BudgetCents: remainingBudget(spec.Run.TaskLimitCents, cost), Emit: emit,
+		})
+		stepCost := resultCost(out)
+		cost += stepCost
+		previousOutput = resultText(out)
+		status := "done"
+		if runErr != nil {
+			status = "stuck"
+		}
+		if err := c.Step(ctx, protocol.StepUpdate{Key: node.Key, Status: status, CostCents: stepCost, Output: map[string]any{"result": previousOutput, "attempt": attempt}}); err != nil {
+			return workflow.Result{}, err
+		}
+		return workflow.Result{Choice: strings.TrimSpace(previousOutput)}, runErr
+	})
+	result := map[string]any{"answer": previousOutput, "cost_cents": cost}
+	return result, err
+}
+
+func remainingBudget(limit, spent int) int {
+	if limit <= 0 {
+		return 0
+	}
+	if remaining := limit - spent; remaining > 0 {
+		return remaining
+	}
+	return 0
+}
+
+func workflowChoices(graph workflow.Graph, nodeKey string) []string {
+	choices := []string{}
+	for _, edge := range graph.Edges {
+		if len(edge) == 3 && edge[0] == nodeKey {
+			choices = append(choices, edge[2])
+		}
+	}
+	if len(choices) == 0 {
+		return []string{"true", "false"}
+	}
+	return choices
+}
+
+func autopilotPrompt(spec protocol.Spec, node workflow.Node, previousOutput string, choices []string) string {
+	var b strings.Builder
+	b.WriteString("You are running a BotInc workspace routine. Complete the requested automation with the explicitly connected tools. Do not assume a repository checkout exists and do not create a code change unless the routine explicitly requests it through an available connector. Report a concise, factual result.\n\n")
+	b.WriteString(knowledgePrompt(spec))
+	b.WriteString("Routine:\n" + spec.Run.Prompt)
+	if strings.TrimSpace(node.Prompt) != "" {
+		b.WriteString("\n\nWorkflow instructions:\n" + node.Prompt)
+	}
+	if strings.TrimSpace(previousOutput) != "" {
+		b.WriteString("\n\nPrevious step result:\n" + previousOutput)
+	}
+	if node.Kind == "condition" || node.Kind == "repeat" {
+		b.WriteString("\n\nThis is a decision step. Respond with exactly one of: " + strings.Join(choices, ", "))
+	}
+	return b.String()
 }
 
 // runBuild checks the repository out, works, and opens a draft pull request.
