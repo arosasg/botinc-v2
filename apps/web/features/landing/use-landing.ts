@@ -314,6 +314,7 @@ export function useLanding(opts: { onEnterWorkspace?: () => void } = {}) {
         document.removeEventListener("keydown", key);
       };
     }
+    if (new URLSearchParams(window.location.search).get("returnTo")) patch({ screen: "signin" });
     if (resume) startLive();
     run(0);
     const rti = window.setInterval(() => patch((p) => ({ rt: (p.rt + 1) % 140 })), 100);

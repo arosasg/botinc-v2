@@ -17,6 +17,12 @@ test.botinc.ai, botinc.ai {
 	handle /api/* {
 		reverse_proxy api:8080
 	}
+	handle /.well-known/* {
+		reverse_proxy api:8080
+	}
+	handle /oauth/* {
+		reverse_proxy api:8080
+	}
 	handle /healthz {
 		reverse_proxy api:8080
 	}

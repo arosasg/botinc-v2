@@ -245,7 +245,7 @@ func (s *Service) Resolve(ctx context.Context, r *http.Request) (*Principal, err
 	// A run token belongs to the runtime protocol, which authenticates itself
 	// further down the stack. It is not a user credential, so leave the
 	// request unauthenticated rather than failing it here.
-	if strings.HasPrefix(token, RunTokenPrefix) {
+	if strings.HasPrefix(token, RunTokenPrefix) || strings.HasPrefix(token, "bim_") {
 		return nil, nil
 	}
 	if strings.HasPrefix(token, "bik_") {
