@@ -496,7 +496,12 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
    const selectedNames=available.filter((plugin:Vals)=>selectedSet.has(plugin.id)).map(label);
    let connectorTrigger:EventTarget|null=null;
    const openConnectorMenu=()=>{
-    const rows=available.map((plugin:Vals)=>{const name=label(plugin);const brand=typeof logic.brand12==="function"?logic.brand12(name):{};return{label:name,logo:brand.brand12||"",logoClass:brand.brandClass12||"",on:selectedSet.has(plugin.id),disabled:plugin.status!=="connected",hint:plugin.status==="connected"?"":plugin.status==="needs_reauth"?"Reconnect":"Unavailable",run:()=>{const ids=selectedSet.has(plugin.id)?selectedIDs.filter((id)=>id!==plugin.id):[...selectedIDs,plugin.id];logic.setState({autoDraft9:{...logic.state.autoDraft9,pluginIds:ids}});setTimeout(openConnectorMenu,0)}}});
+    // Read the draft each time the menu is (re)built: the menu reopens after a pick, and the
+    // closure's snapshot from render time would otherwise discard the previous choice.
+    const currentIDs:string[]=Array.isArray(logic.state.autoDraft9?.pluginIds)?logic.state.autoDraft9.pluginIds:[];
+    const currentSet=new Set(currentIDs);
+    // A connector that became unavailable while selected stays removable; only unselected unavailable rows are inert.
+    const rows=available.map((plugin:Vals)=>{const name=label(plugin);const brand=typeof logic.brand12==="function"?logic.brand12(name):{};const on=currentSet.has(plugin.id);return{label:name,logo:brand.brand12||"",logoClass:brand.brandClass12||"",on,disabled:plugin.status!=="connected"&&!on,hint:plugin.status==="connected"?"":plugin.status==="needs_reauth"?"Reconnect":"Unavailable",run:()=>{const ids=on?currentIDs.filter((id)=>id!==plugin.id):[...currentIDs,plugin.id];logic.setState({autoDraft9:{...logic.state.autoDraft9,pluginIds:ids}});setTimeout(openConnectorMenu,0)}}});
     if(!rows.length)rows.push({label:"No connectors in this workspace",disabled:true});
     logic.openMenu14(null,{currentTarget:connectorTrigger},rows,"Connectors",{kind:"routine-connectors",cls:"menu-rich15 menu-plugins16",search:rows.length>6?"Search connectors":"",cta:{label:"Add a connector",icon:logic.icon14?.("plus"),run:()=>{logic.setState({dialog:null});logic.openPlugins10("all")}}});
    };
