@@ -1294,6 +1294,7 @@ export function LandingView({ onEnterWorkspace }: { onEnterWorkspace?: () => voi
           </div>
         </>
       ) : null}
+      <footer className={v.footCls} aria-hidden="true" style={{ visibility: "hidden" }} />
       {v.dialogOpen ? (
         <>
           <div
