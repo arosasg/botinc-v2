@@ -18,6 +18,10 @@ const pluginKey = (s: unknown) => String(s??"").toLowerCase().replace(/^mcp:/,""
 const catalogPluginKeys = new Set(["github","slack","gmail","google-drive","notion","claude-design","figma","sentry","google-calendar","jira","confluence","gitlab","bitbucket","discord","microsoft-teams","dropbox","onedrive","airtable","posthog"]);
 const uuid = (s: unknown): s is string => typeof s === "string" && /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(s);
 const phaseFor = (s?: string) => s && ["queued", "provisioning", "running"].includes(s) ? "working" : s === "waiting" ? "paused" : "done";
+export function runFailurePatch(run?: { status?: string; error?: string }): Vals {
+ const error=run?.status==="failed"?String(run.error||"").trim():"";
+ return{composerError10:error?`Run failed: ${error}`:""};
+}
 const draftKey = (workspace: string, conversation?: unknown) => `botinc:draft:v2:${workspace}:${uuid(conversation) ? conversation : "new"}`;
 const dockConversationKey = (workspace: string) => `botinc:dock-conversation:v2:${workspace}`;
 const dockDraftKey = (workspace: string) => `botinc:dock-draft:v2:${workspace}`;
@@ -112,7 +116,7 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
       const attachments=detail.attachments.map(a=>({...a,url:new URL(a.url,apiOrigin).toString()}));
       patch.chats[member]=patch.chats[member].map((c:Vals)=>c.id===active?{...mapConversation(detail.conversation,detail.messages,me,people,attachments),phase,runId:run?.id,runError:run?.error||"",cost:detail.runs.reduce((sum,r)=>sum+r.cost_cents,0)/100,taskLimit:(run?.task_limit_cents??routing.default_task_limit_cents)/100}:c);
       patch.phase=phase;
-      if(run?.error)patch.error=run.error;
+      Object.assign(patch,runFailurePatch(run));
      }
      const dockConversation=String(logic.state.dockConversationID||readLocal(dockConversationKey(ws.slug)));
      patch.dockLiveDraft=logic.state.dockLiveDraft??readLocal(dockDraftKey(ws.slug));
@@ -156,7 +160,7 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
      const patch:Vals={};const active=String(logic.state.activeChat||"");const dockID=String(logic.state.dockConversationID||readLocal(dockConversationKey(ws.slug)));const issueRow=(logic.state.issues||[]).find((item:Vals)=>item.id===logic.state.activeIssue||item.uuid===logic.state.activeIssue);
      if(uuid(active)){
       const detail=await ws.conversation(active,abort.signal);if(!alive)return;const run=detail.runs.at(-1);const phase=phaseFor(run?.status);const apiOrigin=new URL(api.baseURL||"/",window.location.origin);const attachments=detail.attachments.map(a=>({...a,url:new URL(a.url,apiOrigin).toString()}));
-      patch.chats={...logic.state.chats,[member]:(logic.state.chats?.[member]||[]).map((conversation:Vals)=>conversation.id===active?{...mapConversation(detail.conversation,detail.messages,me,people,attachments),phase,runId:run?.id,runError:run?.error||"",cost:detail.runs.reduce((sum,r)=>sum+r.cost_cents,0)/100,taskLimit:conversation.taskLimit}:conversation)};patch.phase=phase;if(run?.error)patch.error=run.error;
+      patch.chats={...logic.state.chats,[member]:(logic.state.chats?.[member]||[]).map((conversation:Vals)=>conversation.id===active?{...mapConversation(detail.conversation,detail.messages,me,people,attachments),phase,runId:run?.id,runError:run?.error||"",cost:detail.runs.reduce((sum,r)=>sum+r.cost_cents,0)/100,taskLimit:conversation.taskLimit}:conversation)};patch.phase=phase;Object.assign(patch,runFailurePatch(run));
      }
      if(uuid(dockID)&&dockID!==active){
       const detail=await ws.conversation(dockID,abort.signal);if(!alive)return;const apiOrigin=new URL(api.baseURL||"/",window.location.origin);const attachments=detail.attachments.map(a=>({...a,url:new URL(a.url,apiOrigin).toString()}));const run=detail.runs.at(-1);
@@ -203,7 +207,7 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
      ...livePersonaDefaults(member),
      liveWorkspaces:workspaces,workspace16:first.name,workspaceName:first.name,member,signed:true,
      chats:{[member]:[conversation]},activeChat:initialRoute.conversation,view:"chat",phase,
-     draft:readDraft(ws.slug,initialRoute.conversation),...(run?.error?{error:run.error}:{}),
+     draft:readDraft(ws.slug,initialRoute.conversation),...runFailurePatch(run),
     });
     report("live");
    }
@@ -271,7 +275,7 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
  };
  let sending=false;
  const send=async(e?:{preventDefault:()=>void})=>{
-  e?.preventDefault();if(sending||disposed)return;const isThread=logic.state.view==="thread9";let draft=String(isThread?logic.state.threadDraft9:logic.state.draft||"").trim();const queued=[...(logic.state.attachments11||[])].filter((a:Vals)=>pendingFiles.has(a.id));if(!draft&&!queued.length)return;if(!draft)draft="Review the attached files.";sending=true;
+  e?.preventDefault();if(sending||disposed)return;const isThread=logic.state.view==="thread9";let draft=String(isThread?logic.state.threadDraft9:logic.state.draft||"").trim();const queued=[...(logic.state.attachments11||[])].filter((a:Vals)=>pendingFiles.has(a.id));if(!draft&&!queued.length)return;if(!draft)draft="Review the attached files.";sending=true;logic.setState({composerError10:""});
   try{
    if(isThread){
     const issue=logic.issue();const issueID=String(issue.uuid||issue.id);if(!uuid(issueID))throw new Error("Open an issue before sending a message");
@@ -536,7 +540,7 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
    return row;
   })}));
   for(const key of ["sendMessage","sendComposer10","sendComposer11","sendThreadMessage9"])v[key]=send;
-  v.editComposer10=(event:Event)=>{const value=(event.target as HTMLTextAreaElement).value;if(s.view==="thread9"){const issueID=currentIssue.uuid||currentIssue.id;logic.setState({threadDraft9:value});saveDraft(ws.slug,issueID,value)}else{logic.setState({draft:value});saveDraft(ws.slug,s.activeChat,value)}};
+  v.editComposer10=(event:Event)=>{const value=(event.target as HTMLTextAreaElement).value;if(s.view==="thread9"){const issueID=currentIssue.uuid||currentIssue.id;logic.setState({threadDraft9:value,composerError10:""});saveDraft(ws.slug,issueID,value)}else{logic.setState({draft:value,composerError10:""});saveDraft(ws.slug,s.activeChat,value)}};
   v.composerKey12=(event:KeyboardEvent)=>{if(event.key==="Enter"&&!event.shiftKey&&!event.isComposing){event.preventDefault();void send(event)}};
   const addFiles=(files:File[],target:"main"|"dock"=fileTarget)=>{const stateKey=target==="dock"?"dockAttachmentsLive":"attachments11";const rows=files.filter(file=>file.size<=64*1024*1024).map(file=>{const id=`upload-${Date.now()}-${crypto.randomUUID()}`;pendingFiles.set(id,file);return{id,name:file.webkitRelativePath||file.name,image:file.type.startsWith("image/"),url:file.type.startsWith("image/")?URL.createObjectURL(file):"",size:file.size,meta:`${Math.max(1,Math.ceil(file.size/1024))} KB · ${file.type.startsWith("image/")?"Image":"File"}`,remove:()=>{pendingFiles.delete(id);logic.setState({[stateKey]:(logic.state[stateKey]||[]).filter((a:Vals)=>a.id!==id)})}}});if(rows.length!==files.length)logic.setState({composerError10:"Choose files smaller than 64 MB."});if(rows.length)logic.setState({[stateKey]:[...(logic.state[stateKey]||[]),...rows],composerError10:""})};
   const changed=(event:Event)=>{const input=event.target as HTMLInputElement;addFiles(Array.from(input.files||[]),fileTarget);input.value="";fileTarget="main"};

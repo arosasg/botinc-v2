@@ -248,6 +248,17 @@ func TestAdapterArgumentsCarryTheModel(t *testing.T) {
 	}
 }
 
+func TestCodexAdapterUsesCurrentNonInteractiveSandboxFlag(t *testing.T) {
+	args := Adapters["codex"].Args("do the thing", "auto")
+	joined := strings.Join(args, " ")
+	if strings.Contains(joined, "--full-auto") {
+		t.Fatalf("Codex 0.154 removed --full-auto: %v", args)
+	}
+	if !strings.Contains(joined, "--dangerously-bypass-approvals-and-sandbox") {
+		t.Fatalf("the externally isolated runtime must remain non-interactive: %v", args)
+	}
+}
+
 // A coding CLI spawns children. Killing only the parent leaves them holding
 // the output pipes, which used to keep the runtime blocked long past its
 // deadline. The whole process group must go.
