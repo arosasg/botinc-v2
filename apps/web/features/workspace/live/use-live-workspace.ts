@@ -55,7 +55,8 @@ export function lastReportedProviderRing(group: Vals, accounts: Vals[]): Vals {
   ...group,
   index14:`${left}%`,
   indexTone14:"muted14 reported14",
-  ringStyle14:`--remaining:${left*3.6}deg`,
+  ringStyle14:usageRingStyleFromCapacity(left),
+  usedLabel19:`${100-left}% used`,
   aria14:`${group.name} - last reported average capacity left ${left}% across ${capacity.length} account${capacity.length===1?"":"s"}`,
  };
 }

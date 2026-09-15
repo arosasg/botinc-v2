@@ -19,6 +19,11 @@ if 'v.liveGitHub' not in s:
           </> : null}
           <button className="button primary" onClick={v.pluginConnect10}>''')
 s=s.replace('Connection preview only. No account authorization is sent.','Connections are verified with the provider before they are saved.')
+# The design hides the primary button once a plugin is connected; the product keeps it, because for a
+# connected plugin it reads "Use in a conversation" and opens a chat with the plugin draft. Only the
+# credential fields stay limited to disconnected plugins.
+s=re.sub(r'\{!v\.pluginConnected10 \? \(\s*<>\s*\{v\.liveGitHub \? <>', '{!v.pluginConnected10 && v.liveGitHub ? <>', s, count=1)
+s=re.sub(r'(<button className="button primary" onClick=\{v\.pluginConnect10\}>\s*\{interp\(v\.pluginButton10\)\}\s*</button>)\s*</>\s*\) : null\}', r'\1', s, count=1)
 p.write_text(s)
 
 p=Path("apps/web/features/workspace/views/shell-sidebar.tsx")

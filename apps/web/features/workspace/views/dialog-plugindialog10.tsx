@@ -41,9 +41,7 @@ export function DialogPlugindialog10({ v }: { v: Vals }) {
             </Fragment>
           ))}
           <p className="fine">{interp(v.pluginPermission10)}</p>
-          {!v.pluginConnected10 ? (
-            <>
-              {v.liveGitHub ? <>
+          {!v.pluginConnected10 && v.liveGitHub ? <>
             <label>GitHub token<input type="password" autoComplete="new-password" value={v.livePluginSecret} onChange={v.editLivePluginSecret} /></label>
             <label>Repository<input placeholder="owner/repository" value={v.liveRepoName} onChange={v.editLiveRepoName} /></label>
             <p className="fine">Use a token with repository contents and pull-request write access. Leave the token blank to use your saved connection.</p>
@@ -51,8 +49,6 @@ export function DialogPlugindialog10({ v }: { v: Vals }) {
           <button className="button primary" onClick={v.pluginConnect10}>
                 {interp(v.pluginButton10)}
               </button>
-            </>
-          ) : null}
           {v.pluginConnected10 ? (
             <>
               <p className="plugin-connected16">

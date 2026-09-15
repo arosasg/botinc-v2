@@ -176,7 +176,8 @@ describe("conversation routing hydration", () => {
     expect(group).toMatchObject({
       index14: "45%",
       indexTone14: "muted14 reported14",
-      ringStyle14: "--remaining:162deg",
+      ringStyle14: "--used14:198deg;--used:198deg;--remaining:162deg",
+      usedLabel19: "55% used",
     });
     expect(group.aria14).toContain("last reported average capacity left 45%");
   });
