@@ -14,6 +14,7 @@ RUN apk add --no-cache git openssh-client ca-certificates ripgrep
 RUN npm install -g --no-fund --no-audit \
       @anthropic-ai/claude-code@2.1.270 \
       @openai/codex@0.154.0 \
+      @deepseek-ai/dsh@0.1.5-rc.1 \
   && npm cache clean --force
 COPY --from=build /out/botinc-runtime /usr/local/bin/botinc-runtime
 RUN adduser -D -u 10001 runner

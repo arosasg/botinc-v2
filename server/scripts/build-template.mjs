@@ -6,7 +6,7 @@ try {
 const template=Template({fileContextPath:dirname(binary)}).fromImage('node:22-bookworm-slim')
  .setUser('root')
  .aptInstall(['git','ripgrep','ca-certificates','curl','python3','make','g++'])
- .runCmd('npm install -g @anthropic-ai/claude-code@2.1.270 @openai/codex@0.154.0 pnpm@10.34.5')
+ .runCmd('npm install -g @anthropic-ai/claude-code@2.1.270 @openai/codex@0.154.0 @deepseek-ai/dsh@0.1.5-rc.1 pnpm@10.34.5')
  .runCmd('curl -fsSL https://go.dev/dl/go1.26.0.linux-amd64.tar.gz | tar -xz -C /usr/local && ln -s /usr/local/go/bin/go /usr/local/bin/go && ln -s /usr/local/go/bin/gofmt /usr/local/bin/gofmt')
  .copy(basename(binary),'/usr/local/bin/botinc-runtime',{mode:0o755,user:'root'})
  .setUser('node').setWorkdir('/home/node');

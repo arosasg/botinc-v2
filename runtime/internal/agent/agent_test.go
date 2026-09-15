@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -256,13 +257,120 @@ func TestAllowedMCPToolsAreExactAndDeterministic(t *testing.T) {
 }
 
 func TestPickResolvesTheKnownProviders(t *testing.T) {
-	for _, p := range []string{"claude", "codex", "openrouter"} {
+	for _, p := range []string{"claude", "codex", "deepseek", "openrouter"} {
 		if a, err := Pick(p); err != nil || a.Provider != p {
 			t.Fatalf("%s should resolve: %+v %v", p, a, err)
 		}
 	}
 	if _, err := Pick("nonesuch"); err == nil {
 		t.Fatal("an unknown provider must be an error, not a silent default")
+	}
+}
+
+func TestDeepSeekHarnessModelAliases(t *testing.T) {
+	for _, test := range []struct {
+		model string
+		wire  string
+	}{
+		{"DeepSeek V3", "deepseek/deepseek-chat"},
+		{"DeepSeek R1", "deepseek/deepseek-r1"},
+		{"DeepSeek V4.1 Flash", "deepseek/deepseek-v4.1-flash"},
+	} {
+		spec, err := dshModel(test.model)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if spec.Wire != test.wire {
+			t.Fatalf("%s resolved to %s, want %s", test.model, spec.Wire, test.wire)
+		}
+	}
+	if _, err := dshModel("Claude Opus 5"); err == nil {
+		t.Fatal("a non-DeepSeek model was accepted")
+	}
+}
+
+func TestDeepSeekHarnessTranslatesSelectedMCPServers(t *testing.T) {
+	plugins, err := dshMCPPlugins([]byte(`{"mcpServers":{"github":{"url":"https://example.test/mcp","headers":{"Authorization":"Bearer connector-secret"}},"local_tools":{"command":"node","args":["server.mjs"],"env":{"TOKEN":"stdio-secret"}}}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(plugins)
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile := string(encoded)
+	for _, expected := range []string{
+		`"name":"@deepseek-ai/dsh-mcp-client"`,
+		`"serverName":"github"`,
+		`"transport":"streamable-http"`,
+		`"serverName":"local_tools"`,
+		`"transport":"stdio"`,
+	} {
+		if !strings.Contains(profile, expected) {
+			t.Fatalf("DSH MCP profile lost %s: %s", expected, profile)
+		}
+	}
+	if _, err := dshMCPPlugins([]byte(`{"mcpServers":{"bad.name":{"url":"https://example.test"}}}`)); err == nil {
+		t.Fatal("a DSH-incompatible MCP server name was accepted")
+	}
+	if _, err := dshMCPPlugins([]byte(`{"mcpServers":{"missing_transport":{}}}`)); err == nil {
+		t.Fatal("an MCP server without a transport was accepted")
+	}
+}
+
+func TestProviderReasoningEffortArguments(t *testing.T) {
+	claude, err := effortArgs("claude", "High")
+	if err != nil || strings.Join(claude, " ") != "--effort high" {
+		t.Fatalf("Claude effort arguments are wrong: %v %v", claude, err)
+	}
+	codex, err := effortArgs("codex", "XHigh")
+	if err != nil || strings.Join(codex, " ") != `--config model_reasoning_effort="xhigh"` {
+		t.Fatalf("Codex effort arguments are wrong: %v %v", codex, err)
+	}
+	if _, err := effortArgs("claude", "ultra"); err == nil {
+		t.Fatal("an effort unsupported by Claude was accepted")
+	}
+	if _, err := effortArgs("codex", "invented"); err == nil {
+		t.Fatal("an unknown effort was accepted")
+	}
+}
+
+func TestRunDeepSeekHarnessProtocol(t *testing.T) {
+	fakeCLI(t, "dsh", `
+test -n "$OPENROUTER_API_KEY" || exit 9
+read initialize
+case "$initialize" in *'"reasoningEffort":"high"'*) ;; *) exit 8 ;; esac
+echo '{"jsonrpc":"2.0","id":1,"result":{"version":1}}'
+read prompt
+echo '{"jsonrpc":"2.0","id":2,"result":{"messageId":"accepted"}}'
+echo '{"jsonrpc":"2.0","method":"session.event","params":{"sessionId":"botinc-fixture","event":{"type":"tool/call","data":{"callId":"c1","name":"shell","arguments":"{\"command\":\"true\"}"}}}}'
+echo '{"jsonrpc":"2.0","method":"session.event","params":{"sessionId":"botinc-fixture","event":{"type":"assistant/message","data":{"message":{"content":[{"type":"text","text":"DSH_OK"}]}}}}}'
+echo '{"jsonrpc":"2.0","method":"session.event","params":{"sessionId":"botinc-fixture","event":{"type":"turn/end","data":{"reason":{"kind":"completed"}}}}}'
+echo '{"jsonrpc":"2.0","method":"session.status","params":{"sessionId":"botinc-fixture","status":"idle"}}'
+read shutdown
+echo '{"jsonrpc":"2.0","id":3,"result":{}}'
+`)
+
+	previousNow := dshSessionID
+	dshSessionID = func() string { return "botinc-fixture" }
+	defer func() { dshSessionID = previousNow }()
+	var events []Event
+	adapter, err := Pick("deepseek")
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := Run(context.Background(), adapter, Options{
+		Dir: t.TempDir(), Prompt: "Return DSH_OK", Model: "DeepSeek V4.1 Flash", Effort: "High", Secret: "fixture-key",
+		Emit: func(event Event) { events = append(events, event) },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result["result"] != "DSH_OK" {
+		t.Fatalf("unexpected result: %+v", result)
+	}
+	if len(events) != 1 || events[0].Type != "tool" {
+		t.Fatalf("tool event was not preserved: %+v", events)
 	}
 }
 

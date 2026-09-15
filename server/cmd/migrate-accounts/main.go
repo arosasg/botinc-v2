@@ -196,6 +196,23 @@ func run(ctx context.Context) error {
 		}
 		counts[provider]++
 	}
+	// A v1 dsh account was a harness profile backed by the workspace's
+	// OpenRouter credential, not a second secret. Link only untouched legacy
+	// profiles after every account has been inserted so the migrated harness is
+	// immediately routable without copying plaintext or inventing credentials.
+	if _, err := tx.Exec(ctx, `with replacement as (
+		select distinct on (workspace_id) workspace_id, secret_ref
+		from model_accounts
+		where provider='openrouter' and status='connected' and secret_ref <> ''
+		order by workspace_id, created_at
+	)
+	update model_accounts d set secret_ref=r.secret_ref, kind='api_key', credential_kind='api_key',
+		status='connected', refresh_error='', updated_at=now()
+	from replacement r
+	where d.workspace_id=r.workspace_id and d.provider='deepseek'
+		and d.refresh_error='Legacy shared-credential profile requires reconnection'`); err != nil {
+		return fmt.Errorf("link DeepSeek Harness credentials: %w", err)
+	}
 	pluginCount, err := migrateWorkspaceConnectors(ctx, sourcePool, tx, targetAEAD, workspaceIDs)
 	if err != nil {
 		return err

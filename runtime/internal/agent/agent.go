@@ -99,6 +99,11 @@ var Adapters = map[string]Adapter{
 		Env:   func(secret string) []string { return []string{"OPENAI_API_KEY=" + secret} },
 		Parse: jsonLine,
 	},
+	"deepseek": {
+		Provider: "deepseek", Binary: "dsh",
+		Env:   func(secret string) []string { return []string{"OPENROUTER_API_KEY=" + secret} },
+		Parse: jsonLine,
+	},
 	"openrouter": {
 		Provider: "openrouter", Binary: "claude",
 		Args: func(prompt, model string) []string {
@@ -145,6 +150,7 @@ type Options struct {
 	Dir             string
 	Prompt          string
 	Model           string
+	Effort          string
 	Secret          string
 	CredentialEnv   map[string]string
 	CredentialFiles map[string]string
@@ -262,6 +268,29 @@ func allowedMCPTools(config []byte) ([]string, error) {
 // have finished.
 var drainGrace = 30 * time.Second
 
+func effortArgs(provider, effort string) ([]string, error) {
+	effort = strings.ToLower(strings.TrimSpace(effort))
+	switch effort {
+	case "", "auto", "default", "not recorded":
+		return nil, nil
+	}
+	allowed := map[string]bool{"none": true, "minimal": true, "low": true, "medium": true, "high": true, "xhigh": true, "max": true, "ultra": true}
+	if !allowed[effort] {
+		return nil, fmt.Errorf("unsupported reasoning effort %q", effort)
+	}
+	switch provider {
+	case "claude", "openrouter":
+		if effort == "none" || effort == "minimal" || effort == "ultra" {
+			return nil, fmt.Errorf("%s does not support reasoning effort %q", provider, effort)
+		}
+		return []string{"--effort", effort}, nil
+	case "codex":
+		return []string{"--config", `model_reasoning_effort="` + effort + `"`}, nil
+	default:
+		return nil, nil
+	}
+}
+
 // Run drives the CLI to completion and returns the final result event, if the
 // CLI produced one. A non-zero exit is an error even when output looked fine:
 // the exit status is the only honest signal that the work finished.
@@ -269,12 +298,20 @@ func Run(ctx context.Context, a Adapter, o Options) (map[string]any, error) {
 	if _, err := exec.LookPath(a.Binary); err != nil {
 		return nil, fmt.Errorf("%w: %s", ErrBinaryMissing, a.Binary)
 	}
+	if a.Provider == "deepseek" {
+		return runDSH(ctx, a, o)
+	}
 	if o.Timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, o.Timeout)
 		defer cancel()
 	}
 	args := a.Args(o.Prompt, o.Model)
+	effort, err := effortArgs(a.Provider, o.Effort)
+	if err != nil {
+		return nil, err
+	}
+	args = append(args, effort...)
 	removeMCP := func() {}
 	if len(o.MCPConfig) > 0 && a.Provider == "claude" {
 		mcpPath := filepath.Join(o.Dir, ".botinc-mcp.json")

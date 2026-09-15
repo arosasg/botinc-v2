@@ -99,6 +99,7 @@ type Run struct {
 	Purpose        string `json:"purpose"`
 	Status         string `json:"status"`
 	Model          string `json:"model"`
+	Effort         string `json:"effort"`
 	Funding        string `json:"funding"`
 	TaskLimitCents int    `json:"task_limit_cents"`
 	Prompt         string `json:"prompt"`
@@ -110,6 +111,7 @@ type Step struct {
 	Kind   string `json:"kind"`
 	Status string `json:"status"`
 	Model  string `json:"model"`
+	Effort string `json:"effort"`
 }
 
 type Issue struct {

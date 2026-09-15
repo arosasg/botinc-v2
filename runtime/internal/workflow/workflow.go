@@ -12,6 +12,7 @@ type Node struct {
 	Name   string `json:"name"`
 	Kind   string `json:"kind"`
 	Model  string `json:"model,omitempty"`
+	Effort string `json:"effort,omitempty"`
 	Prompt string `json:"prompt,omitempty"`
 }
 type Graph struct {

@@ -176,10 +176,10 @@ func materializeAttachments(ctx context.Context, c *protocol.Client, spec *proto
 // runChat answers in the conversation. No repository, no branch, no PR.
 func runChat(ctx context.Context, c *protocol.Client, spec protocol.Spec, a agent.Adapter, workdir string, emit func(agent.Event)) (map[string]any, error) {
 	key := stepKey(spec, "answer")
-	_ = c.Step(ctx, protocol.StepUpdate{Key: key, Status: "running", Model: spec.Run.Model})
+	_ = c.Step(ctx, protocol.StepUpdate{Key: key, Status: "running", Model: spec.Run.Model, Effort: spec.Run.Effort})
 	prompt := chatPrompt(spec)
 	out, err := agent.Run(ctx, a, agent.Options{
-		Dir: workdir, Prompt: prompt, Model: spec.Run.Model, Secret: spec.Credential.Secret,
+		Dir: workdir, Prompt: prompt, Model: spec.Run.Model, Effort: spec.Run.Effort, Secret: spec.Credential.Secret,
 		CredentialEnv: spec.Credential.Env, CredentialFiles: spec.Credential.Files,
 		MCPConfig: spec.MCPConfig,
 		Timeout:   40 * time.Minute, BudgetCents: spec.Run.TaskLimitCents, Emit: emit,
@@ -303,7 +303,11 @@ func runBuild(ctx context.Context, c *protocol.Client, spec protocol.Spec, a age
 		if model == "" || model == "auto" {
 			model = spec.Run.Model
 		}
-		if err := c.Step(ctx, protocol.StepUpdate{Key: node.Key, Status: "running", Model: model}); err != nil {
+		effort := node.Effort
+		if effort == "" {
+			effort = spec.Run.Effort
+		}
+		if err := c.Step(ctx, protocol.StepUpdate{Key: node.Key, Status: "running", Model: model, Effort: effort}); err != nil {
 			return workflow.Result{}, err
 		}
 		prompt := buildPrompt(spec, step) + "\n\nWorkflow instructions:\n" + node.Prompt
@@ -328,7 +332,7 @@ func runBuild(ctx context.Context, c *protocol.Client, spec protocol.Spec, a age
 			}
 			prompt += "\nThis is a decision only. Do not edit files. Respond with exactly one of: " + strings.Join(choices, ", ")
 		}
-		out, runErr := agent.Run(ctx, a, agent.Options{Dir: checkout.Dir, Prompt: prompt, Model: model, Secret: spec.Credential.Secret, CredentialEnv: spec.Credential.Env, CredentialFiles: spec.Credential.Files, MCPConfig: spec.MCPConfig, Timeout: 30 * time.Minute, BudgetCents: spec.Run.TaskLimitCents - cost, Emit: emit})
+		out, runErr := agent.Run(ctx, a, agent.Options{Dir: checkout.Dir, Prompt: prompt, Model: model, Effort: effort, Secret: spec.Credential.Secret, CredentialEnv: spec.Credential.Env, CredentialFiles: spec.Credential.Files, MCPConfig: spec.MCPConfig, Timeout: 30 * time.Minute, BudgetCents: spec.Run.TaskLimitCents - cost, Emit: emit})
 		cost += resultCost(out)
 		stepCosts[node.Key] += resultCost(out)
 		previousOutput = resultText(out)
