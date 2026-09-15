@@ -78,3 +78,14 @@
     padding-left:0!important;padding-right:0!important;
   }
 }
+
+/* 5. The conversation view carries the same 290px context peek as the work thread
+      (Outputs / In this conversation beside the messages). The design reserves that
+      column for the thread's composer (Workspace v17) but has no rule for .chat10, and
+      the reading-axis block above zeroes the padding, so the composer centred on the
+      full width and sat 150px right of the messages. Mirror the design's thread rule. */
+@media (min-width:1181px) {
+  .app-v19 .chat10:not(.welcome-state10):has(.chat10-scroll .t9-cols15 > .side-col15) > .composer10-wrap {
+    max-width:1102px!important;padding-right:312px!important;
+  }
+}

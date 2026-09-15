@@ -138,11 +138,17 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
    let bootAutopilotDetail:Awaited<ReturnType<WorkspaceClient["autopilot"]>>|null=null;
    let bootPlugins:Awaited<ReturnType<WorkspaceClient["plugins"]>>|null=null;
    let refreshing=false,again=false;
-   const hydrate=async()=>{
-    if(!alive)return;if(refreshing){again=true;return;}refreshing=true;
+   /* Opening a conversation, an issue or a routine must not re-download the whole workspace
+      inventory (the issue pages alone are 1.7 MB on a workspace with 3,566 issues) before the
+      subject can render. Navigation reuses the inventory fetched in the last 60 s; realtime
+      events, reconnects and writes still refresh all of it. */
+   const INVENTORY_FRESH_MS=60_000;const inventory=new Map<string,{at:number;value:Promise<unknown>}>();let reuseInventory=false;
+   const inv=<T>(key:string,load:()=>Promise<T>):Promise<T>=>{const hit=inventory.get(key);if(reuseInventory&&hit&&Date.now()-hit.at<INVENTORY_FRESH_MS)return hit.value as Promise<T>;const value=load();inventory.set(key,{at:Date.now(),value});value.catch(()=>{inventory.delete(key)});return value};
+   const hydrate=async(options:{reuseInventory?:boolean}={})=>{
+    if(!alive)return;if(refreshing){again=true;return;}refreshing=true;reuseInventory=!!options.reuseInventory;
     try{
      const [issues,chats,autos,accounts,routing,overview,members,skills,memories,credits,usage,plugins,repos,projects,workflows,invites,sessions,keys]=await Promise.all([
-      bootIssues??ws.issues(undefined,abort.signal),ws.conversations(abort.signal),bootAutopilots??ws.autopilots(abort.signal),bootConversationAccounts??ws.accounts(abort.signal),ws.routing(abort.signal),ws.overview(abort.signal),ws.members(abort.signal),ws.skills(abort.signal),ws.memories(abort.signal),ws.credits(abort.signal),ws.usage(abort.signal),bootPlugins??ws.plugins(abort.signal),ws.repositories(abort.signal),ws.projects(abort.signal),ws.workflows(abort.signal),ws.invitations(abort.signal),api.request<{sessions:Vals[]}>("GET","/api/me/sessions",undefined,abort.signal),api.request<{keys:Vals[]}>("GET","/api/me/keys",undefined,abort.signal),
+      bootIssues??inv("issues",()=>ws.issues(undefined,abort.signal)),ws.conversations(abort.signal),bootAutopilots??inv("autopilots",()=>ws.autopilots(abort.signal)),bootConversationAccounts??ws.accounts(abort.signal),ws.routing(abort.signal),ws.overview(abort.signal),inv("members",()=>ws.members(abort.signal)),inv("skills",()=>ws.skills(abort.signal)),inv("memories",()=>ws.memories(abort.signal)),ws.credits(abort.signal),ws.usage(abort.signal),bootPlugins??ws.plugins(abort.signal),inv("repositories",()=>ws.repositories(abort.signal)),inv("projects",()=>ws.projects(abort.signal)),inv("workflows",()=>ws.workflows(abort.signal)),inv("invitations",()=>ws.invitations(abort.signal)),api.request<{sessions:Vals[]}>("GET","/api/me/sessions",undefined,abort.signal),api.request<{keys:Vals[]}>("GET","/api/me/keys",undefined,abort.signal),
      ]);
      if(!alive)return;
      for(const p of members.members)people.set(p.user_id,{name:p.name,email:p.email});
@@ -325,7 +331,7 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
 }
 
 // Kept outside React so adapter behavior can be tested against real API calls.
-export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User,people:PeopleIndex,hydrate:()=>Promise<void>,fail:(err:unknown)=>void){
+export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User,people:PeopleIndex,hydrate:(options?:{reuseInventory?:boolean})=>Promise<void>,fail:(err:unknown)=>void){
  const originals=new Map<string,unknown>();let disposed=false;
  const pendingFiles=new Map<string,File>();
  let paneFrame:number|undefined;let finishPaneDrag:(()=>void)|undefined;
@@ -426,11 +432,11 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
    if(!disposed){logic.setState({dockLiveDraft:"",dockAttachmentsLive:[]});await hydrate()}
   }catch(err){if(!disposed)fail(err)}finally{dockSending=false}
  };
- bind("openIssue",(id:string)=>{const issue=logic.state.issues.find((row:Vals)=>row.id===id||row.uuid===id);logic.go("thread9",{activeIssue:id,issueComment:"",threadDraft9:readDraft(ws.slug,issue?.uuid||id),liveIssueDetail:null,liveIssueFiles:[],...threadInspectorPatch(window.matchMedia("(min-width: 901px)").matches)});void hydrate().catch(fail)});
+ bind("openIssue",(id:string)=>{const issue=logic.state.issues.find((row:Vals)=>row.id===id||row.uuid===id);logic.go("thread9",{activeIssue:id,issueComment:"",threadDraft9:readDraft(ws.slug,issue?.uuid||id),liveIssueDetail:null,liveIssueFiles:[],...threadInspectorPatch(window.matchMedia("(min-width: 901px)").matches)});void hydrate({reuseInventory:true}).catch(fail)});
  bind("issue",()=>logic.state.issues.find((i:Vals)=>i.id===logic.state.activeIssue||i.uuid===logic.state.activeIssue)||{id:"",title:"Select an issue",description:"",status:"Incoming",owner:"",events:[]});
  // The prototype has several generations of composer handlers. All route here.
  for(const name of ["sendComposer10","sendComposer11","sendThreadMessage9"])bind(name,send);
- bind("openAuto9",(id:string)=>{logic.go("auto9",{activeAuto9:id,panel:null});void hydrate().catch(fail)});
+ bind("openAuto9",(id:string)=>{logic.go("auto9",{activeAuto9:id,panel:null});void hydrate({reuseInventory:true}).catch(fail)});
  bind("toggleAuto9",(id:string,enabled:boolean)=>{void write(async()=>{await ws.setAutopilotEnabled(id,enabled)})()});
  bind("saveAuto9",()=>{const s=logic.state,draft=s.autoDraft9||{};const error=!String(draft.title||"").trim()?"Give this routine a name.":String(draft.prompt||"").trim().length<12?"Give this routine a clear instruction.":"";if(error){logic.setState({autoFormError9:error});return}if(s.autoFormStep9!=="review"){logic.setState({autoFormStep9:"review",autoFormError9:""});return}void write(async()=>{const trigger=routineTrigger(draft);const existing=uuid(s.autoEditing9)?s.autoEditing9:undefined;const out=await ws.saveAutopilot({name:String(draft.title).trim(),description:String(draft.description||""),prompt:String(draft.prompt).trim(),model:String(draft.model||"auto").toLowerCase()==="auto"?"auto":String(draft.model),trigger,workflow_id:draft.workflowId||null,plugin_ids:Array.isArray(draft.pluginIds)?draft.pluginIds:[],enabled:draft.enabled!==false},existing);logic.setState({dialog:null,autoEditing9:null,activeAuto9:out.autopilot.id});routeURL("auto9",{activeAuto9:out.autopilot.id})})()});
  bind("runAuto9",()=>{const autopilot=logic.state.autopilots9?.find((row:Vals)=>row.id===logic.state.activeAuto9);if(!autopilot?.enabled){logic.toast("Enable this routine before running it.");return}void write(async()=>{await ws.triggerAutopilot(autopilot.id)})()});
@@ -455,7 +461,7 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
  bind("finishChat",()=>{});bind("skillFixture16",()=>[]);
  const repo=logic.repo14;
  bind("repo14",()=>repo.call(logic)||{id:"",name:"No repository connected",connected:false,meta:"Add a repository to start coding work",branch:"",state:"Not connected",tone:""});
- const openChat=async(id:string)=>{logic.setState({activeChat:id,view:"chat",dialog:null,draft:readDraft(ws.slug,id),inspector10:false,mobileInspector10:false});routeURL("chat",{activeChat:id});try{await hydrate()}catch(e){fail(e)}};
+ const openChat=async(id:string)=>{logic.setState({activeChat:id,view:"chat",dialog:null,draft:readDraft(ws.slug,id),inspector10:false,mobileInspector10:false});routeURL("chat",{activeChat:id});try{await hydrate({reuseInventory:true})}catch(e){fail(e)}};
  for(const name of ["loadChat","loadChat9","loadChat10"])bind(name,openChat);
  const start=write(async()=>{const i=logic.issue();await ws.work(i.uuid||i.id)});bind("startIssue",start);bind("beginRun",start);
  bind("saveSkill",write(async()=>{const s=logic.state;const out=await ws.saveSkill({name:s.skillNameInput,body:s.skillBodyInput},uuid(s.editingSkill)?s.editingSkill:undefined);await hydrate();logic.openSkill(out.skill.id)}));
@@ -688,7 +694,7 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
   if(Array.isArray(v.conversationGroups12))v.conversationGroups12=v.conversationGroups12.map((group:Vals)=>({...group,rows:(group.rows||[]).map((row:Vals)=>{
    const id=String(row.id||"");
    if(id.startsWith("chat:")&&uuid(id.slice(5)))return{...row,open:()=>{void openChat(id.slice(5))}};
-   if(id.startsWith("issue:")){const issue=id.slice(6);const issueRow=(logic.state.issues||[]).find((item:Vals)=>item.id===issue||item.uuid===issue);return{...row,open:()=>{logic.setState({activeIssue:issue,view:"thread9",issueComment:"",threadDraft9:readDraft(ws.slug,issueRow?.uuid||issue),liveIssueDetail:null,liveIssueFiles:[],...threadInspectorPatch(window.matchMedia("(min-width: 901px)").matches)});routeURL("thread9",{activeIssue:issue});void hydrate().catch(fail)}}}
+   if(id.startsWith("issue:")){const issue=id.slice(6);const issueRow=(logic.state.issues||[]).find((item:Vals)=>item.id===issue||item.uuid===issue);return{...row,open:()=>{logic.setState({activeIssue:issue,view:"thread9",issueComment:"",threadDraft9:readDraft(ws.slug,issueRow?.uuid||issue),liveIssueDetail:null,liveIssueFiles:[],...threadInspectorPatch(window.matchMedia("(min-width: 901px)").matches)});routeURL("thread9",{activeIssue:issue});void hydrate({reuseInventory:true}).catch(fail)}}}
    return row;
   })}));
   for(const key of ["sendMessage","sendComposer10","sendComposer11","sendThreadMessage9"])v[key]=send;
@@ -733,7 +739,7 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
   return normalizePublicAssets(v) as Vals;
  });
  logic.forceUpdate?.();
-  const popRoute=()=>{const route=parseWorkspaceRoute(new URL(window.location.href));if(route.workspace!==ws.slug){window.location.reload();return}if(route.conversation){logic.setState({view:"chat",activeChat:route.conversation,draft:readDraft(ws.slug,route.conversation)});void hydrate().catch(fail)}else if(route.issue){const thread=route.view==="thread9";logic.setState({view:thread?"thread9":"issue",activeIssue:route.issue,threadDraft9:readDraft(ws.slug,route.issue),...threadInspectorPatch(thread&&window.matchMedia("(min-width: 901px)").matches)});void hydrate().catch(fail)}else{logic.setState({view:route.view,...route.view==="chat"?{activeChat:null,draft:readDraft(ws.slug,null)}:{},...route.autopilot?{activeAuto9:route.autopilot}:{},...route.section?{section:route.section}:{}});if(route.workflow&&typeof logic.openGraph14==="function")void logic.openGraph14(route.workflow)}};
+  const popRoute=()=>{const route=parseWorkspaceRoute(new URL(window.location.href));if(route.workspace!==ws.slug){window.location.reload();return}if(route.conversation){logic.setState({view:"chat",activeChat:route.conversation,draft:readDraft(ws.slug,route.conversation)});void hydrate({reuseInventory:true}).catch(fail)}else if(route.issue){const thread=route.view==="thread9";logic.setState({view:thread?"thread9":"issue",activeIssue:route.issue,threadDraft9:readDraft(ws.slug,route.issue),...threadInspectorPatch(thread&&window.matchMedia("(min-width: 901px)").matches)});void hydrate({reuseInventory:true}).catch(fail)}else{logic.setState({view:route.view,...route.view==="chat"?{activeChat:null,draft:readDraft(ws.slug,null)}:{},...route.autopilot?{activeAuto9:route.autopilot}:{},...route.section?{section:route.section}:{}});if(route.workflow&&typeof logic.openGraph14==="function")void logic.openGraph14(route.workflow)}};
  window.addEventListener("popstate",popRoute);
  return()=>{disposed=true;finishPaneDrag?.();if(paneFrame!==undefined)cancelAnimationFrame(paneFrame);window.removeEventListener("popstate",popRoute);for(const[k,v]of originals){if(v===undefined)delete logic[k];else logic[k]=v}};
 }
