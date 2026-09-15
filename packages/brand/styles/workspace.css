@@ -6166,9 +6166,12 @@ button{font-family:inherit}button .ui-icon{color:inherit}
 
 /* ------------------------------------------------ 3. panes and widths -- */
 .app-v19 .inspector10,.app-v19 .inspector10.inspector11{animation:rise-x19 360ms var(--ease19) both}
-.app-v19 .inspector10{transition:width 320ms var(--ease19),flex-basis 320ms var(--ease19)}
+.app-v19 .inspector10{max-width:min(520px,44%);transition:width 220ms var(--ease19),flex-basis 220ms var(--ease19)}
 .app-v19.pane-dragging11 .inspector10{transition:none}
 .app-v19 .inspector10.inspector11{min-width:min(360px,42vw)}
+.app-v19 .pane-divider11{left:-8px;width:16px;background:transparent}
+.app-v19 .pane-divider11:after{left:7px;width:1px;background:var(--line)}
+.app-v19 .pane-divider11:hover:after,.app-v19 .pane-divider11:focus-visible:after,.app-v19.pane-dragging11 .pane-divider11:after{width:2px;background:var(--blue)}
 .app-v19 .inspector-tabs10{scroll-padding-inline:18px}
 .app-v19 .inspector-tabs10>button{flex:0 0 auto}
 @media(min-width:761px) and (max-width:959px){.app-v19 .inspector10.inspector11{min-width:300px}}
@@ -6176,6 +6179,13 @@ button{font-family:inherit}button .ui-icon{color:inherit}
 .app-v19.sb-dragging19 .sidebar{transition:none}
 .app-v19 .sidebar>.sidebar-bottom{animation:none!important;transform:none!important;filter:none!important;opacity:1!important}
 .app .provider-hover13,.provider-hover13{z-index:500}
+.app-v19 .provider-orbit13.orbit14{width:31px;height:31px;border:0;padding:3px;background:conic-gradient(from -90deg,var(--ring) 0 var(--used),var(--line) var(--used) 360deg)}
+.app-v19 .provider-orbit13.orbit14 .brand12{box-sizing:border-box;width:25px;height:25px;padding:4px;background:var(--panel);border-radius:999px}
+.app-v19 .provider-hover13{width:min(430px,calc(100vw - 32px))}
+.app-v19 .hover-account13.hacct16{padding:10px 12px;gap:6px}
+.app-v19 .hacct16 .hacct-line16{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px 12px;padding-left:21px}
+.app-v19 .hacct16 .hw16{display:grid;grid-template-columns:11px 32px minmax(0,1fr);gap:4px;min-width:0}
+.app-v19 .hacct16 .hw-r16{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .app-v19 .inspector-tabs10>button{transition:color 160ms,border-color 160ms}
 :where(.app-v19) .inspector-content10>*{animation:fade19 260ms var(--ease19) both}
 

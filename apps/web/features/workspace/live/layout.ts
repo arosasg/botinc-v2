@@ -33,11 +33,31 @@ export function normalizePublicAssets(value: unknown, seen = new WeakSet<object>
 export function conversationPaneBounds(availableWidth: number): ConversationPaneBounds {
   const available = Number.isFinite(availableWidth) ? Math.max(0, availableWidth) : 1040;
   const min = available < 960 ? 300 : 360;
-  const mainContent = available < 960 ? 440 : 520;
-  return { min, max: Math.max(min, Math.min(720, available - mainContent)) };
+  const mainContent = available < 960 ? 448 : Math.max(640, available * 0.56);
+  return { min, max: Math.max(min, Math.min(520, available * 0.44, available - mainContent)) };
 }
 
 export function clampConversationPaneWidth(width: number, availableWidth: number): number {
   const bounds = conversationPaneBounds(availableWidth);
   return Math.round(Math.max(bounds.min, Math.min(bounds.max, width)));
+}
+
+export function formatUsageReset(value: unknown): string {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  const instant = new Date(text);
+  if (Number.isNaN(instant.getTime())) return text.length > 16 ? `${text.slice(0, 15)}…` : text;
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(instant);
+}
+
+export function usageRingStyleFromCapacity(value: unknown): string {
+  const capacity = Number.parseFloat(String(value ?? ""));
+  if (!Number.isFinite(capacity)) return "--used:0deg";
+  const used = 100 - Math.max(0, Math.min(100, capacity));
+  return `--used:${Math.round(used * 3.6)}deg`;
 }

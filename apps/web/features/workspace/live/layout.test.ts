@@ -3,7 +3,9 @@ import {
   absolutePublicAsset,
   clampConversationPaneWidth,
   conversationPaneBounds,
+  formatUsageReset,
   normalizePublicAssets,
+  usageRingStyleFromCapacity,
 } from "./layout";
 
 describe("workspace public assets", () => {
@@ -36,13 +38,27 @@ describe("workspace public assets", () => {
 
 describe("conversation pane sizing", () => {
   it("preserves useful chat width on wide screens", () => {
-    expect(conversationPaneBounds(1440)).toEqual({ min: 360, max: 720 });
-    expect(conversationPaneBounds(1190)).toEqual({ min: 360, max: 670 });
-    expect(clampConversationPaneWidth(900, 1190)).toBe(670);
+    expect(conversationPaneBounds(1440)).toEqual({ min: 360, max: 520 });
+    expect(conversationPaneBounds(1190)).toEqual({ min: 360, max: 520 });
+    expect(clampConversationPaneWidth(900, 1190)).toBe(520);
   });
 
   it("keeps the pane usable without crushing a narrow desktop chat", () => {
-    expect(conversationPaneBounds(800)).toEqual({ min: 300, max: 360 });
+    expect(conversationPaneBounds(800)).toEqual({ min: 300, max: 352 });
     expect(clampConversationPaneWidth(100, 800)).toBe(300);
+  });
+});
+
+describe("coding account usage presentation", () => {
+  it("turns ISO reset timestamps into a compact readable label", () => {
+    expect(formatUsageReset("2026-09-21T00:00:00.000Z")).not.toContain("T00:00:00");
+    expect(formatUsageReset("2026-09-21T00:00:00.000Z").length).toBeLessThanOrEqual(18);
+    expect(formatUsageReset("Tomorrow")).toBe("Tomorrow");
+  });
+
+  it("draws the outer harness ring from usage rather than capacity left", () => {
+    expect(usageRingStyleFromCapacity("7% left")).toBe("--used:335deg");
+    expect(usageRingStyleFromCapacity(100)).toBe("--used:0deg");
+    expect(usageRingStyleFromCapacity("n/a")).toBe("--used:0deg");
   });
 });

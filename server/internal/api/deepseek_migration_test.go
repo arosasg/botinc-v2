@@ -70,3 +70,43 @@ func TestDeepSeekMigrationReusesWorkspaceOpenRouterSecret(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestDeepSeekMigrationPrefersExplicitDeepSeekOpenRouterAccount(t *testing.T) {
+	h := newHarness(t)
+	h.signIn(uniqueEmail(t))
+
+	var generic, preferred, legacy struct {
+		Account Account `json:"account"`
+	}
+	h.decode(h.do("POST", h.w("/accounts"), map[string]any{
+		"provider": "openrouter", "kind": "api_key", "label": "Personal", "secret": "expired-generic-key",
+	}, 201), &generic)
+	h.decode(h.do("POST", h.w("/accounts"), map[string]any{
+		"provider": "openrouter", "kind": "api_key", "label": "OpenRouter - DeepSeek", "secret": "working-deepseek-key",
+	}, 201), &preferred)
+	h.decode(h.do("POST", h.w("/accounts"), map[string]any{
+		"provider": "deepseek", "kind": "api_key", "secret": "legacy-placeholder",
+	}, 201), &legacy)
+
+	if _, err := testPool.Exec(t.Context(), `update model_accounts set secret_ref=(select secret_ref from model_accounts where id=$1) where id=$2`, generic.Account.ID, legacy.Account.ID); err != nil {
+		t.Fatal(err)
+	}
+	body, err := fs.ReadFile(migrations.FS, "0013_prefer_deepseek_openrouter_secret.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := testPool.Exec(t.Context(), string(body)); err != nil {
+		t.Fatal(err)
+	}
+
+	var preferredRef, legacyRef string
+	if err := testPool.QueryRow(t.Context(), `select secret_ref from model_accounts where id=$1`, preferred.Account.ID).Scan(&preferredRef); err != nil {
+		t.Fatal(err)
+	}
+	if err := testPool.QueryRow(t.Context(), `select secret_ref from model_accounts where id=$1`, legacy.Account.ID).Scan(&legacyRef); err != nil {
+		t.Fatal(err)
+	}
+	if preferredRef == "" || legacyRef != preferredRef {
+		t.Fatal("the DeepSeek harness did not select its explicitly named OpenRouter credential")
+	}
+}
