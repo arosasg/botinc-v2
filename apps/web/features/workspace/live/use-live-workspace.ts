@@ -18,6 +18,10 @@ const pluginKey = (s: unknown) => String(s??"").toLowerCase().replace(/^mcp:/,""
 const catalogPluginKeys = new Set(["github","slack","gmail","google-drive","notion","claude-design","figma","sentry","google-calendar","jira","confluence","gitlab","bitbucket","discord","microsoft-teams","dropbox","onedrive","airtable","posthog"]);
 const uuid = (s: unknown): s is string => typeof s === "string" && /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(s);
 const phaseFor = (s?: string) => s && ["queued", "provisioning", "running"].includes(s) ? "working" : s === "waiting" ? "paused" : "done";
+export function liveConnectedConnectorNames(plugins: Vals[] = []): string[] {
+ return plugins.filter(plugin=>plugin.status==="connected"&&String(plugin.kind||"").startsWith("mcp:"))
+  .map(plugin=>titleCase(pluginKey(plugin.kind).replaceAll("-"," ")));
+}
 export function runFailurePatch(run?: { status?: string; error?: string }): Vals {
  const error=run?.status==="failed"?String(run.error||"").trim():"";
  return{composerError10:error?`Run failed: ${error}`:""};
@@ -266,6 +270,11 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
  if(originalNewChat)bind("newChat",()=>openNewChatWithDraft(logic,ws.slug,originalNewChat));
  const originalAccountRoutable=typeof logic.accountRoutable14==="function"?logic.accountRoutable14.bind(logic):null;
  if(originalAccountRoutable)bind("accountRoutable14",(account:Vals)=>typeof account.runtimeRoutable==="boolean"?account.runtimeRoutable&&account.enabled!==false:originalAccountRoutable(account));
+ // The prototype enumerates a fixture-only `connections` object. Live
+ // workspaces instead receive connector records from the API, so source this
+ // menu directly from those records. Otherwise the UI says "0 connected"
+ // while every migrated connector is present and usable.
+ bind("connectedConnectors15",()=>liveConnectedConnectorNames(logic.state.livePlugins||[]).map(name=>{const brand=typeof logic.brand12==="function"?logic.brand12(name):{};return{name,logo:brand.brand12||"",logoClass:brand.brandClass12||""}}));
  const write=(fn:()=>Promise<void>)=>async()=>{if(disposed)return;try{await fn();if(!disposed)await hydrate()}catch(err){if(!disposed)fail(err)}};
  const selectedPluginIDs=(where:"main"|"dock"="main"):string[]=>{
   const key=typeof logic.composerKey15==="function"?logic.composerKey15(where):typeof logic.key12==="function"?logic.key12():"";
