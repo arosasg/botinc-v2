@@ -37,11 +37,30 @@ func (s *Server) githubGet(ctx context.Context, token, path string, out any) err
 	return json.NewDecoder(io.LimitReader(res.Body, 1<<20)).Decode(out)
 }
 func (s *Server) githubToken(ctx context.Context, ws uuid.UUID) (string, error) {
-	var ref string
-	if err := s.pool.QueryRow(ctx, `select secret_ref from plugins where workspace_id=$1 and kind='github' and status='connected'`, ws).Scan(&ref); err != nil {
+	var ref, kind string
+	if err := s.pool.QueryRow(ctx, `select secret_ref,kind from plugins
+		where workspace_id=$1 and kind in ('github','mcp:github') and status='connected'
+		order by case kind when 'github' then 0 else 1 end limit 1`, ws).Scan(&ref, &kind); err != nil {
 		return "", errors.New("connect GitHub before adding a repository")
 	}
-	return s.readSecret(ctx, ref)
+	secret, err := s.readSecret(ctx, ref)
+	if err != nil {
+		return "", err
+	}
+	if kind == "github" {
+		return secret, nil
+	}
+	var entry struct {
+		Env map[string]string `json:"env"`
+	}
+	if json.Unmarshal([]byte(secret), &entry) == nil {
+		for _, key := range []string{"GITHUB_PERSONAL_ACCESS_TOKEN", "GITHUB_TOKEN", "GH_TOKEN"} {
+			if token := strings.TrimSpace(entry.Env[key]); token != "" {
+				return token, nil
+			}
+		}
+	}
+	return "", errors.New("the connected GitHub MCP does not provide repository checkout access; reconnect GitHub")
 }
 
 type githubRepo struct {

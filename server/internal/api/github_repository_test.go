@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func connectTestGitHub(t *testing.T, h *harness) {
+func serveTestGitHub(t *testing.T, h *harness) {
 	t.Helper()
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer authorized-test-token" {
@@ -25,8 +25,38 @@ func connectTestGitHub(t *testing.T, h *harness) {
 	}))
 	t.Cleanup(upstream.Close)
 	h.server.githubAPI = upstream.URL
+}
+
+func connectTestGitHub(t *testing.T, h *harness) {
+	t.Helper()
+	serveTestGitHub(t, h)
 	h.do("POST", h.w("/plugins"), map[string]any{"kind": "github", "secret": "authorized-test-token"}, 201)
 }
+
+func TestRepositoryAcceptsMigratedGitHubMCPToken(t *testing.T) {
+	h := newHarness(t)
+	h.signIn(uniqueEmail(t))
+	serveTestGitHub(t, h)
+	h.do("POST", h.w("/plugins"), map[string]any{
+		"kind":   "mcp:github",
+		"secret": `{"command":"github-mcp-server","env":{"GITHUB_PERSONAL_ACCESS_TOKEN":"authorized-test-token"}}`,
+	}, 201)
+	h.do("POST", h.w("/repositories"), map[string]any{"full_name": "arosasg/botinc-v2"}, 201)
+}
+
+func TestRepositoryRejectsMigratedGitHubMCPWithoutCheckoutToken(t *testing.T) {
+	h := newHarness(t)
+	h.signIn(uniqueEmail(t))
+	serveTestGitHub(t, h)
+	h.do("POST", h.w("/plugins"), map[string]any{
+		"kind": "mcp:github", "secret": `{"command":"github-mcp-server"}`,
+	}, 201)
+	response := h.do("POST", h.w("/repositories"), map[string]any{"full_name": "arosasg/botinc-v2"}, 400)
+	if !strings.Contains(response.Body.String(), "does not provide repository checkout access") {
+		t.Fatalf("unexpected missing-token response: %s", response.Body.String())
+	}
+}
+
 func TestRepositoryRequiresAuthorizedWorkspaceConnection(t *testing.T) {
 	h := newHarness(t)
 	h.signIn(uniqueEmail(t))
