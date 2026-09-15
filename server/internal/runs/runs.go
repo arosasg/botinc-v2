@@ -275,6 +275,7 @@ func (s *Service) route(ctx context.Context, db queryer, ws uuid.UUID, model str
 }
 
 func providerFor(model string) string {
+	model = strings.ToLower(strings.TrimSpace(model))
 	switch {
 	case model == "auto" || model == "":
 		return ""
