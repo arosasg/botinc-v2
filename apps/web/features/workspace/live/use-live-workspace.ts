@@ -480,7 +480,7 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
    rows:(provider.rows||[]).map((account:Vals)=>{
     const windows=(account.windows||[]).map((window:Vals)=>{
      const resetShort14=formatUsageReset(window.resetShort14||window.reset);
-     return {...window,resetShort14,resetDay19:resetDayLabel(resetShort14)};
+     return {...window,resetShort14,resetDay19:resetDayLabel(window.reset||window.resetShort14)};
     });
     return {...account,windows,...bindingWindowFields(windows)};
    }),

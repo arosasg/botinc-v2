@@ -68,12 +68,21 @@ export function usageRingStyleFromCapacity(value: unknown): string {
 
 type WindowRow = Record<string, unknown>;
 
-/* Day and time only ("21 00:00"); the month lives in the tooltip. A bare time
-   (today) gets today's day. Mirrors the design's resetDay19. */
-export function resetDayLabel(resetShort: unknown): string {
-  const text = String(resetShort || "").replace(/\s*·\s*/g, ", ").trim();
-  if (/^\d{1,2}:\d{2}$/.test(text)) return `${new Date().getDate()} ${text}`;
-  return text.replace(/^\w{3},?\s+(\d{1,2}),?\s*/, "$1 ");
+/* Day and time only ("21 00:00"); the month lives in the tooltip. Mirrors the
+   design's resetDay19, but derives the day from the instant itself so the
+   label is the same in every locale; the design's text rules are only the
+   fallback for values that are not dates (a bare time gets today's day). */
+export function resetDayLabel(reset: unknown): string {
+  const text = String(reset || "").trim();
+  if (!text) return "";
+  const instant = new Date(text);
+  if (!Number.isNaN(instant.getTime())) {
+    const time = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(instant);
+    return `${instant.getDate()} ${time}`;
+  }
+  const plain = text.replace(/\s*·\s*/g, ", ");
+  if (/^\d{1,2}:\d{2}$/.test(plain)) return `${new Date().getDate()} ${plain}`;
+  return plain.replace(/^\w{3},?\s+(\d{1,2}),?\s*/, "$1 ");
 }
 
 /* The account row's bar and reset note follow the binding window, the one

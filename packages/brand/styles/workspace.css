@@ -6727,6 +6727,10 @@ button{font-family:inherit}button .ui-icon{color:inherit}
   mask:radial-gradient(farthest-side,transparent calc(100% - 3.5px),#000 calc(100% - 2.5px))}
 .app-v19 .provider-orbit13.orbit14.muted14{background:none}
 .app-v19 .provider-orbit13.orbit14.muted14:before{--used14:0deg}
+/* Hand edit (a436add, kept through the v19 refresh): a stale but real quota
+   observation is muted AND reported, and keeps its arc - the design's muted
+   reset above must not zero it. */
+.app-v19 .provider-orbit13.orbit14.muted14.reported14:before{--used14:inherit}
 .app-v19 .provider-orbit13.orbit14 .brand12{position:relative;z-index:1;width:19px;height:19px;padding:3px;
   background:var(--panel);border-radius:999px;box-sizing:content-box}
 .app-v19 .provider-group13:hover .provider-orbit13.orbit14,

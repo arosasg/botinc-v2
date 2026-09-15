@@ -56,6 +56,9 @@ describe("coding account usage presentation", () => {
   });
 
   it("shortens the reset label to day and time the way the design's account window does", () => {
+    const instant = new Date(2026, 8, 21, 14, 30);
+    const time = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(instant);
+    expect(resetDayLabel(instant.toISOString())).toBe(`21 ${time}`);
     expect(resetDayLabel("Sep 21, 00:00")).toBe("21 00:00");
     expect(resetDayLabel("Sep 21 · 14:30")).toBe("21 14:30");
     expect(resetDayLabel("14:30")).toBe(`${new Date().getDate()} 14:30`);
