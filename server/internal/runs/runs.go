@@ -340,7 +340,20 @@ func (s *Service) dispatch(ctx context.Context, r Run) {
 	})
 	if err != nil {
 		_, _ = s.pool.Exec(ctx, `update sandboxes set status='failed', ended_at=now() where id=$1`, sbID)
-		s.setStatus(ctx, r.ID, r.WorkspaceID, "failed", "could not start a sandbox: "+err.Error())
+		// The runtime can claim the run before a slow provider client returns.
+		// Only a run that is still provisioning may be failed by this path.
+		// Otherwise a late launcher timeout would overwrite genuine live work.
+		tag, updateErr := s.pool.Exec(ctx, `update runs set status='failed', error=$2, finished_at=now()
+			where id=$1 and status='provisioning' and finished_at is null`, r.ID, "could not start a sandbox: "+err.Error())
+		if updateErr != nil {
+			s.log.Error("sandbox failure status", "err", updateErr)
+			return
+		}
+		if tag.RowsAffected() > 0 {
+			s.hub.Publish(r.WorkspaceID, "run.updated", map[string]any{"id": r.ID, "status": "failed", "error": "could not start a sandbox: " + err.Error()})
+		} else {
+			s.log.Warn("sandbox launcher returned after run advanced", "run", r.ID, "err", err)
+		}
 		return
 	}
 	_, _ = s.pool.Exec(ctx, `update sandboxes set external_id=$2, status='ready' where id=$1`, sbID, sb.ExternalID)
