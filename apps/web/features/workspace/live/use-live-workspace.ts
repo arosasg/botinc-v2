@@ -523,10 +523,10 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
   }
   const detail=s.liveIssueDetail;const currentIssue=logic.issue();
   /* The issue page carries its own execution rail (Execution / Source and output / People). The
-     conversation inspector has no live bindings on this view, so a preference left open by a
-     thread rendered as an empty third column that squeezed the page. Hide it here the way the
-     design hides it on top-level pages. */
-  if(s.view==="issue"&&v.inspectorShown16){v.inspectorOpen10=false;v.inspectorShown16=false;v.panelOpenClass="";v.rootClass=String(v.rootClass||"").replace(/\s*\binspector-open10\b/g,"").replace(/\s*\bmobile-inspector10\b/g,"")}
+     conversation inspector reads the issue's run, so an issue without one (every imported v1
+     issue before its first run) rendered it as an empty third column that squeezed the page.
+     Hide it for those the way the design hides it on top-level pages. */
+  if(s.view==="issue"&&v.inspectorShown16&&!(Array.isArray(detail?.runs)&&detail.runs.length)){v.inspectorOpen10=false;v.inspectorShown16=false;v.panelOpenClass="";v.rootClass=String(v.rootClass||"").replace(/\s*\binspector-open10\b/g,"").replace(/\s*\bmobile-inspector10\b/g,"")}
   /* Unassigned and not-yet-selected issues have no owner; the design's placeholder then read "Message undefined's agents". */
   {const owner=String(currentIssue.owner||"");const whose=!owner||owner===String(s.member||"")?"your":owner+"\u2019s";v.i8CommentPlaceholder=`Message ${whose} agents${currentIssue.id?` about ${currentIssue.id}`:""}\u2026`}
   v.i8Computer="Remote";v.i8Agent="Operator";

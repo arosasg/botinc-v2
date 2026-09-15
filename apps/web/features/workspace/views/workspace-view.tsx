@@ -3,6 +3,7 @@
 import type { Vals } from "../vals";
 import { ShellBotincLanding } from "./shell-botinc-landing";
 import { ShellPlansAndCredits } from "./shell-plans-and-credits";
+import { ShellErrorStates } from "./shell-error-states";
 import { ShellSidebar } from "./shell-sidebar";
 import { ShellCloseNavigation } from "./shell-close-navigation";
 import { ShellMobileTabs9 } from "./shell-mobile-tabs9";
@@ -91,6 +92,7 @@ export function WorkspaceView({ v }: { v: Vals }) {
     <div className={v.rootClass} data-theme={v.theme}>
       <ShellBotincLanding v={v} />
       <ShellPlansAndCredits v={v} />
+      <ShellErrorStates v={v} />
       <ShellSidebar v={v} />
       <ShellCloseNavigation v={v} />
       <ShellMobileTabs9 v={v} />

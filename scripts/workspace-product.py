@@ -74,7 +74,6 @@ replacements={
  "apps/web/features/workspace/views/dialog-connectdialog.tsx":{
   "Simulated authorization. No real account is connected.":"The connection is verified before it is saved to this workspace.",
  },
- "apps/web/features/workspace/views/dialog-calldecisiondialog9.tsx":{"Start sample call":"Start call"},
  "apps/web/features/workspace/views/dialog-authdialog.tsx":{
   "Prototype sign-in. No account is created.":"Sign in securely to keep this conversation in your workspace.",
  },
@@ -87,7 +86,9 @@ replacements={
   "Preview as":"View as",
   "Switching members is a design test control. It changes private chats and connections while keeping shared issues.":"Private chats and personal connections remain scoped to the signed-in member.",
  },
+ # One entry per file: a repeated key silently drops the earlier replacements.
  "apps/web/features/workspace/views/dialog-calldecisiondialog9.tsx":{
+  "Start sample call":"Start call",
   "OPERATOR CALL · SIMULATION":"OPERATOR CALL",
   "Tap an answer to simulate speaking. Your microphone is not used.":"Choose an answer to continue. Microphone input is not available in this browser yet.",
  },

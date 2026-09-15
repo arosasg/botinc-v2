@@ -47,6 +47,7 @@ export type LandingState = {
   draft: string;
   msgs: Msg[];
   annual: boolean;
+  callEnded: boolean;
 };
 
 export type Msg = { cls: string; text: string; me?: boolean; op?: boolean; who: string; time: string };
@@ -65,6 +66,21 @@ const INTRO: [string, string, string][] = [
   ["waypoints", "Smart routing", "Model accounts ready: Claude alex@ (14% left), Claude ops@ (62%), Codex (91%). Runs open on the account with the most capacity left and switch at the limit. Everything runs remotely."],
   ["zap", "Issue intake", "Filed BOT-42 · High (checkout total), BOT-41 · Medium (iOS replay), BOT-40 · High (p95 latency). Fix & review starts on BOT-42."],
   ["op", "Operator", "Starting BOT-42 on Claude alex@. Plan → Implement → Review → Verify, then the pull request waits for you here. You can close the laptop."],
+];
+
+const ARRIVE: [number, string, string, string, string][] = [
+  [1, "BOT-42 · Checkout total wrong after quantity change", "High · Sentry · 3 users in 24h", "high", "circle-alert"],
+  [2, "BOT-41 · iOS replay stalls on the cart step", "Medium · PostHog · 12 replays", "medium", "circle-alert"],
+  [4, "BOT-40 · p95 latency on /api/cart", "High · Sentry · since 4.12.0", "high", "circle-alert"],
+];
+
+const CALL: string[] = [
+  "Hi Alex — Operator here. I am reading everything you connected. Stay on, I will tell you what I find.",
+  "Sentry first: three new errors since 4.12.0. The checkout total is the one I would start with — it is wrong after a quantity change, and three users hit it today. I am filing it as BOT-42.",
+  "PostHog links twelve session replays to that same checkout error, so you can watch it happen. There is also an iOS replay stall on the cart step — that is BOT-41, medium.",
+  "Your model accounts are in. Runs open on whichever account has the most capacity left and switch at the limit; nothing stops.",
+  "One more from Sentry: p95 latency on /api/cart climbed after the release — BOT-40, high. Three issues filed; you will see each one in the sidebar as its own conversation.",
+  "I am starting BOT-42 now. Plan, implement, review, verify — then the pull request waits for your approval here. You can close the laptop; I will call when it is ready.",
 ];
 
 const GOALS: [string, string, string, string, string[]][] = [
@@ -96,7 +112,7 @@ const STORAGE_KEY = "botinc-landing-v4";
 const initial: LandingState = {
   screen: "landing", theme: "light", demoView: "thread", appView: "thread", platform: "mac", copied: false, rt: 0, wf: 0, apiFallback: false,
   idx: 0, typed: "", live: -1, introN: 0, goals: ["route", "fix"], connected: [], models: [], autos: ["intake", "fix", "watch"], email: "", code: "", codeSent: false, authBusy: false, error: "",
-  dialog: null, dialogFor: "", method: "signin", scope: "", notice: "", merged: false, draft: "", msgs: [], annual: false,
+  dialog: null, dialogFor: "", method: "signin", scope: "", notice: "", merged: false, draft: "", msgs: [], annual: false, callEnded: false,
 };
 
 export type DemoStep = { cls: string; who: string; model: string; out: string; outCls: string; badge: string; stateCls: string; isClaude: boolean; isCodex: boolean; isOp: boolean };
@@ -271,7 +287,7 @@ export function useLanding(opts: { onEnterWorkspace?: () => void } = {}) {
 
   const startIntro = useCallback(() => {
     window.clearTimeout(timers.current.tl);
-    patch({ appView: "intro", introN: 0, live: -1, merged: false, msgs: [] });
+    patch({ appView: "intro", introN: 0, live: -1, merged: false, msgs: [], callEnded: false });
     const step = (i: number) => {
       patch({ introN: i });
       if (i >= INTRO.length) {
@@ -448,6 +464,10 @@ export function useLanding(opts: { onEnterWorkspace?: () => void } = {}) {
       autosPlural: s.autos.length + (s.autos.length === 1 ? " autopilot" : " autopilots"),
       finish: () => { enterWorkspace(); if (!opts.onEnterWorkspace) startIntro(); },
       introRows: INTRO.slice(0, s.introN).map(([k, who, text], i) => ({ cls: "entry13 l4-in" + (k === "op" ? "" : " l4-auto"), op: k === "op", auto: k !== "op", href: "/i15.svg#" + k, who, text, time: "09:4" + Math.min(9, i) })),
+      arriving: ARRIVE.filter(([at]) => at < (s.introN || 0)).map(([, title, meta, tone, icon], i) => ({ key: "a" + i, title, meta, tone, icon: "/i15.svg#" + icon })),
+      callOn: s.appView === "intro" && !s.callEnded,
+      callText: CALL[Math.max(0, Math.min(CALL.length - 1, (s.introN || 1) - 1))],
+      callEnd: () => patch({ callEnded: true }),
       backModels: () => persist({ screen: "models" }), repoLabel: conn("github") ? "acme/storefront" : "your repository",
       hasLive, l, lSteps: l.steps, merged: s.merged, approve: () => patch({ merged: true }), draft: s.draft, editDraft: (e: ChangeEvent<HTMLTextAreaElement>) => patch({ draft: e.target.value }),
       keyDown: (e: KeyboardEvent<HTMLTextAreaElement>) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } },

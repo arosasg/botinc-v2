@@ -408,15 +408,19 @@ export function ShellSidebar({ v }: { v: Vals }) {
                             ) : null}
                             <b className={`hacct-left16 ${a.tone13}`}>{interp(a.remaining13)}</b>
                           </span>
-                          <span className="hacct-line16">
+                          <span className="hacct-line16 hl19">
                             {(a.windows ?? []).map((w: any, i: number) => (
                               <Fragment key={i}>
-                                <span className="hw16">
+                                <span className="hw16" title={w.reset}>
                                   <span className="hw-k16">{interp(w.initial14)}</span>
+                                  <i className="hwbar19" aria-hidden="true">
+                                    <b className={w.tone14} style={css(w.style)} />
+                                  </i>
                                   <span className={`hw-v16 ${w.tone14}`}>{interp(w.leftLabel14)}</span>
-                                  <span className="hw-r16" title={w.reset}>
-                                    {interp(w.resetShort14)}
+                                  <span className="hw-arrow19" aria-hidden="true">
+                                    →
                                   </span>
+                                  <span className="hw-r16">{interp(w.resetDay19)}</span>
                                 </span>
                               </Fragment>
                             ))}
