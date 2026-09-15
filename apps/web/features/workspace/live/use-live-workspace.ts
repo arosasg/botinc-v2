@@ -48,7 +48,9 @@ const draftKey = (workspace: string, conversation?: unknown) => `botinc:draft:v2
 const dockConversationKey = (workspace: string) => `botinc:dock-conversation:v2:${workspace}`;
 const dockDraftKey = (workspace: string) => `botinc:dock-draft:v2:${workspace}`;
 export function threadInspectorPatch(isDesktop: boolean): Vals {
- return isDesktop?{inspector10:true,mobileInspector10:false,inspectorTab10:"issue",paneWidth11:400,paneRestore11:400}:{};
+ return isDesktop
+  ?{inspector10:true,mobileInspector10:false,inspectorTab10:"issue",paneWidth11:400,paneRestore11:400}
+  :{inspector10:false,mobileInspector10:false};
 }
 export function livePersonaDefaults(member: string, funding: string = "credits"): Vals {
  return {
@@ -108,12 +110,13 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
    let bootIssueDetail:Awaited<ReturnType<WorkspaceClient["issue"]>>|null=null;
    let bootConversationDetail:Awaited<ReturnType<WorkspaceClient["conversation"]>>|null=null;
    let bootConversationAccounts:Awaited<ReturnType<WorkspaceClient["accounts"]>>|null=null;
+   let bootPlugins:Awaited<ReturnType<WorkspaceClient["plugins"]>>|null=null;
    let refreshing=false,again=false;
    const hydrate=async()=>{
     if(!alive)return;if(refreshing){again=true;return;}refreshing=true;
     try{
      const [issues,chats,autos,accounts,routing,overview,members,skills,memories,credits,usage,plugins,repos,projects,workflows,invites,sessions,keys]=await Promise.all([
-      ws.issues(undefined,abort.signal),ws.conversations(abort.signal),ws.autopilots(abort.signal),bootConversationAccounts??ws.accounts(abort.signal),ws.routing(abort.signal),ws.overview(abort.signal),ws.members(abort.signal),ws.skills(abort.signal),ws.memories(abort.signal),ws.credits(abort.signal),ws.usage(abort.signal),ws.plugins(abort.signal),ws.repositories(abort.signal),ws.projects(abort.signal),ws.workflows(abort.signal),ws.invitations(abort.signal),api.request<{sessions:Vals[]}>("GET","/api/me/sessions",undefined,abort.signal),api.request<{keys:Vals[]}>("GET","/api/me/keys",undefined,abort.signal),
+      ws.issues(undefined,abort.signal),ws.conversations(abort.signal),ws.autopilots(abort.signal),bootConversationAccounts??ws.accounts(abort.signal),ws.routing(abort.signal),ws.overview(abort.signal),ws.members(abort.signal),ws.skills(abort.signal),ws.memories(abort.signal),ws.credits(abort.signal),ws.usage(abort.signal),bootPlugins??ws.plugins(abort.signal),ws.repositories(abort.signal),ws.projects(abort.signal),ws.workflows(abort.signal),ws.invitations(abort.signal),api.request<{sessions:Vals[]}>("GET","/api/me/sessions",undefined,abort.signal),api.request<{keys:Vals[]}>("GET","/api/me/keys",undefined,abort.signal),
      ]);
      if(!alive)return;
      for(const p of members.members)people.set(p.user_id,{name:p.name,email:p.email});
@@ -199,6 +202,19 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
     }finally{liveRefreshing=false;if(liveAgain&&alive){liveAgain=false;void refreshActiveWork().catch(fail)}}
    };
    restore=installActions(logic,ws,api,me,people,hydrate,fail);
+   // A fresh conversation needs only the selected workspace's accounts and
+   // connector marks to paint honestly. Do not hold its composer and welcome
+   // state behind every issue, routine, member, billing and settings request.
+   if(initialRoute.view==="chat"&&!initialRoute.conversation){
+    [bootConversationAccounts,bootPlugins]=await Promise.all([ws.accounts(abort.signal),ws.plugins(abort.signal)]);if(!alive)return;
+    const connections=Object.fromEntries(bootPlugins.plugins.map(plugin=>[titleCase(plugin.kind.replace(/^mcp:/,"")),plugin.status==="connected"]));
+    logic.setState({
+     ...livePersonaDefaults(member),liveWorkspaces:workspaces,workspace16:first.name,workspaceName:first.name,
+     member,signed:true,view:"chat",activeChat:null,draft:readDraft(ws.slug,null),inspector10:false,mobileInspector10:false,
+     ...accountHydrationPatch(member,bootConversationAccounts.accounts),connections:{[member]:connections},livePlugins:bootPlugins.plugins,
+    });
+    report("live");
+   }
    // A canonical work-conversation URL already contains the issue UUID. Show
    // that issue and its real timeline as soon as the detail request returns;
    // the larger workspace inventory can populate the navigation afterward.
