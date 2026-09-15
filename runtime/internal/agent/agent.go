@@ -76,7 +76,7 @@ var Adapters = map[string]Adapter{
 		Provider: "claude", Binary: "claude",
 		Args: func(prompt, model string) []string {
 			args := []string{"-p", prompt, "--output-format", "stream-json", "--verbose", "--permission-mode", "acceptEdits"}
-			if model != "" && model != "auto" {
+			if model = cliModel(model); model != "" && model != "auto" {
 				args = append(args, "--model", model)
 			}
 			return args
@@ -91,7 +91,7 @@ var Adapters = map[string]Adapter{
 			// Codex 0.154 removed --full-auto; this is its supported flag for
 			// non-interactive automation in an externally isolated environment.
 			args := []string{"exec", "--json", "--dangerously-bypass-approvals-and-sandbox", prompt}
-			if model != "" && model != "auto" {
+			if model = cliModel(model); model != "" && model != "auto" {
 				args = append(args, "--model", model)
 			}
 			return args
@@ -103,7 +103,7 @@ var Adapters = map[string]Adapter{
 		Provider: "openrouter", Binary: "claude",
 		Args: func(prompt, model string) []string {
 			args := []string{"-p", prompt, "--output-format", "stream-json", "--verbose", "--permission-mode", "acceptEdits"}
-			if model != "" && model != "auto" {
+			if model = cliModel(model); model != "" && model != "auto" {
 				args = append(args, "--model", model)
 			}
 			return args
@@ -113,6 +113,21 @@ var Adapters = map[string]Adapter{
 		},
 		Parse: jsonLine,
 	},
+}
+
+// cliModel translates product-facing model names into the stable identifiers
+// accepted by coding CLIs. Runs keep the friendly label for the UI and audit
+// trail, while the subprocess receives the provider's canonical slug.
+func cliModel(model string) string {
+	model = strings.TrimSpace(model)
+	if model == "" || strings.EqualFold(model, "auto") {
+		return strings.ToLower(model)
+	}
+	lower := strings.ToLower(model)
+	if strings.HasPrefix(lower, "gpt-") || strings.HasPrefix(lower, "codex") || strings.HasPrefix(lower, "claude") {
+		return strings.ReplaceAll(lower, " ", "-")
+	}
+	return model
 }
 
 // Pick resolves the adapter for a credential provider, falling back to claude.
@@ -143,6 +158,83 @@ type Options struct {
 var ErrBinaryMissing = errors.New("the coding CLI is not installed in this sandbox")
 
 var validMCPServerName = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+
+type mcpServerConfig struct {
+	URL     string            `json:"url"`
+	Headers map[string]string `json:"headers"`
+	Command string            `json:"command"`
+	Args    []string          `json:"args"`
+	Env     map[string]string `json:"env"`
+}
+
+func tomlString(value string) string {
+	encoded, _ := json.Marshal(value)
+	return string(encoded)
+}
+
+func tomlStrings(values []string) string {
+	encoded := make([]string, len(values))
+	for i, value := range values {
+		encoded[i] = tomlString(value)
+	}
+	return "[" + strings.Join(encoded, ", ") + "]"
+}
+
+func tomlStringMap(values map[string]string) string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	encoded := make([]string, 0, len(keys))
+	for _, key := range keys {
+		encoded = append(encoded, tomlString(key)+" = "+tomlString(values[key]))
+	}
+	return "{ " + strings.Join(encoded, ", ") + " }"
+}
+
+// codexMCPConfig converts the Claude-compatible connector document stored by
+// BotInc into an isolated Codex profile for the same task-scoped connectors.
+func codexMCPConfig(config []byte) ([]byte, error) {
+	var document struct {
+		Servers map[string]mcpServerConfig `json:"mcpServers"`
+	}
+	if err := json.Unmarshal(config, &document); err != nil {
+		return nil, fmt.Errorf("decode MCP configuration: %w", err)
+	}
+	names := make([]string, 0, len(document.Servers))
+	for name := range document.Servers {
+		if !validMCPServerName.MatchString(name) {
+			return nil, fmt.Errorf("MCP server name %q cannot be safely configured", name)
+		}
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	var out strings.Builder
+	for _, name := range names {
+		server := document.Servers[name]
+		if server.URL == "" && server.Command == "" {
+			return nil, fmt.Errorf("MCP server %q has no URL or command", name)
+		}
+		fmt.Fprintf(&out, "[mcp_servers.%s]\n", name)
+		if server.URL != "" {
+			fmt.Fprintf(&out, "url = %s\n", tomlString(server.URL))
+			if len(server.Headers) > 0 {
+				fmt.Fprintf(&out, "http_headers = %s\n", tomlStringMap(server.Headers))
+			}
+		} else {
+			fmt.Fprintf(&out, "command = %s\n", tomlString(server.Command))
+			if len(server.Args) > 0 {
+				fmt.Fprintf(&out, "args = %s\n", tomlStrings(server.Args))
+			}
+			if len(server.Env) > 0 {
+				fmt.Fprintf(&out, "env = %s\n", tomlStringMap(server.Env))
+			}
+		}
+		out.WriteByte('\n')
+	}
+	return []byte(out.String()), nil
+}
 
 func allowedMCPTools(config []byte) ([]string, error) {
 	var document struct {
@@ -205,6 +297,19 @@ func Run(ctx context.Context, a Adapter, o Options) (map[string]any, error) {
 	}
 	if o.BudgetCents > 0 && (a.Provider == "claude" || a.Provider == "openrouter") {
 		args = append(args, "--max-budget-usd", fmt.Sprintf("%.2f", float64(o.BudgetCents)/100))
+	}
+	if len(o.MCPConfig) > 0 && a.Provider == "codex" {
+		profile, err := codexMCPConfig(o.MCPConfig)
+		if err != nil {
+			return nil, err
+		}
+		credentialFiles := make(map[string]string, len(o.CredentialFiles)+1)
+		for name, contents := range o.CredentialFiles {
+			credentialFiles[name] = contents
+		}
+		credentialFiles["botinc-mcp.config.toml"] = string(profile)
+		o.CredentialFiles = credentialFiles
+		args = append([]string{"--profile", "botinc-mcp"}, args...)
 	}
 	cmd := exec.CommandContext(ctx, a.Binary, args...)
 	cmd.Dir = o.Dir

@@ -213,6 +213,35 @@ echo '{"type":"result","result":"mcp-secret"}'
 	}
 }
 
+func TestCodexReceivesPrivateMCPConfiguration(t *testing.T) {
+	fakeCLI(t, "mcpcli", `
+test "$1" = '--profile' || exit 10
+test "$2" = 'botinc-mcp' || exit 11
+profile="$CODEX_HOME/botinc-mcp.config.toml"
+grep -F '[mcp_servers.github]' "$profile" >/dev/null || exit 12
+grep -F 'url = "https://example.test/mcp"' "$profile" >/dev/null || exit 13
+grep -F 'http_headers = { "Authorization" = "Bearer mcp-secret" }' "$profile" >/dev/null || exit 14
+echo '{"type":"result","result":"mcp-secret"}'
+`)
+	adapter := adapterFor("mcpcli")
+	adapter.Provider = "codex"
+	workdir := t.TempDir()
+	out, err := Run(context.Background(), adapter, Options{
+		Dir:             workdir,
+		CredentialFiles: map[string]string{"auth.json": `{"tokens":{"access_token":"file-secret"}}`},
+		MCPConfig:       []byte(`{"mcpServers":{"github":{"url":"https://example.test/mcp","headers":{"Authorization":"Bearer mcp-secret"}}}}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out["result"] != "[redacted]" {
+		t.Fatalf("the connector secret must be redacted: %+v", out)
+	}
+	if _, err := os.Stat(filepath.Join(workdir, ".botinc-credentials")); !os.IsNotExist(err) {
+		t.Fatal("task MCP profile was not removed")
+	}
+}
+
 func TestAllowedMCPToolsAreExactAndDeterministic(t *testing.T) {
 	allowed, err := allowedMCPTools([]byte(`{"mcpServers":{"gmail":{},"braintrust-eu":{}}}`))
 	if err != nil {
@@ -245,6 +274,23 @@ func TestAdapterArgumentsCarryTheModel(t *testing.T) {
 	}
 	if strings.Contains(strings.Join(Adapters["claude"].Args("x", "auto"), " "), "--model") {
 		t.Fatal("auto means let the CLI choose, so no --model flag")
+	}
+}
+
+func TestAdapterArgumentsNormalizeDisplayModels(t *testing.T) {
+	for _, test := range []struct {
+		provider string
+		display  string
+		slug     string
+	}{
+		{provider: "claude", display: "Claude Opus 5", slug: "claude-opus-5"},
+		{provider: "codex", display: "GPT-5.6 Sol", slug: "gpt-5.6-sol"},
+		{provider: "codex", display: "GPT-6 Astra", slug: "gpt-6-astra"},
+	} {
+		joined := strings.Join(Adapters[test.provider].Args("do the thing", test.display), " ")
+		if !strings.Contains(joined, "--model "+test.slug) {
+			t.Fatalf("%s should map %q to %q: %s", test.provider, test.display, test.slug, joined)
+		}
 	}
 }
 
