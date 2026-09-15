@@ -5,7 +5,7 @@
 import { useEffect, useRef } from "react";
 import { Client, type Account, type User, type WorkspaceClient, type WorkflowGraph } from "@botinc/api";
 import type { Vals } from "../vals";
-import { clampConversationPaneWidth, conversationPaneBounds, formatUsageReset, normalizePublicAssets, usageRingStyleFromCapacity } from "./layout";
+import { bindingWindowFields, clampConversationPaneWidth, conversationPaneBounds, formatUsageReset, normalizePublicAssets, resetDayLabel, usageRingStyleFromCapacity } from "./layout";
 import { mapAccount, mapAutopilot, mapConversation, mapIssue, mapIssueTimeline, mapMessage, mapRun, mapWorkflowSteps, type PeopleIndex } from "./map";
 import { parseWorkspaceRoute, workspacePath, type WorkspaceRoute } from "./routes";
 import { installPerformanceGuards } from "./perf";
@@ -476,13 +476,13 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
   v.providerGroups13=(v.providerGroups13||[]).map((provider:Vals)=>({
    ...provider,
    ringStyle14:usageRingStyleFromCapacity(provider.index14),
-   rows:(provider.rows||[]).map((account:Vals)=>({
-    ...account,
-    windows:(account.windows||[]).map((window:Vals)=>({
-     ...window,
-     resetShort14:formatUsageReset(window.resetShort14||window.reset),
-    })),
-   })),
+   rows:(provider.rows||[]).map((account:Vals)=>{
+    const windows=(account.windows||[]).map((window:Vals)=>{
+     const resetShort14=formatUsageReset(window.resetShort14||window.reset);
+     return {...window,resetShort14,resetDay19:resetDayLabel(resetShort14)};
+    });
+    return {...account,windows,...bindingWindowFields(windows)};
+   }),
   }));
   if(v.autopilotForm10){
    const available=(s.livePlugins||[]).filter((plugin:Vals)=>plugin.kind?.startsWith("mcp:"));

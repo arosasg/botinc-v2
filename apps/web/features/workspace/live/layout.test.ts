@@ -1,12 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  absolutePublicAsset,
-  clampConversationPaneWidth,
-  conversationPaneBounds,
-  formatUsageReset,
-  normalizePublicAssets,
-  usageRingStyleFromCapacity,
-} from "./layout";
+import { absolutePublicAsset, bindingWindowFields, clampConversationPaneWidth, conversationPaneBounds, formatUsageReset, normalizePublicAssets, resetDayLabel, usageRingStyleFromCapacity } from "./layout";
 
 describe("workspace public assets", () => {
   it("anchors design assets and symbol sprites at the domain root", () => {
@@ -56,9 +49,32 @@ describe("coding account usage presentation", () => {
     expect(formatUsageReset("Tomorrow")).toBe("Tomorrow");
   });
 
-  it("draws the outer harness ring from usage rather than capacity left", () => {
-    expect(usageRingStyleFromCapacity("7% left")).toBe("--used:335deg");
-    expect(usageRingStyleFromCapacity(100)).toBe("--used:0deg");
-    expect(usageRingStyleFromCapacity("n/a")).toBe("--used:0deg");
+  it("draws every ring variant from usage rather than capacity left", () => {
+    expect(usageRingStyleFromCapacity("7% left")).toBe("--used14:335deg;--used:335deg;--remaining:25deg");
+    expect(usageRingStyleFromCapacity(100)).toBe("--used14:0deg;--used:0deg;--remaining:360deg");
+    expect(usageRingStyleFromCapacity("n/a")).toBe("--used14:0deg;--used:0deg;--remaining:0deg");
+  });
+
+  it("shortens the reset label to day and time the way the design's account window does", () => {
+    expect(resetDayLabel("Sep 21, 00:00")).toBe("21 00:00");
+    expect(resetDayLabel("Sep 21 · 14:30")).toBe("21 14:30");
+    expect(resetDayLabel("14:30")).toBe(`${new Date().getDate()} 14:30`);
+    expect(resetDayLabel("")).toBe("");
+  });
+
+  it("binds the account bar and reset note to the window with the least left", () => {
+    const fields = bindingWindowFields([
+      { leftLabel14: "62%", tone14: "ok14", resetShort14: "Sep 21, 00:00", label: "Weekly", reset: "2026-09-21T00:00:00Z" },
+      { leftLabel14: "7%", tone14: "bad14", resetShort14: "Sep 15, 18:00", label: "5-hour", reset: "2026-09-15T18:00:00Z" },
+      { leftLabel14: "n/a", tone14: "muted14", resetShort14: "" },
+    ]);
+    expect(fields).toEqual({
+      barStyle19: "width:7%",
+      barTone19: "bad14",
+      hasReset19: true,
+      resetNote19: "Resets Sep 15, 18:00",
+      resetTitle19: "5-hour \u00b7 2026-09-15T18:00:00Z",
+    });
+    expect(bindingWindowFields([])).toEqual({ barStyle19: "width:0%", barTone19: "muted14", hasReset19: false, resetNote19: "", resetTitle19: "" });
   });
 });
