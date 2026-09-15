@@ -6162,8 +6162,8 @@ button{font-family:inherit}button .ui-icon{color:inherit}
 @media(min-width:761px) and (max-width:959px){.app-v19 .inspector10.inspector11{min-width:300px}}
 .app-v19 .sidebar{transition:width 320ms var(--ease19),flex-basis 320ms var(--ease19)}
 .app-v19.sb-dragging19 .sidebar{transition:none}
-.app-v19 .sidebar>.sidebar-bottom{animation:none}
-.app-v19 .provider-hover13{z-index:500}
+.app-v19 .sidebar>.sidebar-bottom{animation:none!important;transform:none!important;filter:none!important;opacity:1!important}
+.app .provider-hover13,.provider-hover13{z-index:500}
 .app-v19 .inspector-tabs10>button{transition:color 160ms,border-color 160ms}
 :where(.app-v19) .inspector-content10>*{animation:fade19 260ms var(--ease19) both}
 
