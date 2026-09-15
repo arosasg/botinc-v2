@@ -2248,6 +2248,12 @@ button{font-family:inherit}button .ui-icon{color:inherit}
 .app .provider-orbit13.orbit14.muted14{--ring:var(--line)}
 /* Nothing reported reads as an empty track, never as a full one. */
 .app .provider-orbit13.orbit14.muted14{background:var(--hover14)}
+/* A stale real observation still gets a neutral arc. Its muted colour keeps it
+   distinct from fresh routing capacity while preserving the reported shape. */
+.app .provider-orbit13.orbit14.muted14.reported14{
+  background:conic-gradient(from -90deg,
+    var(--ring) 0 var(--used),
+    var(--hover14) var(--used) 360deg)}
 
 /* --- the hover card: two lines at rest ---------------------------------- */
 /* Ten accounts at five lines each is a wall. Each row rests at two lines —
