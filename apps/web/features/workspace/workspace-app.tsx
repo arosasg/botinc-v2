@@ -4,7 +4,7 @@
    views. Browser only: the logic touches window, document and localStorage. */
 
 import { useCallback, useEffect, useState } from "react";
-import { DCLogic, useDCLogic, type LogicClass } from "@/lib/dc/logic";
+import { DCLogic, DCLogicContext, useDCLogic, type LogicClass } from "@/lib/dc/logic";
 import { WorkspaceView } from "./views/workspace-view";
 import { useStickToLatest } from "./use-stick-to-latest";
 import { useLiveWorkspace, type LiveStatus } from "./live/use-live-workspace";
@@ -33,9 +33,11 @@ function Mounted({ Logic }: { Logic: LogicClass }) {
      light - which is how the dark theme kept a white tile behind the source
      icons. `display: contents` publishes the tokens without adding a box. */
   return (
-    <div className="sc-host" style={{ display: "contents" }}>
-      <WorkspaceView v={vals} />
-    </div>
+    <DCLogicContext.Provider value={logic}>
+      <div className="sc-host" style={{ display: "contents" }}>
+        <WorkspaceView v={vals} />
+      </div>
+    </DCLogicContext.Provider>
   );
 }
 

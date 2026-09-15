@@ -8,6 +8,7 @@ import type { Vals } from "../vals";
 import { clampConversationPaneWidth, conversationPaneBounds, formatUsageReset, normalizePublicAssets, usageRingStyleFromCapacity } from "./layout";
 import { mapAccount, mapAutopilot, mapConversation, mapIssue, mapIssueTimeline, mapMessage, mapRun, mapWorkflowSteps, type PeopleIndex } from "./map";
 import { parseWorkspaceRoute, workspacePath, type WorkspaceRoute } from "./routes";
+import { installPerformanceGuards } from "./perf";
 
 export type LiveStatus = "off" | "connecting" | "live" | "signed-out" | "error";
 export type Logic = Vals & { state: Vals; setState: (patch: Vals) => void; renderVals: () => Vals };
@@ -329,6 +330,7 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
  let paneFrame:number|undefined;let finishPaneDrag:(()=>void)|undefined;
  let fileTarget:"main"|"dock"="main";
  const bind=(name:string,fn:unknown)=>{if(!originals.has(name))originals.set(name,logic[name]);logic[name]=fn};
+ installPerformanceGuards(logic);
  const paneAvailable=()=>document.querySelector<HTMLElement>(".app-v19 .workspace-body")?.clientWidth||Number(logic.state.paneAvailable11)||1040;
  const setPane=(width:number,remember=true)=>{
   if(width<=0){logic.setState({inspector10:false,mobileInspector10:false,paneWidth11:0});return}
@@ -424,7 +426,7 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
   }catch(err){if(!disposed)fail(err)}finally{dockSending=false}
  };
  bind("openIssue",(id:string)=>{const issue=logic.state.issues.find((row:Vals)=>row.id===id||row.uuid===id);logic.go("thread9",{activeIssue:id,issueComment:"",threadDraft9:readDraft(ws.slug,issue?.uuid||id),liveIssueDetail:null,liveIssueFiles:[],...threadInspectorPatch(window.matchMedia("(min-width: 901px)").matches)});void hydrate().catch(fail)});
- bind("issue",()=>logic.state.issues.find((i:Vals)=>i.id===logic.state.activeIssue||i.uuid===logic.state.activeIssue)||{id:"",title:"Select an issue",description:"",status:"Incoming",events:[]});
+ bind("issue",()=>logic.state.issues.find((i:Vals)=>i.id===logic.state.activeIssue||i.uuid===logic.state.activeIssue)||{id:"",title:"Select an issue",description:"",status:"Incoming",owner:"",events:[]});
  // The prototype has several generations of composer handlers. All route here.
  for(const name of ["sendComposer10","sendComposer11","sendThreadMessage9"])bind(name,send);
  bind("openAuto9",(id:string)=>{logic.go("auto9",{activeAuto9:id,panel:null});void hydrate().catch(fail)});
@@ -520,6 +522,13 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
    if(repositoryIndex>=0)v.rtDefs16=[...v.rtDefs16.slice(0,repositoryIndex+1),connectorDefinition,...v.rtDefs16.slice(repositoryIndex+1)];
   }
   const detail=s.liveIssueDetail;const currentIssue=logic.issue();
+  /* The issue page carries its own execution rail (Execution / Source and output / People). The
+     conversation inspector has no live bindings on this view, so a preference left open by a
+     thread rendered as an empty third column that squeezed the page. Hide it here the way the
+     design hides it on top-level pages. */
+  if(s.view==="issue"&&v.inspectorShown16){v.inspectorOpen10=false;v.inspectorShown16=false;v.panelOpenClass="";v.rootClass=String(v.rootClass||"").replace(/\s*\binspector-open10\b/g,"").replace(/\s*\bmobile-inspector10\b/g,"")}
+  /* Unassigned and not-yet-selected issues have no owner; the design's placeholder then read "Message undefined's agents". */
+  {const owner=String(currentIssue.owner||"");const whose=!owner||owner===String(s.member||"")?"your":owner+"\u2019s";v.i8CommentPlaceholder=`Message ${whose} agents${currentIssue.id?` about ${currentIssue.id}`:""}\u2026`}
   v.i8Computer="Remote";v.i8Agent="Operator";
   v.i8HasPr=!!detail?.runs?.some((r:Vals)=>r.result?.pull_request?.url);v.i8HasDeploy=false;v.i8HasCriteria=false;v.i8NoCriteria=true;
   v.i8HasArtifacts=!!s.liveIssueFiles?.length;v.i8NoArtifacts=!v.i8HasArtifacts;
