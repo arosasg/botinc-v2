@@ -5,7 +5,7 @@
 import { useEffect, useRef } from "react";
 import { Client, type Account, type User, type WorkspaceClient, type WorkflowGraph } from "@botinc/api";
 import type { Vals } from "../vals";
-import { clampConversationPaneWidth, conversationPaneBounds, normalizePublicAssets } from "./layout";
+import { clampConversationPaneWidth, conversationPaneBounds, formatUsageReset, normalizePublicAssets, usageRingStyleFromCapacity } from "./layout";
 import { mapAccount, mapAutopilot, mapConversation, mapIssue, mapIssueTimeline, mapMessage, mapRun, mapWorkflowSteps, type PeopleIndex } from "./map";
 import { parseWorkspaceRoute, workspacePath, type WorkspaceRoute } from "./routes";
 
@@ -110,13 +110,16 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
    let bootIssueDetail:Awaited<ReturnType<WorkspaceClient["issue"]>>|null=null;
    let bootConversationDetail:Awaited<ReturnType<WorkspaceClient["conversation"]>>|null=null;
    let bootConversationAccounts:Awaited<ReturnType<WorkspaceClient["accounts"]>>|null=null;
+   let bootIssues:Awaited<ReturnType<WorkspaceClient["issues"]>>|null=null;
+   let bootAutopilots:Awaited<ReturnType<WorkspaceClient["autopilots"]>>|null=null;
+   let bootAutopilotDetail:Awaited<ReturnType<WorkspaceClient["autopilot"]>>|null=null;
    let bootPlugins:Awaited<ReturnType<WorkspaceClient["plugins"]>>|null=null;
    let refreshing=false,again=false;
    const hydrate=async()=>{
     if(!alive)return;if(refreshing){again=true;return;}refreshing=true;
     try{
      const [issues,chats,autos,accounts,routing,overview,members,skills,memories,credits,usage,plugins,repos,projects,workflows,invites,sessions,keys]=await Promise.all([
-      ws.issues(undefined,abort.signal),ws.conversations(abort.signal),ws.autopilots(abort.signal),bootConversationAccounts??ws.accounts(abort.signal),ws.routing(abort.signal),ws.overview(abort.signal),ws.members(abort.signal),ws.skills(abort.signal),ws.memories(abort.signal),ws.credits(abort.signal),ws.usage(abort.signal),bootPlugins??ws.plugins(abort.signal),ws.repositories(abort.signal),ws.projects(abort.signal),ws.workflows(abort.signal),ws.invitations(abort.signal),api.request<{sessions:Vals[]}>("GET","/api/me/sessions",undefined,abort.signal),api.request<{keys:Vals[]}>("GET","/api/me/keys",undefined,abort.signal),
+      bootIssues??ws.issues(undefined,abort.signal),ws.conversations(abort.signal),bootAutopilots??ws.autopilots(abort.signal),bootConversationAccounts??ws.accounts(abort.signal),ws.routing(abort.signal),ws.overview(abort.signal),ws.members(abort.signal),ws.skills(abort.signal),ws.memories(abort.signal),ws.credits(abort.signal),ws.usage(abort.signal),bootPlugins??ws.plugins(abort.signal),ws.repositories(abort.signal),ws.projects(abort.signal),ws.workflows(abort.signal),ws.invitations(abort.signal),api.request<{sessions:Vals[]}>("GET","/api/me/sessions",undefined,abort.signal),api.request<{keys:Vals[]}>("GET","/api/me/keys",undefined,abort.signal),
      ]);
      if(!alive)return;
      for(const p of members.members)people.set(p.user_id,{name:p.name,email:p.email});
@@ -162,7 +165,7 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
      }else if(dockConversation){saveLocal(dockConversationKey(ws.slug),"");patch.dockConversationID="";patch.dockLiveMessages=[];patch.dockLiveRun=null;patch.dockLivePhase="done";}
      patch.autopilots9=autos.autopilots.map(a=>({...mapAutopilot(a),owner:member,kind:a.trigger.kind,status:a.enabled?"active":"paused",history:[],limit:2,daily:20}));
      const activeAutopilot=String(logic.state.activeAuto9||initialRoute.autopilot||"");
-     if(uuid(activeAutopilot)&&autos.autopilots.some(a=>a.id===activeAutopilot)){const detail=await ws.autopilot(activeAutopilot,abort.signal);patch.autopilots9=patch.autopilots9.map((autopilot:Vals)=>autopilot.id===activeAutopilot?{...autopilot,history:detail.runs.map(run=>({title:titleCase(run.status),detail:run.summary||run.run_id||"Run recorded",when:new Date(run.created_at).toLocaleString(),status:run.status}))}:autopilot)}
+     if(uuid(activeAutopilot)&&autos.autopilots.some(a=>a.id===activeAutopilot)){const detail=bootAutopilotDetail?.autopilot.id===activeAutopilot?bootAutopilotDetail:await ws.autopilot(activeAutopilot,abort.signal);patch.autopilots9=patch.autopilots9.map((autopilot:Vals)=>autopilot.id===activeAutopilot?{...autopilot,history:detail.runs.map(run=>({title:titleCase(run.status),detail:run.summary||run.run_id||"Run recorded",when:new Date(run.created_at).toLocaleString(),status:run.status}))}:autopilot)}
      Object.assign(patch,accountHydrationPatch(member,accounts.accounts));
      patch.connections={[member]:Object.fromEntries(plugins.plugins.map(p=>[titleCase(p.kind.replace(/^mcp:/,"")),p.status==="connected"]))};
      patch.customPlugins10=plugins.plugins.filter(p=>p.kind.startsWith("mcp:")&&!catalogPluginKeys.has(pluginKey(p.kind))).map(p=>({name:String((p.account as Vals)?.name||titleCase(p.kind.slice(4).replace(/-/g," "))),owner:member,category:"Custom",copy:"Workspace MCP server",icon:"code-xml"}));
@@ -253,6 +256,41 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
      ...accountHydrationPatch(member,bootConversationAccounts.accounts),
      ...conversationRoutingPatch(member,bootConversationDetail.conversation,run),...runFailurePatch(run),
     });
+    report("live");
+   }
+   // Inventory and settings pages should reveal as soon as the data for the
+   // requested screen is ready. The remaining workspace data hydrates in the
+   // background and must not hold a large migrated issue list behind billing,
+   // security, repository, memory and profile requests.
+   if(initialRoute.view==="work"){
+    bootIssues=await ws.issues(undefined,abort.signal);if(!alive)return;
+    logic.setState({...livePersonaDefaults(member),liveWorkspaces:workspaces,workspace16:first.name,workspaceName:first.name,member,signed:true,view:"work",issues:bootIssues.issues.map(issue=>mapIssue(issue,people))});
+    report("live");
+   }
+   if(initialRoute.view==="issue"&&uuid(initialRoute.issue)){
+    [bootIssues,bootIssueDetail]=await Promise.all([ws.issues(undefined,abort.signal),ws.issue(initialRoute.issue,abort.signal)]);if(!alive)return;
+    const mapped=mapIssue(bootIssueDetail.issue,people);
+    logic.setState({...livePersonaDefaults(member),liveWorkspaces:workspaces,workspace16:first.name,workspaceName:first.name,member,signed:true,view:"issue",activeIssue:bootIssueDetail.issue.id,issues:bootIssues.issues.map(issue=>issue.id===bootIssueDetail?.issue.id?mapped:mapIssue(issue,people)),liveIssueDetail:bootIssueDetail,inspector10:false,mobileInspector10:false});
+    report("live");
+   }
+   if(initialRoute.view==="schedule9"){
+    bootAutopilots=await ws.autopilots(abort.signal);if(!alive)return;
+    logic.setState({...livePersonaDefaults(member),liveWorkspaces:workspaces,workspace16:first.name,workspaceName:first.name,member,signed:true,view:"schedule9",autopilots9:bootAutopilots.autopilots.map(autopilot=>({...mapAutopilot(autopilot),owner:member,kind:autopilot.trigger.kind,status:autopilot.enabled?"active":"paused",history:[],limit:2,daily:20}))});
+    report("live");
+   }
+   if(initialRoute.view==="auto9"&&uuid(initialRoute.autopilot)){
+    [bootAutopilots,bootAutopilotDetail]=await Promise.all([ws.autopilots(abort.signal),ws.autopilot(initialRoute.autopilot,abort.signal)]);if(!alive)return;
+    logic.setState({...livePersonaDefaults(member),liveWorkspaces:workspaces,workspace16:first.name,workspaceName:first.name,member,signed:true,view:"auto9",activeAuto9:initialRoute.autopilot,autopilots9:bootAutopilots.autopilots.map(autopilot=>({...mapAutopilot(autopilot),owner:member,kind:autopilot.trigger.kind,status:autopilot.enabled?"active":"paused",history:autopilot.id===initialRoute.autopilot?bootAutopilotDetail!.runs.map(run=>({title:titleCase(run.status),detail:run.summary||run.run_id||"Run recorded",when:new Date(run.created_at).toLocaleString(),status:run.status})):[],limit:2,daily:20}))});
+    report("live");
+   }
+   if(initialRoute.view==="plugins10"){
+    bootPlugins=await ws.plugins(abort.signal);if(!alive)return;
+    logic.setState({...livePersonaDefaults(member),liveWorkspaces:workspaces,workspace16:first.name,workspaceName:first.name,member,signed:true,view:"plugins10",livePlugins:bootPlugins.plugins,connections:{[member]:Object.fromEntries(bootPlugins.plugins.map(plugin=>[titleCase(plugin.kind.replace(/^mcp:/,"")),plugin.status==="connected"]))}});
+    report("live");
+   }
+   if(initialRoute.view==="settings"&&initialRoute.section==="accounts"){
+    bootConversationAccounts=await ws.accounts(abort.signal);if(!alive)return;
+    logic.setState({...livePersonaDefaults(member),liveWorkspaces:workspaces,workspace16:first.name,workspaceName:first.name,member,signed:true,view:"settings",section:"accounts",...accountHydrationPatch(member,bootConversationAccounts.accounts)});
     report("live");
    }
    await hydrate();if(!alive)return;
@@ -412,6 +450,17 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
  bind("renderVals",()=>{
   const v=render.call(logic);const s=logic.state;
   v.workspaceName= s.workspace16||"BotInc";v.previewCard15=false;
+  v.providerGroups13=(v.providerGroups13||[]).map((provider:Vals)=>({
+   ...provider,
+   ringStyle14:usageRingStyleFromCapacity(provider.index14),
+   rows:(provider.rows||[]).map((account:Vals)=>({
+    ...account,
+    windows:(account.windows||[]).map((window:Vals)=>({
+     ...window,
+     resetShort14:formatUsageReset(window.resetShort14||window.reset),
+    })),
+   })),
+  }));
   if(v.autopilotForm10){
    const available=(s.livePlugins||[]).filter((plugin:Vals)=>plugin.kind?.startsWith("mcp:"));
    const selectedIDs:string[]=Array.isArray(s.autoDraft9?.pluginIds)?s.autoDraft9.pluginIds:[];
