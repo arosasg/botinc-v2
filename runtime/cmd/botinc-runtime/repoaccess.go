@@ -85,7 +85,7 @@ func repositoriesPrompt(spec protocol.Spec) string {
 		}
 	}
 	if authenticated {
-		b.WriteString("Git is authenticated for github.com in this sandbox, and GITHUB_TOKEN and GH_TOKEN hold the same token for the GitHub REST API. Nothing is checked out yet: clone the repositories the request is about into the working directory (git clone https://github.com/OWNER/NAME.git), work on branches, and push or open pull requests when the user asked for changes. Never print the token.\n\n")
+		fmt.Fprintf(&b, "Git is authenticated for github.com in this sandbox, and GITHUB_TOKEN and GH_TOKEN hold the same token for GitHub CLI and REST API access. Nothing is checked out yet. For repository work, run `botinc-runtime checkout owner/repository`, for example `botinc-runtime checkout %s`. The command accepts only repositories listed above, creates a run branch, and materializes that repository's encrypted environment as an ignored .env file. Work on branches, and push or open pull requests when the user asked for changes. Never print credentials or .env values.\n\n", spec.Repositories[0].FullName)
 	} else {
 		b.WriteString("GitHub is not connected to this workspace, so this run cannot read or change these repositories. Say so instead of guessing.\n\n")
 	}

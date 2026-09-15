@@ -9,7 +9,7 @@ COPY . .
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/botinc-runtime ./cmd/botinc-runtime
 
 FROM node:22-alpine
-RUN apk add --no-cache git openssh-client ca-certificates ripgrep
+RUN apk add --no-cache git github-cli openssh-client ca-certificates ripgrep
 # The coding CLIs the adapters drive. Pinned, so a run is reproducible.
 RUN npm install -g --no-fund --no-audit \
       @anthropic-ai/claude-code@2.1.270 \

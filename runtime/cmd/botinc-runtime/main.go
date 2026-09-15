@@ -25,7 +25,13 @@ import (
 )
 
 func main() {
-	if err := run(); err != nil {
+	var err error
+	if len(os.Args) == 3 && os.Args[1] == "checkout" {
+		err = runCheckout(os.Args[2])
+	} else {
+		err = run()
+	}
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "runtime:", err)
 		os.Exit(1)
 	}
@@ -175,10 +181,8 @@ func materializeAttachments(ctx context.Context, c *protocol.Client, spec *proto
 	return nil
 }
 
-// runChat answers in the conversation. It never picks a repository to check
-// out or a branch to push; when the workspace connected repositories, the
-// sandbox carries git and GitHub API credentials so the Operator can clone
-// what the request is about.
+// runChat answers in the conversation. It checks repositories out on demand
+// through the allowlisted checkout subcommand and never opens a PR implicitly.
 func runChat(ctx context.Context, c *protocol.Client, spec protocol.Spec, a agent.Adapter, workdir string, emit func(agent.Event)) (map[string]any, error) {
 	key := stepKey(spec, "answer")
 	_ = c.Step(ctx, protocol.StepUpdate{Key: key, Status: "running", Model: spec.Run.Model, Effort: spec.Run.Effort})
@@ -215,6 +219,54 @@ func runChat(ctx context.Context, c *protocol.Client, spec protocol.Spec, a agen
 	}
 	_ = c.Step(ctx, protocol.StepUpdate{Key: key, Status: "done", CostCents: resultCost(out)})
 	return map[string]any{"answer": answer}, nil
+}
+
+func runCheckout(fullName string) error {
+	apiURL := env("BOTINC_API_URL", "")
+	runID := env("BOTINC_RUN_ID", "")
+	token := env("BOTINC_RUN_TOKEN", "")
+	if apiURL == "" || runID == "" || token == "" {
+		return errors.New("BOTINC_API_URL, BOTINC_RUN_ID and BOTINC_RUN_TOKEN are all required")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	spec, err := protocol.New(apiURL, runID, token).Spec(ctx)
+	if err != nil {
+		return fmt.Errorf("spec: %w", err)
+	}
+	var target *protocol.Repository
+	for i := range spec.Repositories {
+		if strings.EqualFold(spec.Repositories[i].FullName, strings.TrimSpace(fullName)) {
+			target = &spec.Repositories[i]
+			break
+		}
+	}
+	if target == nil {
+		return fmt.Errorf("repository %q is not connected to this workspace", fullName)
+	}
+	if target.Token == "" {
+		return fmt.Errorf("repository %s has no authorized GitHub connection", target.FullName)
+	}
+	workdir := env("BOTINC_WORKDIR", filepath.Join(os.TempDir(), "botinc-run-"+runID))
+	dir := filepath.Join(workdir, strings.ReplaceAll(target.FullName, "/", "__"))
+	if info, statErr := os.Stat(filepath.Join(dir, ".git")); statErr == nil && info.IsDir() {
+		checkout := &repo.Checkout{Dir: dir}
+		if _, err := checkout.WriteEnvironment(ctx, target.Environment); err != nil {
+			return fmt.Errorf("refresh repository environment: %w", err)
+		}
+		fmt.Println(dir)
+		return nil
+	}
+	checkout, err := repo.Clone(ctx, workdir, target.FullName, target.DefaultBranch, target.Token, branchName(spec))
+	if err != nil {
+		return err
+	}
+	if _, err := checkout.WriteEnvironment(ctx, target.Environment); err != nil {
+		checkout.Cleanup()
+		return fmt.Errorf("materialize repository environment: %w", err)
+	}
+	fmt.Println(checkout.Dir)
+	return nil
 }
 
 // runAutopilot executes a routine with its selected MCP connectors. A routine
@@ -335,6 +387,9 @@ func runBuild(ctx context.Context, c *protocol.Client, spec protocol.Spec, a age
 		return nil, err
 	}
 	defer checkout.Cleanup()
+	if _, err := checkout.WriteEnvironment(ctx, target.Environment); err != nil {
+		return nil, fmt.Errorf("materialize repository environment: %w", err)
+	}
 	baseHead, err := checkout.Head(ctx)
 	if err != nil {
 		return nil, err

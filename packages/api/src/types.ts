@@ -184,6 +184,8 @@ export type Repository = {
   project_id: UUID | null;
   full_name: string;
   default_branch: string;
+  environment_variable_keys: string[];
+  environment_secret_keys: string[];
 };
 
 export type Overview = {

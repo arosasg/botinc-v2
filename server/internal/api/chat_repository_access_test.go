@@ -21,6 +21,13 @@ func TestConversationRunsCarryEveryWorkspaceRepositoryWithCredentials(t *testing
 			t.Fatal(err)
 		}
 	}
+	environmentRef, err := h.server.writeSecret(t.Context(), ws, `{"PRIVATE_API_URL":"https://private.example.test"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := testPool.Exec(t.Context(), `update repositories set setup=jsonb_build_object('environment_secret_ref',$3::text) where workspace_id=$1 and full_name=$2`, ws, "didit-protocol/service-didit-verification", environmentRef); err != nil {
+		t.Fatal(err)
+	}
 
 	// Without GitHub the run still lists the repositories, so the answer can
 	// say what is missing instead of guessing, and it carries no credential.
@@ -52,6 +59,9 @@ func TestConversationRunsCarryEveryWorkspaceRepositoryWithCredentials(t *testing
 		if repository.Token != "authorized-test-token" {
 			t.Fatalf("every repository must carry the workspace GitHub credential: %+v", spec.Repositories)
 		}
+		if repository.FullName == "didit-protocol/service-didit-verification" && repository.Environment["PRIVATE_API_URL"] != "https://private.example.test" {
+			t.Fatalf("repository environment did not reach the runtime spec: %+v", repository.Environment)
+		}
 	}
 	if !seen["arosasg/botinc-v2"] || !seen["didit-protocol/fe-application-console"] || !seen["didit-protocol/service-didit-verification"] {
 		t.Fatalf("repositories missing from the spec: %+v", spec.Repositories)
@@ -64,9 +74,10 @@ func TestConversationRunsCarryEveryWorkspaceRepositoryWithCredentials(t *testing
 type runtimeRepositorySpec struct {
 	MCPConfig    []byte `json:"mcp_config"`
 	Repositories []struct {
-		FullName      string `json:"full_name"`
-		DefaultBranch string `json:"default_branch"`
-		Token         string `json:"token,omitempty"`
+		FullName      string            `json:"full_name"`
+		DefaultBranch string            `json:"default_branch"`
+		Token         string            `json:"token,omitempty"`
+		Environment   map[string]string `json:"environment,omitempty"`
 	} `json:"repositories"`
 }
 

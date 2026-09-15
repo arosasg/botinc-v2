@@ -71,10 +71,6 @@ func run(ctx context.Context) error {
 		return err
 	}
 	defer sourcePool.Close()
-	sourceAEAD, err := sourceCipher(ctx, sourcePool, os.Getenv("SOURCE_SECRETS_KEY"))
-	if err != nil {
-		return err
-	}
 	targetAEAD, err := targetCipher(os.Getenv("TARGET_SECRETS_KEY"))
 	if err != nil {
 		return err
@@ -86,6 +82,26 @@ func run(ctx context.Context) error {
 	defer targetPool.Close()
 
 	workspaceIDs := strings.Split(workspaceCSV, ",")
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("REPOSITORY_ENVIRONMENTS_ONLY")), "true") {
+		tx, err := targetPool.Begin(ctx)
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback(ctx)
+		count, err := migrateRepositoryEnvironments(ctx, sourcePool, tx, targetAEAD, workspaceIDs)
+		if err != nil {
+			return err
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return err
+		}
+		fmt.Printf("migrated %d repository environments\n", count)
+		return nil
+	}
+	sourceAEAD, err := sourceCipher(ctx, sourcePool, os.Getenv("SOURCE_SECRETS_KEY"))
+	if err != nil {
+		return err
+	}
 	rows, err := sourcePool.Query(ctx, `
 		select a.id::text, a.workspace_id::text, u.email, a.provider, a.account_key,
 			a.label, a.email, a.plan, a.credential_kind, a.credential_encrypted,
@@ -219,6 +235,10 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	repositoryEnvironmentCount, err := migrateRepositoryEnvironments(ctx, sourcePool, tx, targetAEAD, workspaceIDs)
+	if err != nil {
+		return err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
@@ -231,7 +251,7 @@ func run(ctx context.Context) error {
 	for _, provider := range providers {
 		fmt.Printf(" %s=%d", provider, counts[provider])
 	}
-	fmt.Printf(" mcp_connectors=%d\n", pluginCount)
+	fmt.Printf(" mcp_connectors=%d repository_environments=%d\n", pluginCount, repositoryEnvironmentCount)
 	return nil
 }
 

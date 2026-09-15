@@ -138,10 +138,11 @@ type Attachment struct {
 }
 
 type Repository struct {
-	Token          string `json:"token,omitempty"`
-	FullName       string `json:"full_name"`
-	DefaultBranch  string `json:"default_branch"`
-	InstallationID *int64 `json:"installation_id"`
+	Token          string            `json:"token,omitempty"`
+	FullName       string            `json:"full_name"`
+	DefaultBranch  string            `json:"default_branch"`
+	InstallationID *int64            `json:"installation_id"`
+	Environment    map[string]string `json:"environment,omitempty"`
 }
 
 type Credential struct {

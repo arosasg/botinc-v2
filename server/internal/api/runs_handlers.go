@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -345,62 +346,82 @@ func (s *Server) runtimeSpec(w http.ResponseWriter, r *http.Request) {
 	}
 	memoryRows.Close()
 	spec["knowledge"] = contextRows
-	// Repositories the run may touch. Repository work checks one of them out,
-	// so it needs only the first few. A conversation is workspace-wide: the
-	// Operator has to know every connected repository to act on the one the
-	// request names, or on all of them.
-	repoLimit := 5
-	if rn.Purpose == "chat" {
-		repoLimit = 200
+	// Repositories the run may touch. Chat is the workspace's general operator,
+	// so it must see the complete allowlist instead of a silent five-repository
+	// prefix. Routines remain connector-only and receive no repository secret.
+	rrows, err := s.pool.Query(ctx, `select full_name, default_branch, installation_id, setup from repositories where workspace_id=$1 and ($2::uuid is null or project_id=$2) order by created_at`, rn.WorkspaceID, projectID)
+	if err != nil {
+		s.fail(w, err)
+		return
 	}
-	rrows, err := s.pool.Query(ctx, `select full_name, default_branch, installation_id from repositories where workspace_id=$1 and ($2::uuid is null or project_id=$2) order by created_at limit $3`, rn.WorkspaceID, projectID, repoLimit)
-	if err == nil {
+	{
 		type repo struct {
-			FullName       string `json:"full_name"`
-			DefaultBranch  string `json:"default_branch"`
-			InstallationID *int64 `json:"installation_id"`
-			Token          string `json:"token,omitempty"`
+			FullName       string            `json:"full_name"`
+			DefaultBranch  string            `json:"default_branch"`
+			InstallationID *int64            `json:"installation_id"`
+			Token          string            `json:"token,omitempty"`
+			Environment    map[string]string `json:"environment,omitempty"`
 		}
 		repos := []repo{}
 		for rrows.Next() {
 			var rp repo
-			if err := rrows.Scan(&rp.FullName, &rp.DefaultBranch, &rp.InstallationID); err == nil {
-				repos = append(repos, rp)
+			var setup struct {
+				EnvironmentSecretRef string `json:"environment_secret_ref"`
 			}
-		}
-		rrows.Close()
-		switch {
-		case rn.Purpose == "chat" && len(repos) > 0:
-			// A conversation never gets a checkout picked for it; it gets the
-			// workspace's GitHub credential so the Operator can clone, inspect
-			// and push whichever connected repository the request is about.
-			// The per-repository authorization probes below exist to refuse a
-			// branch push up front; here git reports an unreachable repository
-			// at the moment the Operator tries it, without a GitHub round trip
-			// per repository before every reply. A workspace without GitHub
-			// still lists its repositories, so the answer can say what is
-			// missing instead of guessing.
-			if token, tokenErr := s.githubToken(ctx, rn.WorkspaceID); tokenErr == nil {
-				for i := range repos {
-					repos[i].Token = token
-				}
-			}
-		case rn.Purpose != "autopilot" && len(repos) > 0:
-			// Repository work receives checkout credentials after each repository
-			// is verified. Routines use their explicitly selected MCP connectors
-			// and must not be coupled to whichever repository happens to sort
-			// first in the workspace.
-			token, err := s.githubToken(ctx, rn.WorkspaceID)
-			if err != nil {
-				httpx.Error(w, 400, err.Error())
+			var rawSetup []byte
+			if err := rrows.Scan(&rp.FullName, &rp.DefaultBranch, &rp.InstallationID, &rawSetup); err != nil {
+				rrows.Close()
+				s.fail(w, err)
 				return
 			}
-			for i := range repos {
-				if _, err := s.authorizedRepository(ctx, token, repos[i].FullName); err != nil {
+			if err := json.Unmarshal(rawSetup, &setup); err != nil {
+				rrows.Close()
+				s.fail(w, fmt.Errorf("decode repository setup for %s: %w", rp.FullName, err))
+				return
+			}
+			if setup.EnvironmentSecretRef != "" {
+				plaintext, err := s.readSecret(ctx, setup.EnvironmentSecretRef)
+				if err != nil {
+					rrows.Close()
+					s.fail(w, fmt.Errorf("read repository environment for %s: %w", rp.FullName, err))
+					return
+				}
+				if err := json.Unmarshal([]byte(plaintext), &rp.Environment); err != nil {
+					rrows.Close()
+					s.fail(w, fmt.Errorf("decode repository environment for %s: %w", rp.FullName, err))
+					return
+				}
+			}
+			repos = append(repos, rp)
+		}
+		if err := rrows.Err(); err != nil {
+			rrows.Close()
+			s.fail(w, err)
+			return
+		}
+		rrows.Close()
+		// Chat and build work receive the workspace GitHub credential. Chat uses
+		// it only through an allowlisted checkout command and GitHub's CLI/API.
+		// Routines stay coupled only to their explicitly selected connectors.
+		if rn.Purpose != "autopilot" && len(repos) > 0 {
+			token, err := s.githubToken(ctx, rn.WorkspaceID)
+			if err != nil {
+				if rn.Purpose != "chat" {
 					httpx.Error(w, 400, err.Error())
 					return
 				}
-				repos[i].Token = token
+			} else if rn.Purpose == "chat" {
+				for i := range repos {
+					repos[i].Token = token
+				}
+			} else {
+				for i := range repos {
+					if _, err := s.authorizedRepository(ctx, token, repos[i].FullName); err != nil {
+						httpx.Error(w, 400, err.Error())
+						return
+					}
+					repos[i].Token = token
+				}
 			}
 		}
 		spec["repositories"] = repos
