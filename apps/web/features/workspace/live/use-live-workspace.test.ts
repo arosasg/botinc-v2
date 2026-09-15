@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { hydrationIssueKey, livePersonaDefaults, openNewChatWithDraft, readDraft, routineTrigger, runFailurePatch, saveDraft, threadInspectorPatch } from "./use-live-workspace";
+import { hydrationIssueKey, liveConnectedConnectorNames, livePersonaDefaults, openNewChatWithDraft, readDraft, routineTrigger, runFailurePatch, saveDraft, threadInspectorPatch } from "./use-live-workspace";
 
 describe("new conversation drafts", () => {
   const values = new Map<string, string>();
@@ -123,5 +123,16 @@ describe("failed conversation runs", () => {
 
   it("clears an earlier failure after a successful run", () => {
     expect(runFailurePatch({ status: "done", error: "" })).toEqual({ composerError10: "" });
+  });
+});
+
+describe("live conversation connectors", () => {
+  it("lists connected MCP plugins instead of the design fixture", () => {
+    expect(liveConnectedConnectorNames([
+      { kind: "mcp:github", status: "connected" },
+      { kind: "mcp:google-drive", status: "connected" },
+      { kind: "mcp:slack", status: "needs_reauth" },
+      { kind: "oauth:google", status: "connected" },
+    ])).toEqual(["Github", "Google drive"]);
   });
 });
