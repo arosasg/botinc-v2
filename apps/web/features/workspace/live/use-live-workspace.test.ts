@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { accountHydrationPatch, conversationRoutingPatch, hydrationIssueKey, issueThinkingLabel, lastReportedProviderRing, liveConnectedConnectorNames, liveFeaturedConnectorNames, livePersonaDefaults, liveRoutineConnectorNames, normalizeScheduleSourceLogo, openNewChatWithDraft, readDraft, routineTrigger, runFailurePatch, saveDraft, threadInspectorPatch } from "./use-live-workspace";
+import { accountHydrationPatch, conversationRoutingPatch, hydrationIssueKey, issueThinkingLabel, lastReportedProviderRing, liveConnectedConnectorNames, liveFeaturedConnectorNames, livePersonaDefaults, liveRoutineConnectorNames, mergeIssueDetail, normalizeScheduleSourceLogo, openNewChatWithDraft, readDraft, routineTrigger, runFailurePatch, saveDraft, threadInspectorPatch } from "./use-live-workspace";
 
 describe("new conversation drafts", () => {
   const values = new Map<string, string>();
@@ -120,6 +120,12 @@ describe("work conversation layout", () => {
     expect(hydrationIssueKey(undefined, "issue-from-route", false)).toBe("issue-from-route");
     expect(hydrationIssueKey("stale-sample-issue", "issue-from-route", false)).toBe("issue-from-route");
     expect(hydrationIssueKey("active-issue", "stale-route", true)).toBe("active-issue");
+  });
+
+  it("keeps the full issue description when compact list data refreshes", () => {
+    expect(mergeIssueDetail({ id: "DID-3730", description: "" }, {
+      description: "Complete migrated issue evidence.",
+    })).toEqual({ id: "DID-3730", description: "Complete migrated issue evidence." });
   });
 
   it("seeds every member-scoped collection before showing a cold deep link", () => {

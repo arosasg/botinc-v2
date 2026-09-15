@@ -111,6 +111,9 @@ export function livePersonaDefaults(member: string, funding: string = "credits")
 export function hydrationIssueKey(activeIssue: unknown, routeIssue: string | undefined, hydrated: boolean): unknown {
  return !hydrated&&routeIssue?routeIssue:activeIssue;
 }
+export function mergeIssueDetail(row: Vals, detail: { description?: string }): Vals {
+ return {...row,description:detail.description??row.description};
+}
 export function readDraft(workspace: string, conversation?: unknown): string {
  try{return window.localStorage.getItem(draftKey(workspace,conversation))||""}catch{return ""}
 }
@@ -190,7 +193,7 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
      // fallback until the user navigates away and back.
      const requestedIssue=hydrationIssueKey(logic.state.activeIssue,initialRoute.issue,hydrated);
      const selectedIssue=issues.issues.find(i=>i.identifier===requestedIssue||i.id===requestedIssue);
-     if(selectedIssue){const detail=boot.issueDetail?.issue.id===selectedIssue.id?boot.issueDetail:await ws.issue(selectedIssue.id,abort.signal);const files=await api.request<{attachments:Vals[]}>("GET",`/api/w/${ws.slug}/attachments?issue=${selectedIssue.id}`,undefined,abort.signal);patch.liveIssueDetail=detail;patch.liveIssueFiles=files.attachments;patch.liveIssueWorkflow=detail.issue.workflow_id?await ws.workflow(detail.issue.workflow_id,abort.signal):null;patch.issues=patch.issues.map((i:Vals)=>i.uuid===selectedIssue.id?{...i,events:detail.comments.map(c=>({who:people.get(c.author_user_id||"")?.name||"Previous agent",role:c.author_kind,when:new Date(c.created_at).toLocaleString(),text:c.body})),cost:detail.runs.reduce((sum,r)=>sum+r.cost_cents,0)/100}:i)}
+     if(selectedIssue){const detail=boot.issueDetail?.issue.id===selectedIssue.id?boot.issueDetail:await ws.issue(selectedIssue.id,abort.signal);const files=await api.request<{attachments:Vals[]}>("GET",`/api/w/${ws.slug}/attachments?issue=${selectedIssue.id}`,undefined,abort.signal);patch.liveIssueDetail=detail;patch.liveIssueFiles=files.attachments;patch.liveIssueWorkflow=detail.issue.workflow_id?await ws.workflow(detail.issue.workflow_id,abort.signal):null;patch.issues=patch.issues.map((i:Vals)=>i.uuid===selectedIssue.id?{...mergeIssueDetail(i,detail.issue),events:detail.comments.map(c=>({who:people.get(c.author_user_id||"")?.name||"Previous agent",role:c.author_kind,when:new Date(c.created_at).toLocaleString(),text:c.body})),cost:detail.runs.reduce((sum,r)=>sum+r.cost_cents,0)/100}:i)}
      const oldChats=logic.state.chats?.[previous]||[];
      patch.chats={[member]:chats.conversations.map(c=>{
       const old=oldChats.find((x:Vals)=>x.id===c.id);return {...mapConversation(c,[],me,people),messages:old?.messages||[],phase:old?.phase||"done"};
