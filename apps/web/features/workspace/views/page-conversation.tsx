@@ -1474,7 +1474,7 @@ export function PageConversation({ v }: { v: Vals }) {
                   Research an idea
                 </button>
               </div>
-              <div className="welcome-plugins10">
+              <div className="welcome-plugins10" style={(v.featuredPlugins10 ?? []).length ? undefined : { display: "none" }}>
                 <span>Connected tools</span>
                 {(v.featuredPlugins10 ?? []).map((p: any, i: number) => (
                   <Fragment key={i}>

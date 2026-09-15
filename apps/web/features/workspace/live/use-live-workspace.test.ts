@@ -105,11 +105,12 @@ describe("routine triggers", () => {
     });
   });
 
-  it("resolves only the connectors attached to the active routine", () => {
-    expect(liveRoutineConnectorNames({ pluginIds: ["p2", "p1"] }, [
-      { id: "p1", kind: "mcp:gmail", account: {} },
-      { id: "p2", kind: "mcp:custom-research", account: { name: "Research MCP" } },
-      { id: "p3", kind: "mcp:github", account: {} },
+  it("resolves only the connected connectors attached to the active routine", () => {
+    expect(liveRoutineConnectorNames({ pluginIds: ["p2", "p1", "p4"] }, [
+      { id: "p1", kind: "mcp:gmail", status: "connected", account: {} },
+      { id: "p2", kind: "mcp:custom-research", status: "connected", account: { name: "Research MCP" } },
+      { id: "p3", kind: "mcp:github", status: "connected", account: {} },
+      { id: "p4", kind: "mcp:slack", status: "needs_reauth", account: {} },
     ])).toEqual(["Gmail", "Research MCP"]);
   });
 });

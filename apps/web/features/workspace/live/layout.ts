@@ -73,7 +73,8 @@ type WindowRow = Record<string, unknown>;
    label is the same in every locale; the design's text rules are only the
    fallback for values that are not dates (a bare time gets today's day). */
 export function resetDayLabel(reset: unknown): string {
-  const text = String(reset || "").trim();
+  // API quota windows carry "Resets <ISO>" from the base adapter.
+  const text = String(reset || "").trim().replace(/^resets\s+/i, "");
   if (!text) return "";
   const instant = /^\d{4}-\d{2}-\d{2}[T ]/.test(text) ? new Date(text) : new Date(Number.NaN);
   if (!Number.isNaN(instant.getTime())) {

@@ -25,7 +25,7 @@ export function liveConnectedConnectorNames(plugins: Vals[] = []): string[] {
 }
 export function liveRoutineConnectorNames(autopilot: Vals | undefined, plugins: Vals[] = []): string[] {
  const selected=new Set(Array.isArray(autopilot?.pluginIds)?autopilot.pluginIds:[]);
- return plugins.filter(plugin=>selected.has(plugin.id)).map(plugin=>String((plugin.account as Vals)?.name||titleCase(pluginKey(plugin.kind).replaceAll("-"," "))));
+ return plugins.filter(plugin=>selected.has(plugin.id)&&plugin.status==="connected").map(plugin=>String((plugin.account as Vals)?.name||titleCase(pluginKey(plugin.kind).replaceAll("-"," "))));
 }
 export function runFailurePatch(run?: { status?: string; error?: string }): Vals {
  const error=run?.status==="failed"?String(run.error||"").trim():"";
@@ -474,6 +474,9 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
  bind("renderVals",()=>{
   const v=render.call(logic);const s=logic.state;
   v.workspaceName= s.workspace16||"BotInc";v.previewCard15=false;
+  /* The welcome strip says "Connected tools": show the workspace's connected connectors, not the
+     design's featured catalog. */
+  v.featuredPlugins10=liveConnectedConnectorNames(s.livePlugins||[]).slice(0,4).map((name)=>{const brand=typeof logic.brand12==="function"?logic.brand12(name):{};return {name,brand12:brand.brand12||"",brandClass12:brand.brandClass12||"",open:()=>logic.showPlugin10(name)}});
   v.providerGroups13=(v.providerGroups13||[]).map((provider:Vals)=>({
    ...provider,
    ringStyle14:usageRingStyleFromCapacity(provider.index14),

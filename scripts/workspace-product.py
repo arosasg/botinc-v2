@@ -125,6 +125,14 @@ notice='''                      {v.repoConnected14 && !v.repoConfigAvailable14 ?
 if notice not in s:s=s.replace(marker,notice+marker)
 p.write_text(s)
 
+# The welcome strip is labelled "Connected tools" and the live layer feeds it the workspace's connected
+# connectors; with none connected it has nothing to show, so it stays out of the layout.
+p=Path("apps/web/features/workspace/views/page-conversation.tsx")
+s=p.read_text()
+if 'className="welcome-plugins10" style=' not in s:
+    s=s.replace('<div className="welcome-plugins10">','<div className="welcome-plugins10" style={(v.featuredPlugins10 ?? []).length ? undefined : { display: "none" }}>',1)
+p.write_text(s)
+
 # Composers keep keystrokes local instead of re-rendering the workspace per character
 # (apps/web/features/workspace/composer-textarea.tsx). The attributes stay the design's.
 COMPOSER_IMPORT='import { ComposerTextarea } from "../composer-textarea";'
