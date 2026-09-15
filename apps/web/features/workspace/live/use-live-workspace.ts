@@ -41,6 +41,9 @@ export function issueThinkingLabel(view: unknown, current: unknown, run?: { effo
  if(view!=="issue"&&view!=="thread9")return String(current||"Not recorded");
  return String(run?.effort||"Not recorded");
 }
+export function normalizeScheduleSourceLogo(row: Vals): Vals {
+ return {...row,hasSourceLogo:Boolean(String(row.sourceLogo||"").trim())};
+}
 const draftKey = (workspace: string, conversation?: unknown) => `botinc:draft:v2:${workspace}:${uuid(conversation) ? conversation : "new"}`;
 const dockConversationKey = (workspace: string) => `botinc:dock-conversation:v2:${workspace}`;
 const dockDraftKey = (workspace: string) => `botinc:dock-draft:v2:${workspace}`;
@@ -414,7 +417,7 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
    v.projectsSettings=false;v.reposSettings14=true;v.designSettings14=true;
   }
   const autopilotByTitle=new Map<string,Vals>();for(const autopilot of s.autopilots9||[])autopilotByTitle.set(String(autopilot.title),autopilot);
-  const applyLiveSchedule=(rows:Vals[]=[])=>(rows||[]).map((row:Vals)=>{const autopilot=autopilotByTitle.get(row.title);return autopilot?{...row,trigger:autopilot.triggerText||row.trigger,next:autopilot.nextText||row.next,zone:autopilot.zone||row.zone,source:autopilot.source||row.source}:row});
+  const applyLiveSchedule=(rows:Vals[]=[])=>(rows||[]).map((row:Vals)=>{const autopilot=autopilotByTitle.get(row.title);return normalizeScheduleSourceLogo(autopilot?{...row,trigger:autopilot.triggerText||row.trigger,next:autopilot.nextText||row.next,zone:autopilot.zone||row.zone,source:autopilot.source||row.source}:row)});
   v.routineRows14=applyLiveSchedule(v.routineRows14);v.upcomingRows14=applyLiveSchedule(v.upcomingRows14);
   const detail=s.liveIssueDetail;const currentIssue=logic.issue();
   v.i8Computer="Remote";v.i8Agent="Operator";
