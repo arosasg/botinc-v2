@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { hydrationIssueKey, liveConnectedConnectorNames, livePersonaDefaults, openNewChatWithDraft, readDraft, routineTrigger, runFailurePatch, saveDraft, threadInspectorPatch } from "./use-live-workspace";
+import { conversationRoutingPatch, hydrationIssueKey, liveConnectedConnectorNames, livePersonaDefaults, openNewChatWithDraft, readDraft, routineTrigger, runFailurePatch, saveDraft, threadInspectorPatch } from "./use-live-workspace";
 
 describe("new conversation drafts", () => {
   const values = new Map<string, string>();
@@ -123,6 +123,28 @@ describe("failed conversation runs", () => {
 
   it("clears an earlier failure after a successful run", () => {
     expect(runFailurePatch({ status: "done", error: "" })).toEqual({ composerError10: "" });
+  });
+});
+
+describe("conversation routing hydration", () => {
+  it("restores the exact model, effort, and subscription funding from the latest run", () => {
+    expect(conversationRoutingPatch("Alejandro", { model: "auto" }, {
+      model: "GPT-5.6 Sol", effort: "Extra High", funding: "subscription",
+    })).toEqual({
+      model: "GPT-5.6 Sol",
+      reasoning: "Extra High",
+      funding: { Alejandro: "subscription" },
+    });
+  });
+
+  it("normalizes auto and preserves an explicit credit-funded run", () => {
+    expect(conversationRoutingPatch("Alejandro", { model: "auto" }, {
+      model: "auto", effort: "Medium", funding: "credits",
+    })).toEqual({
+      model: "Auto",
+      reasoning: "Medium",
+      funding: { Alejandro: "credits" },
+    });
   });
 });
 
