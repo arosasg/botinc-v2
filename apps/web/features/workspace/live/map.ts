@@ -296,6 +296,23 @@ function describeSchedule(cron: string, zone: string): { cadence: string; time: 
     const minutes = minute!.split(",");
     cadence = "Hourly";
     timing = `Every hour at ${minutes.map(value => `:${value.padStart(2, "0")}`).join(" and ")}`;
+  } else if (/^\d+$/.test(minute ?? "") && /^\*\/\d+$/.test(hour ?? "") && dayOfMonth === "*" && month === "*" && dayOfWeek === "*") {
+    const interval = hour!.slice(2);
+    const minuteLabel = `:${minute!.padStart(2, "0")}`;
+    cadence = `Every ${interval} hours`;
+    timing = `${cadence} at ${minuteLabel}`;
+  } else if (/^\d+$/.test(minute ?? "") && /^\d+-\d+\/\d+$/.test(hour ?? "") && dayOfMonth === "*" && month === "*" && dayOfWeek === "*") {
+    const [range, interval] = hour!.split("/");
+    const [start, end] = range!.split("-");
+    const minuteLabel = minute!.padStart(2, "0");
+    cadence = `Every ${interval} hours`;
+    timing = `${cadence} from ${start!.padStart(2, "0")}:${minuteLabel} to ${end!.padStart(2, "0")}:${minuteLabel}`;
+  } else if (clock && /^\d+(,\d+)*$/.test(dayOfMonth ?? "") && month === "*" && dayOfWeek === "*") {
+    const days = dayOfMonth!.split(",");
+    cadence = "monthly";
+    timing = days.length === 1
+      ? `Monthly on day ${days[0]} at ${clock}`
+      : `Monthly on days ${days.slice(0, -1).join(", ")} and ${days.at(-1)} at ${clock}`;
   } else if (clock && dayOfMonth === "*" && month === "*" && dayOfWeek === "*") {
     cadence = "daily";
     timing = `Every day at ${clock}`;
@@ -309,7 +326,7 @@ function describeSchedule(cron: string, zone: string): { cadence: string; time: 
     timing = `${cadence} at ${clock}`;
   }
 
-  return { cadence, time: clock, label: `${timing} · ${zone}` };
+  return { cadence, time: clock || (/^\d+$/.test(minute ?? "") ? `00:${minute!.padStart(2, "0")}` : ""), label: `${timing} · ${zone}` };
 }
 
 function describeNextRun(enabled: boolean, nextRun: string | null, zone: string): string {

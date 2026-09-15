@@ -22,6 +22,10 @@ export function liveConnectedConnectorNames(plugins: Vals[] = []): string[] {
  return plugins.filter(plugin=>plugin.status==="connected"&&String(plugin.kind||"").startsWith("mcp:"))
   .map(plugin=>titleCase(pluginKey(plugin.kind).replaceAll("-"," ")));
 }
+export function liveRoutineConnectorNames(autopilot: Vals | undefined, plugins: Vals[] = []): string[] {
+ const selected=new Set(Array.isArray(autopilot?.pluginIds)?autopilot.pluginIds:[]);
+ return plugins.filter(plugin=>selected.has(plugin.id)).map(plugin=>String((plugin.account as Vals)?.name||titleCase(pluginKey(plugin.kind).replaceAll("-"," "))));
+}
 export function runFailurePatch(run?: { status?: string; error?: string }): Vals {
  const error=run?.status==="failed"?String(run.error||"").trim():"";
  return{composerError10:error?`Run failed: ${error}`:""};
@@ -296,8 +300,8 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
     report("live");
    }
    if(initialRoute.view==="auto9"&&uuid(initialRoute.autopilot)){
-    [bootAutopilots,bootAutopilotDetail]=await Promise.all([ws.autopilots(abort.signal),ws.autopilot(initialRoute.autopilot,abort.signal)]);if(!alive)return;
-    logic.setState({...livePersonaDefaults(member),liveWorkspaces:workspaces,workspace16:first.name,workspaceName:first.name,member,signed:true,view:"auto9",activeAuto9:initialRoute.autopilot,autopilots9:bootAutopilots.autopilots.map(autopilot=>({...mapAutopilot(autopilot),owner:member,kind:autopilot.trigger.kind,status:autopilot.enabled?"active":"paused",history:autopilot.id===initialRoute.autopilot?bootAutopilotDetail!.runs.map(run=>({title:titleCase(run.status),detail:run.summary||run.run_id||"Run recorded",when:new Date(run.created_at).toLocaleString(),status:run.status})):[],limit:2,daily:20}))});
+    [bootAutopilots,bootAutopilotDetail,bootPlugins]=await Promise.all([ws.autopilots(abort.signal),ws.autopilot(initialRoute.autopilot,abort.signal),ws.plugins(abort.signal)]);if(!alive)return;
+    logic.setState({...livePersonaDefaults(member),liveWorkspaces:workspaces,workspace16:first.name,workspaceName:first.name,member,signed:true,view:"auto9",activeAuto9:initialRoute.autopilot,livePlugins:bootPlugins.plugins,autopilots9:bootAutopilots.autopilots.map(autopilot=>({...mapAutopilot(autopilot),owner:member,kind:autopilot.trigger.kind,status:autopilot.enabled?"active":"paused",history:autopilot.id===initialRoute.autopilot?bootAutopilotDetail!.runs.map(run=>({title:titleCase(run.status),detail:run.summary||run.run_id||"Run recorded",when:new Date(run.created_at).toLocaleString(),status:run.status})):[],limit:2,daily:20}))});
     report("live");
    }
    if(initialRoute.view==="plugins10"){
@@ -501,6 +505,20 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
   const autopilotByTitle=new Map<string,Vals>();for(const autopilot of s.autopilots9||[])autopilotByTitle.set(String(autopilot.title),autopilot);
   const applyLiveSchedule=(rows:Vals[]=[])=>(rows||[]).map((row:Vals)=>{const autopilot=autopilotByTitle.get(row.title);return normalizeScheduleSourceLogo(autopilot?{...row,trigger:autopilot.triggerText||row.trigger,next:autopilot.nextText||row.next,zone:autopilot.zone||row.zone,source:autopilot.source||row.source}:row)});
   v.routineRows14=applyLiveSchedule(v.routineRows14);v.upcomingRows14=applyLiveSchedule(v.upcomingRows14);
+  const activeAutopilot=(s.autopilots9||[]).find((autopilot:Vals)=>autopilot.id===s.activeAuto9);
+  if(s.view==="auto9"&&activeAutopilot){
+   const triggerText=String(activeAutopilot.triggerText||v.autoTrigger9||"");const nextText=String(activeAutopilot.nextText||v.autoNext9||"");const triggerParts=triggerText.split(" · ");const isSchedule=activeAutopilot.kind==="schedule";
+   v.autoTrigger9=triggerText;v.autoNext9=nextText;
+   v.rtDefs16=(v.rtDefs16||[]).map((definition:Vals)=>definition.key==="trigger"?{
+    ...definition,icon:`i15.svg#${isSchedule?"calendar-clock":"zap"}`,
+    v:isSchedule?`On a schedule · ${triggerParts[0]}`:definition.v,
+    note:isSchedule?`Runs ${triggerParts[0]!.toLowerCase()}${triggerParts[1]?` in ${triggerParts[1]}`:""}, whether or not anything changed.`:definition.note,
+   }:definition.key==="next"?{...definition,v:nextText,note:isSchedule?"You can also run it now from the header.":definition.note}:definition);
+   const connectorNames=liveRoutineConnectorNames(activeAutopilot,s.livePlugins||[]);
+   const connectorDefinition={key:"connectors",icon:"i15.svg#plug",k:"Connectors",v:connectorNames.length?connectorNames.join(", "):"None",note:connectorNames.length?"Only these connected services are available to this routine.":"This routine runs without connector access.",hasNote:true,hasAction:true,actionLabel:"Change",act:v.editAutopilot9,editing:false,cls:""};
+   const repositoryIndex=v.rtDefs16.findIndex((definition:Vals)=>definition.key==="repo");
+   if(repositoryIndex>=0)v.rtDefs16=[...v.rtDefs16.slice(0,repositoryIndex+1),connectorDefinition,...v.rtDefs16.slice(repositoryIndex+1)];
+  }
   const detail=s.liveIssueDetail;const currentIssue=logic.issue();
   v.i8Computer="Remote";v.i8Agent="Operator";
   v.i8HasPr=!!detail?.runs?.some((r:Vals)=>r.result?.pull_request?.url);v.i8HasDeploy=false;v.i8HasCriteria=false;v.i8NoCriteria=true;

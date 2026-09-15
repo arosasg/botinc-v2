@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { accountHydrationPatch, conversationRoutingPatch, hydrationIssueKey, issueThinkingLabel, lastReportedProviderRing, liveConnectedConnectorNames, livePersonaDefaults, normalizeScheduleSourceLogo, openNewChatWithDraft, readDraft, routineTrigger, runFailurePatch, saveDraft, threadInspectorPatch } from "./use-live-workspace";
+import { accountHydrationPatch, conversationRoutingPatch, hydrationIssueKey, issueThinkingLabel, lastReportedProviderRing, liveConnectedConnectorNames, livePersonaDefaults, liveRoutineConnectorNames, normalizeScheduleSourceLogo, openNewChatWithDraft, readDraft, routineTrigger, runFailurePatch, saveDraft, threadInspectorPatch } from "./use-live-workspace";
 
 describe("new conversation drafts", () => {
   const values = new Map<string, string>();
@@ -103,6 +103,14 @@ describe("routine triggers", () => {
     expect(normalizeScheduleSourceLogo({ source: "GitHub", sourceLogo: "/brands/github.svg", hasSourceLogo: false })).toEqual({
       source: "GitHub", sourceLogo: "/brands/github.svg", hasSourceLogo: true,
     });
+  });
+
+  it("resolves only the connectors attached to the active routine", () => {
+    expect(liveRoutineConnectorNames({ pluginIds: ["p2", "p1"] }, [
+      { id: "p1", kind: "mcp:gmail", account: {} },
+      { id: "p2", kind: "mcp:custom-research", account: { name: "Research MCP" } },
+      { id: "p3", kind: "mcp:github", account: {} },
+    ])).toEqual(["Gmail", "Research MCP"]);
   });
 });
 
