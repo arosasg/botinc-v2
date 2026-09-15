@@ -7,5 +7,6 @@ The incorporated workforce, rebuilt. Landing v4 and Workspace v19 from Claude De
 - Web app: `apps/web` (Next.js)
 - API: `server` (Go)
 - CLI: `cli` (Go)
+- MCP server: `https://botinc.ai/api/mcp` ([authorization and tools](docs/MCP.md))
 
 Nothing merges itself.

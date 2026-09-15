@@ -1,7 +1,7 @@
 # Deployment
 
 Production runs at `https://botinc.ai`, and the same deployment remains available at `https://test.botinc.ai` for compatibility checks.
-Caddy routes `/api/*` and `/healthz` to the API and other requests to Next.js.
+Caddy routes `/api/*`, `/oauth/*`, `/.well-known/*` and `/healthz` to the API and other requests to Next.js.
 Both domains use the same-origin API.
 Keep `COOKIE_DOMAIN` unset so cookies remain host scoped.
 Legacy `/<workspace>/chat?session=<uuid>` routes for all six imported workspace slugs redirect to `/w` with the matching v2 workspace and stable conversation ID.
@@ -38,8 +38,7 @@ configuration objects. `prepare-staging.py` writes owner-only raw environment
 files on the host. Never commit, print or attach these files. Do not overwrite
 existing database passwords or encryption keys during redeployment.
 
-Staging currently restricts sign-in with `BOTINC_ALLOWED_EMAILS` to the owner's
-address while release checks remain incomplete.
+Production sign-in is not restricted by `BOTINC_ALLOWED_EMAILS`.
 
 ## Cutover and rollback
 

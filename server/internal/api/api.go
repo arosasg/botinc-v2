@@ -53,6 +53,15 @@ func (s *Server) Router() http.Handler {
 
 	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) { httpx.JSON(w, 200, map[string]string{"status": "ok"}) })
 	r.Get("/api/config", s.publicConfig)
+	r.Get("/.well-known/oauth-protected-resource", s.mcpProtectedResourceMetadata)
+	r.Get("/.well-known/oauth-protected-resource/api/mcp", s.mcpProtectedResourceMetadata)
+	r.Get("/.well-known/oauth-authorization-server", s.mcpAuthorizationServerMetadata)
+	r.Post("/oauth/register", s.mcpRegisterClient)
+	r.Get("/oauth/authorize", s.mcpAuthorize)
+	r.Post("/oauth/authorize", s.mcpAuthorize)
+	r.Post("/oauth/token", s.mcpToken)
+	r.Get("/api/mcp", s.mcpEndpoint)
+	r.Post("/api/mcp", s.mcpEndpoint)
 
 	r.Route("/api/auth", func(r chi.Router) {
 		r.Post("/email/start", s.emailStart)
