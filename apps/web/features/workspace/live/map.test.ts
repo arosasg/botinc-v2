@@ -259,6 +259,21 @@ describe("mapAutopilot", () => {
     expect(row.nextText).toBe("Paused");
     expect(row.source).toBe("BotInc");
   });
+
+  it("describes migrated hourly and monthly cron schedules as schedules", () => {
+    const base: Autopilot = {
+      id: "r3", name: "Cleanup", description: "", prompt: "Clean up.",
+      trigger: { kind: "schedule", cron: "0 */4 * * *", tz: "UTC" },
+      workflow_id: null, plugin_ids: [], model: "auto", enabled: true,
+      last_run_at: null, next_run_at: "2026-09-15T16:00:00Z",
+    };
+
+    expect(mapAutopilot(base).triggerText).toBe("Every 4 hours at :00 · UTC");
+    expect(mapAutopilot({ ...base, trigger: { kind: "schedule", cron: "55 2-23/3 * * *", tz: "UTC" } }).triggerText)
+      .toBe("Every 3 hours from 02:55 to 23:55 · UTC");
+    expect(mapAutopilot({ ...base, trigger: { kind: "schedule", cron: "0 8 8,22 * *", tz: "UTC" } }).triggerText)
+      .toBe("Monthly on days 8 and 22 at 08:00 · UTC");
+  });
 });
 
 describe("mapWorkflowSteps", () => {
