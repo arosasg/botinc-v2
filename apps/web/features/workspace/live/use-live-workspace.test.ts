@@ -21,8 +21,16 @@ describe("new conversation drafts", () => {
       },
     });
 
-    const state = { activeChat: "conversation-1", draft: "current conversation" };
+    const state = {
+      activeChat: "conversation-1",
+      draft: "current conversation",
+      funding: { Alex: "subscription" },
+      member: "Alex",
+      model: "GPT-5.6 Sol",
+      reasoning: "Extra High",
+    };
     const logic = {
+      state,
       setState(patch: Record<string, unknown>) {
         Object.assign(state, patch);
       },
@@ -30,10 +38,21 @@ describe("new conversation drafts", () => {
     saveDraft("workspace-1", null, "saved new conversation");
 
     openNewChatWithDraft(logic, "workspace-1", () => {
-      Object.assign(state, { activeChat: null, draft: "" });
+      Object.assign(state, { activeChat: null, draft: "", model: "Auto" });
     });
 
-    expect(state).toEqual({ activeChat: null, draft: "saved new conversation" });
+    expect(state).toEqual({
+      activeChat: null,
+      draft: "saved new conversation",
+      funding: { Alex: "subscription" },
+      member: "Alex",
+      model: "GPT-5.6 Sol",
+      reasoning: "Extra High",
+    });
+  });
+
+  it("preserves subscription funding during live refreshes", () => {
+    expect(livePersonaDefaults("Alex", "subscription").funding).toEqual({ Alex: "subscription" });
   });
 
   it("keeps drafts isolated by workspace and conversation", () => {

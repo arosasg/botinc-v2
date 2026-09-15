@@ -43,12 +43,12 @@ const dockDraftKey = (workspace: string) => `botinc:dock-draft:v2:${workspace}`;
 export function threadInspectorPatch(isDesktop: boolean): Vals {
  return isDesktop?{inspector10:true,mobileInspector10:false,inspectorTab10:"issue",paneWidth11:400,paneRestore11:400}:{};
 }
-export function livePersonaDefaults(member: string): Vals {
+export function livePersonaDefaults(member: string, funding: string = "credits"): Vals {
  return {
   chats:{[member]:[]},
   connections:{[member]:{}},
   agentPrefs:{[member]:{}},
-  funding:{[member]:"credits"},
+  funding:{[member]:funding},
   memoryByMember:{[member]:{}},
   skillGrants:{[member]:{}},
   modelAccounts:{[member]:[]},
@@ -65,9 +65,11 @@ export function readDraft(workspace: string, conversation?: unknown): string {
 export function saveDraft(workspace: string, conversation: unknown, value: string): void {
  try{if(value)window.localStorage.setItem(draftKey(workspace,conversation),value);else window.localStorage.removeItem(draftKey(workspace,conversation))}catch{}
 }
-export function openNewChatWithDraft(logic: Pick<Logic,"setState">, workspace: string, open: () => void): void {
+export function openNewChatWithDraft(logic: Pick<Logic,"state"|"setState">, workspace: string, open: () => void): void {
+ const member=String(logic.state.member||"");
+ const routing={model:logic.state.model,reasoning:logic.state.reasoning,funding:logic.state.funding?.[member]};
  open();
- logic.setState({draft:readDraft(workspace,null)});
+ logic.setState({draft:readDraft(workspace,null),model:routing.model,reasoning:routing.reasoning,funding:{...logic.state.funding,[member]:routing.funding}});
 }
 export function routineTrigger(draft: Vals): Record<string, string> {
  const kind=String(draft.kind||"manual");
@@ -107,7 +109,7 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
      ]);
      if(!alive)return;
      for(const p of members.members)people.set(p.user_id,{name:p.name,email:p.email});
-     const previous=String(logic.state.member??"");const patch:Vals=livePersonaDefaults(member);
+     const previous=String(logic.state.member??"");const patch:Vals=livePersonaDefaults(member,String(logic.state.funding?.[member]||"credits"));
      // Empty defaults replace every persona-keyed fixture before changing the key.
      patch.liveWorkspaces=workspaces;patch.workspace16=overview.workspace.name;patch.member=member;patch.signed=true;patch.workspaceName=overview.workspace.name;
      patch.issues=issues.issues.map(i=>mapIssue(i,people));
