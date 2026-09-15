@@ -175,16 +175,24 @@ func materializeAttachments(ctx context.Context, c *protocol.Client, spec *proto
 	return nil
 }
 
-// runChat answers in the conversation. No repository, no branch, no PR.
+// runChat answers in the conversation. It never picks a repository to check
+// out or a branch to push; when the workspace connected repositories, the
+// sandbox carries git and GitHub API credentials so the Operator can clone
+// what the request is about.
 func runChat(ctx context.Context, c *protocol.Client, spec protocol.Spec, a agent.Adapter, workdir string, emit func(agent.Event)) (map[string]any, error) {
 	key := stepKey(spec, "answer")
 	_ = c.Step(ctx, protocol.StepUpdate{Key: key, Status: "running", Model: spec.Run.Model, Effort: spec.Run.Effort})
+	access, err := prepareRepositoryAccess(workdir, spec.Repositories)
+	if err != nil {
+		return nil, fmt.Errorf("prepare repository access: %w", err)
+	}
+	defer access.Cleanup()
 	prompt := chatPrompt(spec)
 	out, err := agent.Run(ctx, a, agent.Options{
 		Dir: workdir, Prompt: prompt, Model: spec.Run.Model, Effort: spec.Run.Effort, Secret: spec.Credential.Secret,
 		CredentialEnv: spec.Credential.Env, CredentialFiles: spec.Credential.Files,
-		MCPConfig: spec.MCPConfig,
-		Timeout:   40 * time.Minute, BudgetCents: spec.Run.TaskLimitCents, Emit: emit,
+		MCPConfig: spec.MCPConfig, Env: access.Env, Secrets: access.Secrets,
+		Timeout: 40 * time.Minute, BudgetCents: spec.Run.TaskLimitCents, Emit: emit,
 	})
 	answer := resultText(out)
 	if err != nil {
@@ -534,6 +542,7 @@ func chatPrompt(spec protocol.Spec) string {
 	b.WriteString("You are the Operator for this BotInc workspace. Answer in the fewest words that are complete and true. Say what you do not know.\n\n")
 	b.WriteString("Do not wait indefinitely for external CI, reviews, or other asynchronous work. Once the requested work is safely preserved and only external completion remains, report the durable links and current status, then end with a useful answer.\n\n")
 	b.WriteString(knowledgePrompt(spec))
+	b.WriteString(repositoriesPrompt(spec))
 	for _, m := range spec.Messages {
 		b.WriteString(m.Role + ": " + m.Body + "\n")
 		for _, attachment := range spec.Attachments {

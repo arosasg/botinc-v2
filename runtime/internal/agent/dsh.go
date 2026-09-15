@@ -281,6 +281,8 @@ func runDSH(ctx context.Context, adapter Adapter, options Options) (map[string]a
 	cmd.Env = append(os.Environ(), adapter.Env(openRouterKey)...)
 	cmd.Env = append(cmd.Env, "DSH_HOME="+filepath.Join(dir, "home"))
 	cmd.Env = append(cmd.Env, credentialEnv...)
+	cmd.Env = append(cmd.Env, envPairs(options.Env)...)
+	secrets = append(secrets, options.Secrets...)
 	isolate(cmd)
 	cmd.WaitDelay = 10 * time.Second
 	stdout, err := cmd.StdoutPipe()
