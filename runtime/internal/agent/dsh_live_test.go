@@ -20,7 +20,7 @@ func TestDeepSeekHarnessLiveOpenRouter(t *testing.T) {
 	}
 	result, err := Run(context.Background(), adapter, Options{
 		Dir: t.TempDir(), Prompt: "Answer exactly DSH_V2_LIVE_OK", Model: "DeepSeek V4.1 Flash", Effort: "High",
-		Secret: os.Getenv("OPENROUTER_API_KEY"), Timeout: 3 * time.Minute,
+		CredentialEnv: map[string]string{"OPENROUTER_API_KEY": os.Getenv("OPENROUTER_API_KEY")}, Timeout: 3 * time.Minute,
 	})
 	if err != nil {
 		t.Fatal(err)
