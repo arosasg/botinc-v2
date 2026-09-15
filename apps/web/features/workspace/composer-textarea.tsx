@@ -26,10 +26,19 @@ export function ComposerTextarea({ value, onChange, onKeyDown, onBlur, ...rest }
     if (text !== bound) setText(bound);
   }
   const change = (event: ChangeEvent<HTMLTextAreaElement>) => {
-    setText(event.target.value);
+    const next = event.target.value;
+    setText(next);
     if (!onChange) return;
-    if (logic) logic.deferRender(() => onChange(event), RENDER_QUIET_MS);
-    else onChange(event);
+    if (!logic) {
+      onChange(event);
+      return;
+    }
+    logic.deferRender(() => onChange(event), RENDER_QUIET_MS);
+    // The send controls read the draft's emptiness off the view-model, and a
+    // disabled button neither takes the click nor blurs this field. Publish the
+    // first character and the last deletion at once; only the keystrokes in
+    // between wait for the quiet period.
+    if ((text.trim() === "") !== (next.trim() === "")) logic.flushRender();
   };
   const key = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === "Enter" && !event.shiftKey) logic?.flushRender();
