@@ -16,16 +16,36 @@ declare global { interface Window { __BOTINC__?: { apiURL?: string } } }
 export function apiBaseURL(): string { return typeof window === "undefined" ? "" : (window.__BOTINC__?.apiURL ?? "").trim(); }
 const titleCase = (s: string) => s ? s[0]!.toUpperCase() + s.slice(1) : "";
 const pluginKey = (s: unknown) => String(s??"").toLowerCase().replace(/^mcp:/,"").replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
-const catalogPluginKeys = new Set(["github","slack","gmail","google-drive","notion","claude-design","figma","sentry","google-calendar","jira","confluence","gitlab","bitbucket","discord","microsoft-teams","dropbox","onedrive","airtable","posthog"]);
+/* The design keys its brand marks (brands12) and plugin catalog (pluginCatalogV10) by canonical
+   product names - "GitHub", "PostHog", "Google Drive" - while connector kinds arrive as slugs
+   ("mcp:github"). A plain title-case of the slug ("Github") misses the brand mark and the
+   catalog entry, so resolve the canonical name first, then the name the member gave the
+   server, and only then a readable form of the slug. */
+const connectorCatalogNames = ["GitHub","Linear","Slack","Gmail","Google Drive","Notion","Claude Design","Figma","Sentry","Google Calendar","Jira","Confluence","GitLab","Bitbucket","Discord","Microsoft Teams","Dropbox","OneDrive","Airtable","PostHog"];
+const connectorNameByKey = new Map(connectorCatalogNames.map(name=>[pluginKey(name),name] as const));
+// Linear is the one catalog entry the design hides (pluginCatalog10 filters it out), so a
+// Linear connector still lists as a custom plugin.
+const catalogPluginKeys = new Set([...connectorNameByKey.keys()].filter(key=>key!=="linear"));
+export function connectorDisplayName(plugin: { kind?: unknown; account?: unknown }): string {
+ const key=pluginKey(plugin.kind);
+ const catalog=connectorNameByKey.get(key);if(catalog)return catalog;
+ const account=String((plugin.account as Vals|undefined)?.name??"").trim();if(account)return account;
+ return key.split("-").filter(Boolean).map(titleCase).join(" ");
+}
 const uuid = (s: unknown): s is string => typeof s === "string" && /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(s);
 const phaseFor = (s?: string) => s && ["queued", "provisioning", "running"].includes(s) ? "working" : s === "waiting" ? "paused" : "done";
 export function liveConnectedConnectorNames(plugins: Vals[] = []): string[] {
- return plugins.filter(plugin=>plugin.status==="connected"&&String(plugin.kind||"").startsWith("mcp:"))
-  .map(plugin=>titleCase(pluginKey(plugin.kind).replaceAll("-"," ")));
+ return plugins.filter(plugin=>plugin.status==="connected"&&String(plugin.kind||"").startsWith("mcp:")).map(connectorDisplayName);
+}
+/* The welcome strip has room for four marks; lead with the connectors the design has a brand
+   mark for so a workspace with many custom servers still shows GitHub, Slack and Gmail there. */
+export function liveFeaturedConnectorNames(plugins: Vals[] = [], limit = 4): string[] {
+ const names=liveConnectedConnectorNames(plugins);
+ return [...names.filter(name=>connectorNameByKey.has(pluginKey(name))),...names.filter(name=>!connectorNameByKey.has(pluginKey(name)))].slice(0,limit);
 }
 export function liveRoutineConnectorNames(autopilot: Vals | undefined, plugins: Vals[] = []): string[] {
  const selected=new Set(Array.isArray(autopilot?.pluginIds)?autopilot.pluginIds:[]);
- return plugins.filter(plugin=>selected.has(plugin.id)&&plugin.status==="connected").map(plugin=>String((plugin.account as Vals)?.name||titleCase(pluginKey(plugin.kind).replaceAll("-"," "))));
+ return plugins.filter(plugin=>selected.has(plugin.id)&&plugin.status==="connected").map(connectorDisplayName);
 }
 export function runFailurePatch(run?: { status?: string; error?: string }): Vals {
  const error=run?.status==="failed"?String(run.error||"").trim():"";
@@ -144,11 +164,18 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
       events, reconnects and writes still refresh all of it. */
    const INVENTORY_FRESH_MS=60_000;const inventory=new Map<string,{at:number;value:Promise<unknown>}>();let reuseInventory=false;
    const inv=<T>(key:string,load:()=>Promise<T>):Promise<T>=>{const hit=inventory.get(key);if(reuseInventory&&hit&&Date.now()-hit.at<INVENTORY_FRESH_MS)return hit.value as Promise<T>;const value=load();inventory.set(key,{at:Date.now(),value});value.catch(()=>{inventory.delete(key)});return value};
+   let againFull=false;
    const hydrate=async(options:{reuseInventory?:boolean}={})=>{
-    if(!alive)return;if(refreshing){again=true;return;}refreshing=true;reuseInventory=!!options.reuseInventory;
+    if(!alive)return;if(refreshing){again=true;if(!options.reuseInventory)againFull=true;return;}refreshing=true;reuseInventory=!!options.reuseInventory;
+    /* The optimised boot paths below fetch the visible subject before the workspace inventory
+       and hand those responses to the first hydration. Only that hydration may reuse them: a
+       snapshot that survived into later refreshes would hide the plugin a member just connected
+       or the reply that just arrived in a deep-linked conversation. Consume them here, once. */
+    const boot={issues:bootIssues,autopilots:bootAutopilots,accounts:bootConversationAccounts,plugins:bootPlugins,issueDetail:bootIssueDetail,conversationDetail:bootConversationDetail,autopilotDetail:bootAutopilotDetail};
+    bootIssues=bootAutopilots=bootConversationAccounts=bootPlugins=bootIssueDetail=bootConversationDetail=bootAutopilotDetail=null;
     try{
      const [issues,chats,autos,accounts,routing,overview,members,skills,memories,credits,usage,plugins,repos,projects,workflows,invites,sessions,keys]=await Promise.all([
-      bootIssues??inv("issues",()=>ws.issues(undefined,abort.signal)),ws.conversations(abort.signal),bootAutopilots??inv("autopilots",()=>ws.autopilots(abort.signal)),bootConversationAccounts??ws.accounts(abort.signal),ws.routing(abort.signal),ws.overview(abort.signal),inv("members",()=>ws.members(abort.signal)),inv("skills",()=>ws.skills(abort.signal)),inv("memories",()=>ws.memories(abort.signal)),ws.credits(abort.signal),ws.usage(abort.signal),bootPlugins??ws.plugins(abort.signal),inv("repositories",()=>ws.repositories(abort.signal)),inv("projects",()=>ws.projects(abort.signal)),inv("workflows",()=>ws.workflows(abort.signal)),inv("invitations",()=>ws.invitations(abort.signal)),api.request<{sessions:Vals[]}>("GET","/api/me/sessions",undefined,abort.signal),api.request<{keys:Vals[]}>("GET","/api/me/keys",undefined,abort.signal),
+      inv("issues",()=>boot.issues?Promise.resolve(boot.issues):ws.issues(undefined,abort.signal)),ws.conversations(abort.signal),inv("autopilots",()=>boot.autopilots?Promise.resolve(boot.autopilots):ws.autopilots(abort.signal)),boot.accounts??ws.accounts(abort.signal),ws.routing(abort.signal),ws.overview(abort.signal),inv("members",()=>ws.members(abort.signal)),inv("skills",()=>ws.skills(abort.signal)),inv("memories",()=>ws.memories(abort.signal)),ws.credits(abort.signal),ws.usage(abort.signal),boot.plugins??ws.plugins(abort.signal),inv("repositories",()=>ws.repositories(abort.signal)),inv("projects",()=>ws.projects(abort.signal)),inv("workflows",()=>ws.workflows(abort.signal)),inv("invitations",()=>ws.invitations(abort.signal)),api.request<{sessions:Vals[]}>("GET","/api/me/sessions",undefined,abort.signal),api.request<{keys:Vals[]}>("GET","/api/me/keys",undefined,abort.signal),
      ]);
      if(!alive)return;
      for(const p of members.members)people.set(p.user_id,{name:p.name,email:p.email});
@@ -163,14 +190,14 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
      // fallback until the user navigates away and back.
      const requestedIssue=hydrationIssueKey(logic.state.activeIssue,initialRoute.issue,hydrated);
      const selectedIssue=issues.issues.find(i=>i.identifier===requestedIssue||i.id===requestedIssue);
-     if(selectedIssue){const detail=bootIssueDetail?.issue.id===selectedIssue.id?bootIssueDetail:await ws.issue(selectedIssue.id,abort.signal);const files=await api.request<{attachments:Vals[]}>("GET",`/api/w/${ws.slug}/attachments?issue=${selectedIssue.id}`,undefined,abort.signal);patch.liveIssueDetail=detail;patch.liveIssueFiles=files.attachments;patch.liveIssueWorkflow=detail.issue.workflow_id?await ws.workflow(detail.issue.workflow_id,abort.signal):null;patch.issues=patch.issues.map((i:Vals)=>i.uuid===selectedIssue.id?{...i,events:detail.comments.map(c=>({who:people.get(c.author_user_id||"")?.name||"Previous agent",role:c.author_kind,when:new Date(c.created_at).toLocaleString(),text:c.body})),cost:detail.runs.reduce((sum,r)=>sum+r.cost_cents,0)/100}:i)}
+     if(selectedIssue){const detail=boot.issueDetail?.issue.id===selectedIssue.id?boot.issueDetail:await ws.issue(selectedIssue.id,abort.signal);const files=await api.request<{attachments:Vals[]}>("GET",`/api/w/${ws.slug}/attachments?issue=${selectedIssue.id}`,undefined,abort.signal);patch.liveIssueDetail=detail;patch.liveIssueFiles=files.attachments;patch.liveIssueWorkflow=detail.issue.workflow_id?await ws.workflow(detail.issue.workflow_id,abort.signal):null;patch.issues=patch.issues.map((i:Vals)=>i.uuid===selectedIssue.id?{...i,events:detail.comments.map(c=>({who:people.get(c.author_user_id||"")?.name||"Previous agent",role:c.author_kind,when:new Date(c.created_at).toLocaleString(),text:c.body})),cost:detail.runs.reduce((sum,r)=>sum+r.cost_cents,0)/100}:i)}
      const oldChats=logic.state.chats?.[previous]||[];
      patch.chats={[member]:chats.conversations.map(c=>{
       const old=oldChats.find((x:Vals)=>x.id===c.id);return {...mapConversation(c,[],me,people),messages:old?.messages||[],phase:old?.phase||"done"};
      })};
      const active=String(logic.state.activeChat||"");
      if(active&&chats.conversations.some(c=>c.id===active)){
-      const detail=bootConversationDetail?.conversation.id===active?bootConversationDetail:await ws.conversation(active,abort.signal);if(!alive)return;
+      const detail=boot.conversationDetail?.conversation.id===active?boot.conversationDetail:await ws.conversation(active,abort.signal);if(!alive)return;
       const run=detail.runs.at(-1);const phase=phaseFor(run?.status);
       const apiOrigin=new URL(api.baseURL||"/",window.location.origin);
       const attachments=detail.attachments.map(a=>({...a,url:new URL(a.url,apiOrigin).toString()}));
@@ -194,10 +221,10 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
      }else if(dockConversation){saveLocal(dockConversationKey(ws.slug),"");patch.dockConversationID="";patch.dockLiveMessages=[];patch.dockLiveRun=null;patch.dockLivePhase="done";}
      patch.autopilots9=autos.autopilots.map(a=>({...mapAutopilot(a),owner:member,kind:a.trigger.kind,status:a.enabled?"active":"paused",history:[],limit:2,daily:20}));
      const activeAutopilot=String(logic.state.activeAuto9||initialRoute.autopilot||"");
-     if(uuid(activeAutopilot)&&autos.autopilots.some(a=>a.id===activeAutopilot)){const detail=bootAutopilotDetail?.autopilot.id===activeAutopilot?bootAutopilotDetail:await ws.autopilot(activeAutopilot,abort.signal);patch.autopilots9=patch.autopilots9.map((autopilot:Vals)=>autopilot.id===activeAutopilot?{...autopilot,history:detail.runs.map(run=>({title:titleCase(run.status),detail:run.summary||run.run_id||"Run recorded",when:new Date(run.created_at).toLocaleString(),status:run.status}))}:autopilot)}
+     if(uuid(activeAutopilot)&&autos.autopilots.some(a=>a.id===activeAutopilot)){const detail=boot.autopilotDetail?.autopilot.id===activeAutopilot?boot.autopilotDetail:await ws.autopilot(activeAutopilot,abort.signal);patch.autopilots9=patch.autopilots9.map((autopilot:Vals)=>autopilot.id===activeAutopilot?{...autopilot,history:detail.runs.map(run=>({title:titleCase(run.status),detail:run.summary||run.run_id||"Run recorded",when:new Date(run.created_at).toLocaleString(),status:run.status}))}:autopilot)}
      Object.assign(patch,accountHydrationPatch(member,accounts.accounts));
-     patch.connections={[member]:Object.fromEntries(plugins.plugins.map(p=>[titleCase(p.kind.replace(/^mcp:/,"")),p.status==="connected"]))};
-     patch.customPlugins10=plugins.plugins.filter(p=>p.kind.startsWith("mcp:")&&!catalogPluginKeys.has(pluginKey(p.kind))).map(p=>({name:String((p.account as Vals)?.name||titleCase(p.kind.slice(4).replace(/-/g," "))),owner:member,category:"Custom",copy:"Workspace MCP server",icon:"code-xml"}));
+     patch.connections={[member]:Object.fromEntries(plugins.plugins.map(p=>[connectorDisplayName(p),p.status==="connected"]))};
+     patch.customPlugins10=plugins.plugins.filter(p=>p.kind.startsWith("mcp:")&&!catalogPluginKeys.has(pluginKey(p.kind))).map(p=>({name:connectorDisplayName(p),owner:member,category:"Custom",copy:"Workspace MCP server",icon:"code-xml"}));
      patch.plan=titleCase(overview.workspace.plan);patch.monthly=0;patch.purchased=credits.balance_cents/100;patch.runningRuns=overview.running_runs;
      patch.paymentsEnabled=credits.payments_enabled;patch.paymentsTestMode=credits.payments_test_mode;patch.workspaceRole=overview.workspace.role||first.role;
      patch.ledger=credits.entries.map((e,i)=>({id:String(i),kind:e.kind,label:e.note,title:e.note,amount:e.amount_cents/100,date:e.created_at,when:e.created_at}));
@@ -212,7 +239,7 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
      patch.profileByMember15={[member]:{...(logic.state.profileByMember15?.[previous]||{}),name:me.name||member,email:me.email}};
      patch.sec19={...(logic.state.sec19||{}),twoStep:false,sms:false,codes:[],codesLeft:0,codesWhen:"Never",sessions:sessions.sessions.map(d=>({id:d.id,name:d.current?"Current browser":"Browser session",short:"browser",icon:"monitor",meta:d.user_agent,where:d.location||"",ip:d.ip,when:new Date(d.last_seen_at).toLocaleString(),current:d.current})),keys:keys.keys.map(k=>({id:k.id,name:k.name,prefix:k.prefix,scope:k.scopes.includes("write")?"Full access":"Read only",created:new Date(k.created_at).toLocaleDateString(),used:k.last_used_at?new Date(k.last_used_at).toLocaleString():"Never"}))};
      logic.setState(patch);if(!hydrated){if(previous!==member)logic.newChat();const conversation=initialRoute.conversation;const issue=initialRoute.issue;const requestedView=initialRoute.view;if(conversation&&chats.conversations.some(c=>c.id===conversation)){logic.setState({activeChat:conversation,view:"chat",draft:readDraft(ws.slug,conversation),inspector10:false,mobileInspector10:false});again=true}else if(issue&&issues.issues.some(i=>i.id===issue||i.identifier===issue)){const thread=requestedView==="thread9";const issueID=issues.issues.find(i=>i.id===issue||i.identifier===issue)!.id;logic.setState({activeIssue:issue,view:thread?"thread9":"issue",threadDraft9:readDraft(ws.slug,issueID),...threadInspectorPatch(thread&&window.matchMedia("(min-width: 901px)").matches)});again=true}else{logic.setState({view:requestedView,...initialRoute.autopilot?{activeAuto9:initialRoute.autopilot}:{},...initialRoute.section?{section:initialRoute.section}:{},draft:readDraft(ws.slug,null)})}const canonicalIssue=issue?issues.issues.find(i=>i.id===issue||i.identifier===issue)?.id:undefined;window.history.replaceState({},"",workspacePath({...initialRoute,workspace:ws.slug,...canonicalIssue?{issue:canonicalIssue}:{}}))}hydrated=true;report("live");
-    }finally{refreshing=false;if(again&&alive){again=false;void hydrate().catch(fail)}}
+    }finally{refreshing=false;if(again&&alive){const reuse=!againFull;again=false;againFull=false;void hydrate({reuseInventory:reuse}).catch(fail)}}
    };
    let liveRefreshing=false,liveAgain=false;
    const refreshActiveWork=async()=>{
@@ -239,7 +266,7 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
    // state behind every issue, routine, member, billing and settings request.
    if(initialRoute.view==="chat"&&!initialRoute.conversation){
     [bootConversationAccounts,bootPlugins]=await Promise.all([ws.accounts(abort.signal),ws.plugins(abort.signal)]);if(!alive)return;
-    const connections=Object.fromEntries(bootPlugins.plugins.map(plugin=>[titleCase(plugin.kind.replace(/^mcp:/,"")),plugin.status==="connected"]));
+    const connections=Object.fromEntries(bootPlugins.plugins.map(plugin=>[connectorDisplayName(plugin),plugin.status==="connected"]));
     logic.setState({
      ...livePersonaDefaults(member),liveWorkspaces:workspaces,workspace16:first.name,workspaceName:first.name,
      member,signed:true,view:"chat",activeChat:null,draft:readDraft(ws.slug,null),inspector10:false,mobileInspector10:false,
@@ -482,7 +509,7 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
   v.workspaceName= s.workspace16||"BotInc";v.previewCard15=false;
   /* The welcome strip says "Connected tools": show the workspace's connected connectors, not the
      design's featured catalog. */
-  v.featuredPlugins10=liveConnectedConnectorNames(s.livePlugins||[]).slice(0,4).map((name)=>{const brand=typeof logic.brand12==="function"?logic.brand12(name):{};return {name,brand12:brand.brand12||"",brandClass12:brand.brandClass12||"",open:()=>logic.showPlugin10(name)}});
+  v.featuredPlugins10=liveFeaturedConnectorNames(s.livePlugins||[]).map((name)=>{const brand=typeof logic.brand12==="function"?logic.brand12(name):{};return {name,brand12:brand.brand12||"",brandClass12:brand.brandClass12||"",open:()=>logic.showPlugin10(name)}});
   v.providerGroups13=(v.providerGroups13||[]).map((provider:Vals)=>({
    ...provider,
    ringStyle14:usageRingStyleFromCapacity(provider.index14),
@@ -498,7 +525,7 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
    const available=(s.livePlugins||[]).filter((plugin:Vals)=>plugin.kind?.startsWith("mcp:"));
    const selectedIDs:string[]=Array.isArray(s.autoDraft9?.pluginIds)?s.autoDraft9.pluginIds:[];
    const selectedSet=new Set(selectedIDs);
-   const label=(plugin:Vals)=>titleCase(pluginKey(plugin.kind).replaceAll("-"," "));
+   const label=(plugin:Vals)=>connectorDisplayName(plugin);
    const selectedNames=available.filter((plugin:Vals)=>selectedSet.has(plugin.id)).map(label);
    let connectorTrigger:EventTarget|null=null;
    const openConnectorMenu=()=>{

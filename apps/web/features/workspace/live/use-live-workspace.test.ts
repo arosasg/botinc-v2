@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { accountHydrationPatch, conversationRoutingPatch, hydrationIssueKey, issueThinkingLabel, lastReportedProviderRing, liveConnectedConnectorNames, livePersonaDefaults, liveRoutineConnectorNames, normalizeScheduleSourceLogo, openNewChatWithDraft, readDraft, routineTrigger, runFailurePatch, saveDraft, threadInspectorPatch } from "./use-live-workspace";
+import { accountHydrationPatch, conversationRoutingPatch, hydrationIssueKey, issueThinkingLabel, lastReportedProviderRing, liveConnectedConnectorNames, liveFeaturedConnectorNames, livePersonaDefaults, liveRoutineConnectorNames, normalizeScheduleSourceLogo, openNewChatWithDraft, readDraft, routineTrigger, runFailurePatch, saveDraft, threadInspectorPatch } from "./use-live-workspace";
 
 describe("new conversation drafts", () => {
   const values = new Map<string, string>();
@@ -232,6 +232,26 @@ describe("live conversation connectors", () => {
       { kind: "mcp:google-drive", status: "connected" },
       { kind: "mcp:slack", status: "needs_reauth" },
       { kind: "oauth:google", status: "connected" },
-    ])).toEqual(["Github", "Google drive"]);
+    ])).toEqual(["GitHub", "Google Drive"]);
+  });
+
+  it("names connectors the way the design's brand catalog does, then by the member's own server name", () => {
+    expect(liveConnectedConnectorNames([
+      { kind: "mcp:posthog", status: "connected", account: { name: "posthog" } },
+      { kind: "mcp:claude-design", status: "connected", account: {} },
+      { kind: "mcp:didit-docs", status: "connected", account: { name: "didit-docs" } },
+      { kind: "mcp:internal-wiki", status: "connected", account: {} },
+    ])).toEqual(["PostHog", "Claude Design", "didit-docs", "Internal Wiki"]);
+  });
+
+  it("features the branded connectors first when more than four are connected", () => {
+    expect(liveFeaturedConnectorNames([
+      { kind: "mcp:attio", status: "connected", account: { name: "attio" } },
+      { kind: "mcp:braintrust", status: "connected", account: { name: "braintrust" } },
+      { kind: "mcp:codegraph", status: "connected", account: { name: "codegraph" } },
+      { kind: "mcp:github", status: "connected", account: { name: "GitHub" } },
+      { kind: "mcp:slack", status: "connected", account: { name: "slack" } },
+      { kind: "mcp:gmail", status: "connected", account: { name: "gmail" } },
+    ])).toEqual(["GitHub", "Slack", "Gmail", "attio"]);
   });
 });
