@@ -37,6 +37,23 @@ export function accountHydrationPatch(member: string, accounts: Account[]): Vals
  const rows=accounts.map(mapAccount);
  return{accounts10:rows,modelAccounts:{[member]:rows}};
 }
+export function lastReportedProviderRing(group: Vals, accounts: Vals[]): Vals {
+ if(String(group.index14||"")!=="n/a")return group;
+ const capacity=accounts.filter(account=>account.provider===group.id).map(account=>{
+  const windows=Array.isArray(account.limits)?account.limits:[];
+  if(!windows.length)return null;
+  return Math.min(...windows.map((window:Vals)=>Math.max(0,Math.min(100,100-Number(window.percent||0)))));
+ }).filter((left):left is number=>left!==null&&Number.isFinite(left));
+ if(!capacity.length)return{...group,indexTone14:"muted14 no-report14"};
+ const left=Math.round(capacity.reduce((sum,value)=>sum+value,0)/capacity.length);
+ return{
+  ...group,
+  index14:`${left}%`,
+  indexTone14:"muted14 reported14",
+  ringStyle14:`--remaining:${left*3.6}deg`,
+  aria14:`${group.name} - last reported average capacity left ${left}% across ${capacity.length} account${capacity.length===1?"":"s"}`,
+ };
+}
 export function issueThinkingLabel(view: unknown, current: unknown, run?: { effort?: string }): string {
  if(view!=="issue"&&view!=="thread9")return String(current||"Not recorded");
  return String(run?.effort||"Not recorded");
@@ -604,6 +621,7 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
   v.dockDictate15=()=>logic.toast("Voice dictation is not available in this browser yet.");
   v.accountsNote15="Connected accounts are scoped to this workspace. Secrets are encrypted, and provider usage is reported without converting quota into a dollar amount.";
   v.accountPrivacy14=`${(s.accounts10||[]).length} connected accounts, private to ${me.name||me.email}. Other members cannot see these identities or use their capacity.`;
+  v.providerGroups13=(v.providerGroups13||[]).map((group:Vals)=>lastReportedProviderRing(group,s.accounts10||[]));
   const usage=s.liveUsage||{days:[],providers:[],total_cost_cents:0,runs:0};const usageTotal=Number(usage.total_cost_cents||0)/100;
   v.usageMonthNote19="Last 30 days from recorded workspace runs. No preview or estimated charges are included.";
   v.billingTabs14=(v.billingTabs14||[]).filter((tab:Vals)=>tab.label!=="Invoices");

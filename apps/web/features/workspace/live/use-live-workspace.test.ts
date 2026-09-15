@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { accountHydrationPatch, conversationRoutingPatch, hydrationIssueKey, issueThinkingLabel, liveConnectedConnectorNames, livePersonaDefaults, normalizeScheduleSourceLogo, openNewChatWithDraft, readDraft, routineTrigger, runFailurePatch, saveDraft, threadInspectorPatch } from "./use-live-workspace";
+import { accountHydrationPatch, conversationRoutingPatch, hydrationIssueKey, issueThinkingLabel, lastReportedProviderRing, liveConnectedConnectorNames, livePersonaDefaults, normalizeScheduleSourceLogo, openNewChatWithDraft, readDraft, routineTrigger, runFailurePatch, saveDraft, threadInspectorPatch } from "./use-live-workspace";
 
 describe("new conversation drafts", () => {
   const values = new Map<string, string>();
@@ -158,6 +158,27 @@ describe("failed conversation runs", () => {
 });
 
 describe("conversation routing hydration", () => {
+  it("draws a neutral provider ring from stale but real quota observations", () => {
+    const group = lastReportedProviderRing({ id: "claude", name: "Claude", index14: "n/a" }, [
+      { provider: "claude", limits: [{ percent: 93 }, { percent: 57 }] },
+      { provider: "claude", limits: [{ percent: 17 }] },
+      { provider: "codex", limits: [{ percent: 2 }] },
+    ]);
+
+    expect(group).toMatchObject({
+      index14: "45%",
+      indexTone14: "muted14 reported14",
+      ringStyle14: "--remaining:162deg",
+    });
+    expect(group.aria14).toContain("last reported average capacity left 45%");
+  });
+
+  it("keeps a provider with no quota observation on an empty track", () => {
+    expect(lastReportedProviderRing({ id: "hermes", index14: "n/a" }, [
+      { provider: "hermes", limits: [] },
+    ])).toMatchObject({ index14: "n/a", indexTone14: "muted14 no-report14" });
+  });
+
   it("hydrates provider accounts with a cold conversation so its subscription route is immediately resolvable", () => {
     const patch = accountHydrationPatch("Alejandro", [{
       id: "a1", provider: "codex", label: "", email: "alejandro@example.test", plan: "team",
