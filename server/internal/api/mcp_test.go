@@ -49,7 +49,7 @@ func TestMCPOAuthAuthorizationAndTools(t *testing.T) {
 		t.Fatalf("protected resource metadata did not advertise %s: %s", resource, metadata.Body.String())
 	}
 
-	registration := doMCPRequest(t, h, http.MethodPost, "/oauth/register", "", "application/json", `{"client_name":"Codex test","redirect_uris":["http://127.0.0.1:43119/callback"],"grant_types":["authorization_code","refresh_token"],"response_types":["code"],"token_endpoint_auth_method":"none"}`)
+	registration := doMCPRequest(t, h, http.MethodPost, "/oauth/register", "", "application/json", `{"client_name":"Codex test","redirect_uris":["http://127.0.0.1:43119/callback"],"grant_types":["authorization_code","refresh_token"],"response_types":["code"],"token_endpoint_auth_method":"none","scope":"read write","client_uri":"https://developers.openai.com/codex"}`)
 	if registration.Code != http.StatusCreated {
 		t.Fatalf("register: %d %s", registration.Code, registration.Body.String())
 	}

@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"html/template"
+	"io"
 	"net/http"
 	"net/url"
 	"slices"
@@ -111,9 +112,15 @@ func onlyOAuthValues(values []string, required string, allowed ...string) bool {
 }
 
 func (s *Server) mcpRegisterClient(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
 	var in mcpClientRegistration
-	if err := httpx.Decode(r, &in); err != nil {
+	decoder := json.NewDecoder(r.Body)
+	if err := decoder.Decode(&in); err != nil {
 		oauthError(w, http.StatusBadRequest, "invalid_client_metadata", err.Error())
+		return
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		oauthError(w, http.StatusBadRequest, "invalid_client_metadata", "request body must contain one JSON object")
 		return
 	}
 	in.ClientName = strings.TrimSpace(in.ClientName)
