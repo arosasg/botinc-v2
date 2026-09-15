@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -93,5 +95,21 @@ func TestMaterializeAttachmentsAndExposeThemInChatPrompt(t *testing.T) {
 	prompt := chatPrompt(spec)
 	if !strings.Contains(prompt, `Attachment "screen.png" (image/png, 30 bytes) is available at `+wantPath) {
 		t.Fatalf("attachment path missing from prompt: %s", prompt)
+	}
+	if !strings.Contains(prompt, "Do not wait indefinitely for external CI") {
+		t.Fatalf("chat prompt does not tell the agent to return before asynchronous work exhausts the run: %s", prompt)
+	}
+}
+
+func TestVisibleTimeoutAnswerPreservesTheLatestVerifiedUpdate(t *testing.T) {
+	got := visibleTimeoutAnswer("CI is green for PR #42.", fmt.Errorf("agent stopped: %w", context.DeadlineExceeded))
+	if !strings.Contains(got, "reached its execution limit") || !strings.Contains(got, "CI is green for PR #42.") {
+		t.Fatalf("timeout answer = %q", got)
+	}
+}
+
+func TestVisibleTimeoutAnswerIgnoresOrdinaryFailures(t *testing.T) {
+	if got := visibleTimeoutAnswer("partial", errors.New("provider rejected the request")); got != "" {
+		t.Fatalf("ordinary failure produced a timeout answer: %q", got)
 	}
 }

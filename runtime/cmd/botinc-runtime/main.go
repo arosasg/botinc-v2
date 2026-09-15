@@ -182,19 +182,29 @@ func runChat(ctx context.Context, c *protocol.Client, spec protocol.Spec, a agen
 		Dir: workdir, Prompt: prompt, Model: spec.Run.Model, Secret: spec.Credential.Secret,
 		CredentialEnv: spec.Credential.Env, CredentialFiles: spec.Credential.Files,
 		MCPConfig: spec.MCPConfig,
-		Timeout:   20 * time.Minute, BudgetCents: spec.Run.TaskLimitCents, Emit: emit,
+		Timeout:   40 * time.Minute, BudgetCents: spec.Run.TaskLimitCents, Emit: emit,
 	})
+	answer := resultText(out)
 	if err != nil {
-		_ = c.Step(ctx, protocol.StepUpdate{Key: key, Status: "stuck", CostCents: resultCost(out)})
-		return nil, err
+		partialAnswer := visibleTimeoutAnswer(answer, err)
+		if partialAnswer != "" {
+			if sayErr := c.Say(ctx, partialAnswer); sayErr != nil {
+				err = errors.Join(err, fmt.Errorf("could not post the partial answer: %w", sayErr))
+			}
+		}
+		_ = c.Step(ctx, protocol.StepUpdate{
+			Key: key, Status: "stuck", CostCents: resultCost(out),
+			Output: map[string]any{"result": partialAnswer, "partial": partialAnswer != ""},
+		})
+		return map[string]any{"answer": partialAnswer, "partial": partialAnswer != ""}, err
 	}
-	if text := resultText(out); text != "" {
-		if err := c.Say(ctx, text); err != nil {
+	if answer != "" {
+		if err := c.Say(ctx, answer); err != nil {
 			return nil, fmt.Errorf("could not post the answer: %w", err)
 		}
 	}
 	_ = c.Step(ctx, protocol.StepUpdate{Key: key, Status: "done", CostCents: resultCost(out)})
-	return map[string]any{"answer": resultText(out)}, nil
+	return map[string]any{"answer": answer}, nil
 }
 
 // runBuild checks the repository out, works, and opens a draft pull request.
@@ -417,6 +427,7 @@ func branchName(spec protocol.Spec) string {
 func chatPrompt(spec protocol.Spec) string {
 	var b strings.Builder
 	b.WriteString("You are the Operator for this BotInc workspace. Answer in the fewest words that are complete and true. Say what you do not know.\n\n")
+	b.WriteString("Do not wait indefinitely for external CI, reviews, or other asynchronous work. Once the requested work is safely preserved and only external completion remains, report the durable links and current status, then end with a useful answer.\n\n")
 	b.WriteString(knowledgePrompt(spec))
 	for _, m := range spec.Messages {
 		b.WriteString(m.Role + ": " + m.Body + "\n")
@@ -430,6 +441,17 @@ func chatPrompt(spec protocol.Spec) string {
 		b.WriteString("User: " + spec.Run.Prompt + "\n")
 	}
 	return b.String()
+}
+
+func visibleTimeoutAnswer(answer string, err error) string {
+	if !errors.Is(err, context.DeadlineExceeded) {
+		return ""
+	}
+	prefix := "This run reached its execution limit before it could produce a final answer. Completed external changes were preserved."
+	if strings.TrimSpace(answer) == "" {
+		return prefix
+	}
+	return prefix + "\n\nLatest verified update:\n\n" + strings.TrimSpace(answer)
 }
 
 func knowledgePrompt(spec protocol.Spec) string {
