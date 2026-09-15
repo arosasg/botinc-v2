@@ -38,6 +38,7 @@ type Issue struct {
 }
 
 const issueCols = `i.id, i.project_id, i.number, i.title, i.description, i.status, i.priority, i.assignee_user_id, i.parent_id, i.workflow_id, i.source, i.needs_you, i.created_by, i.created_at, i.updated_at`
+const issueListCols = `i.id, i.project_id, i.number, i.title, ''::text as description, i.status, i.priority, i.assignee_user_id, i.parent_id, i.workflow_id, i.source, i.needs_you, i.created_by, i.created_at, i.updated_at`
 
 func (i *Issue) scan() []any {
 	return []any{&i.ID, &i.ProjectID, &i.Number, &i.Title, &i.Description, &i.Status, &i.Priority, &i.AssigneeID, &i.ParentID, &i.WorkflowID, &i.Source, &i.NeedsYou, &i.CreatedBy, &i.CreatedAt, &i.UpdatedAt}
@@ -81,7 +82,10 @@ func (s *Server) issuePrefix(ctx context.Context, ws uuid.UUID) string {
 func (s *Server) listIssues(w http.ResponseWriter, r *http.Request) {
 	sc := scopeOf(r.Context())
 	q := r.URL.Query()
-	sql := `select ` + issueCols + ` from issues i where i.workspace_id=$1`
+	// List screens only need row metadata. Imported issue descriptions can be
+	// several megabytes per workspace and are returned by the detail endpoint,
+	// so do not repeatedly send or parse them during navigation and refreshes.
+	sql := `select ` + issueListCols + ` from issues i where i.workspace_id=$1`
 	args := []any{sc.WorkspaceID}
 	if st := q.Get("status"); st != "" {
 		list := strings.Split(st, ",")
