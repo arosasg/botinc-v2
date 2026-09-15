@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { conversationRoutingPatch, hydrationIssueKey, liveConnectedConnectorNames, livePersonaDefaults, openNewChatWithDraft, readDraft, routineTrigger, runFailurePatch, saveDraft, threadInspectorPatch } from "./use-live-workspace";
+import { conversationRoutingPatch, hydrationIssueKey, issueThinkingLabel, liveConnectedConnectorNames, livePersonaDefaults, openNewChatWithDraft, readDraft, routineTrigger, runFailurePatch, saveDraft, threadInspectorPatch } from "./use-live-workspace";
 
 describe("new conversation drafts", () => {
   const values = new Map<string, string>();
@@ -145,6 +145,11 @@ describe("conversation routing hydration", () => {
       reasoning: "Medium",
       funding: { Alejandro: "credits" },
     });
+  });
+
+  it("does not overwrite a chat effort with an unrelated empty issue", () => {
+    expect(issueThinkingLabel("chat", "Extra High", undefined)).toBe("Extra High");
+    expect(issueThinkingLabel("thread9", "Extra High", { effort: "Low" })).toBe("Low");
   });
 });
 

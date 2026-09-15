@@ -33,6 +33,10 @@ export function conversationRoutingPatch(member: string, conversation?: { model?
  const funding=run?.funding?run.funding==="credits"?"credits":"subscription":"";
  return{model,...effort?{reasoning:effort}:{},...funding?{funding:{[member]:funding}}:{}};
 }
+export function issueThinkingLabel(view: unknown, current: unknown, run?: { effort?: string }): string {
+ if(view!=="issue"&&view!=="thread9")return String(current||"Not recorded");
+ return String(run?.effort||"Not recorded");
+}
 const draftKey = (workspace: string, conversation?: unknown) => `botinc:draft:v2:${workspace}:${uuid(conversation) ? conversation : "new"}`;
 const dockConversationKey = (workspace: string) => `botinc:dock-conversation:v2:${workspace}`;
 const dockDraftKey = (workspace: string) => `botinc:dock-draft:v2:${workspace}`;
@@ -432,7 +436,7 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
   v.i8ActionCopy=latestRun?.error||(migrated?"This work and its original discussion were imported successfully. Start when you are ready to continue.":"Start work when you are ready.");
   v.i8Model=latestRun?.model||"Not selected";v.i8Funding=latestRun?.funding||"Not charged";
   v.i8Credit=logic.cash((detail?.runs||[]).reduce((sum:number,r:Vals)=>sum+r.cost_cents,0)/100)+" used";
-  v.i8FundingWarn=false;v.thinkingLabel=latestRun?.effort||"Not recorded";
+  v.i8FundingWarn=false;v.thinkingLabel=issueThinkingLabel(s.view,v.thinkingLabel,latestRun);
   v.i8Owner=currentIssue.owner||"Unassigned";v.i8OwnerInitial=currentIssue.ownerInitial||"?";
   v.i8Reporter=people.get(sourceIssue?.created_by)?.name||"Preserved in source record";
   v.i8PeopleNote="Issue history is shared with workspace members.";
