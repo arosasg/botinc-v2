@@ -55,9 +55,52 @@ export function formatUsageReset(value: unknown): string {
   }).format(instant);
 }
 
+/* The design's usageRing19 draws the v19 ring from `--used14` and the older
+   rings from `--remaining`; the base rules still read `--used`. Emit all three
+   so every ring variant fills. */
 export function usageRingStyleFromCapacity(value: unknown): string {
   const capacity = Number.parseFloat(String(value ?? ""));
-  if (!Number.isFinite(capacity)) return "--used:0deg";
-  const used = 100 - Math.max(0, Math.min(100, capacity));
-  return `--used:${Math.round(used * 3.6)}deg`;
+  const left = Number.isFinite(capacity) ? Math.max(0, Math.min(100, capacity)) : null;
+  const usedDeg = left === null ? 0 : Math.round((100 - left) * 3.6);
+  const leftDeg = left === null ? 0 : Math.round(left * 3.6);
+  return `--used14:${usedDeg}deg;--used:${usedDeg}deg;--remaining:${leftDeg}deg`;
+}
+
+type WindowRow = Record<string, unknown>;
+
+/* Day and time only ("21 00:00"); the month lives in the tooltip. Mirrors the
+   design's resetDay19, but derives the day from the instant itself so the
+   label is the same in every locale; the design's text rules are only the
+   fallback for values that are not dates (a bare time gets today's day). */
+export function resetDayLabel(reset: unknown): string {
+  // API quota windows carry "Resets <ISO>" from the base adapter.
+  const text = String(reset || "").trim().replace(/^resets\s+/i, "");
+  if (!text) return "";
+  const instant = /^\d{4}-\d{2}-\d{2}[T ]/.test(text) ? new Date(text) : new Date(Number.NaN);
+  if (!Number.isNaN(instant.getTime())) {
+    const time = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(instant);
+    return `${instant.getDate()} ${time}`;
+  }
+  const plain = text.replace(/\s*·\s*/g, ", ");
+  if (/^\d{1,2}:\d{2}$/.test(plain)) return `${new Date().getDate()} ${plain}`;
+  return plain.replace(/^\w{3},?\s+(\d{1,2}),?\s*/, "$1 ");
+}
+
+/* The account row's bar and reset note follow the binding window, the one
+   with the least capacity left. Mirrors the design's account-window rows. */
+export function bindingWindowFields(windows: WindowRow[]): WindowRow {
+  let bind: { window: WindowRow; left: number } | null = null;
+  for (const window of windows) {
+    const left = Number.parseInt(String(window.leftLabel14 ?? ""), 10);
+    if (Number.isNaN(left)) continue;
+    if (!bind || left < bind.left) bind = { window, left };
+  }
+  const reset = bind ? String(bind.window.resetShort14 || "") : "";
+  return {
+    barStyle19: `width:${bind ? Math.max(0, Math.min(100, bind.left)) : 0}%`,
+    barTone19: bind ? String(bind.window.tone14 || "muted14") : "muted14",
+    hasReset19: Boolean(reset),
+    resetNote19: reset ? `Resets ${reset}` : "",
+    resetTitle19: bind ? `${String(bind.window.label || "")} · ${String(bind.window.reset || "")}` : "",
+  };
 }

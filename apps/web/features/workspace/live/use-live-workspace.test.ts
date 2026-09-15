@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { accountHydrationPatch, conversationRoutingPatch, hydrationIssueKey, issueThinkingLabel, lastReportedProviderRing, liveConnectedConnectorNames, livePersonaDefaults, liveRoutineConnectorNames, mergeIssueDetail, normalizeScheduleSourceLogo, openNewChatWithDraft, readDraft, routineTrigger, runFailurePatch, saveDraft, threadInspectorPatch } from "./use-live-workspace";
+import { accountHydrationPatch, conversationRoutingPatch, hydrationIssueKey, issueThinkingLabel, lastReportedProviderRing, liveConnectedConnectorNames, liveFeaturedConnectorNames, livePersonaDefaults, liveRoutineConnectorNames, mergeIssueDetail, normalizeScheduleSourceLogo, openNewChatWithDraft, readDraft, routineTrigger, runFailurePatch, saveDraft, threadInspectorPatch } from "./use-live-workspace";
 
 describe("new conversation drafts", () => {
   const values = new Map<string, string>();
@@ -105,11 +105,12 @@ describe("routine triggers", () => {
     });
   });
 
-  it("resolves only the connectors attached to the active routine", () => {
-    expect(liveRoutineConnectorNames({ pluginIds: ["p2", "p1"] }, [
-      { id: "p1", kind: "mcp:gmail", account: {} },
-      { id: "p2", kind: "mcp:custom-research", account: { name: "Research MCP" } },
-      { id: "p3", kind: "mcp:github", account: {} },
+  it("resolves only the connected connectors attached to the active routine", () => {
+    expect(liveRoutineConnectorNames({ pluginIds: ["p2", "p1", "p4"] }, [
+      { id: "p1", kind: "mcp:gmail", status: "connected", account: {} },
+      { id: "p2", kind: "mcp:custom-research", status: "connected", account: { name: "Research MCP" } },
+      { id: "p3", kind: "mcp:github", status: "connected", account: {} },
+      { id: "p4", kind: "mcp:slack", status: "needs_reauth", account: {} },
     ])).toEqual(["Gmail", "Research MCP"]);
   });
 });
@@ -182,7 +183,8 @@ describe("conversation routing hydration", () => {
     expect(group).toMatchObject({
       index14: "45%",
       indexTone14: "muted14 reported14",
-      ringStyle14: "--remaining:162deg",
+      ringStyle14: "--used14:198deg;--used:198deg;--remaining:162deg",
+      usedLabel19: "55% used",
     });
     expect(group.aria14).toContain("last reported average capacity left 45%");
   });
@@ -236,6 +238,26 @@ describe("live conversation connectors", () => {
       { kind: "mcp:google-drive", status: "connected" },
       { kind: "mcp:slack", status: "needs_reauth" },
       { kind: "oauth:google", status: "connected" },
-    ])).toEqual(["Github", "Google drive"]);
+    ])).toEqual(["GitHub", "Google Drive"]);
+  });
+
+  it("names connectors the way the design's brand catalog does, then by the member's own server name", () => {
+    expect(liveConnectedConnectorNames([
+      { kind: "mcp:posthog", status: "connected", account: { name: "posthog" } },
+      { kind: "mcp:claude-design", status: "connected", account: {} },
+      { kind: "mcp:didit-docs", status: "connected", account: { name: "didit-docs" } },
+      { kind: "mcp:internal-wiki", status: "connected", account: {} },
+    ])).toEqual(["PostHog", "Claude Design", "didit-docs", "Internal Wiki"]);
+  });
+
+  it("features the branded connectors first when more than four are connected", () => {
+    expect(liveFeaturedConnectorNames([
+      { kind: "mcp:attio", status: "connected", account: { name: "attio" } },
+      { kind: "mcp:braintrust", status: "connected", account: { name: "braintrust" } },
+      { kind: "mcp:codegraph", status: "connected", account: { name: "codegraph" } },
+      { kind: "mcp:github", status: "connected", account: { name: "GitHub" } },
+      { kind: "mcp:slack", status: "connected", account: { name: "slack" } },
+      { kind: "mcp:gmail", status: "connected", account: { name: "gmail" } },
+    ])).toEqual(["GitHub", "Slack", "Gmail", "attio"]);
   });
 });

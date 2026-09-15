@@ -5,7 +5,7 @@
 import { useEffect, useRef } from "react";
 import { Client, type Account, type User, type WorkspaceClient, type WorkflowGraph } from "@botinc/api";
 import type { Vals } from "../vals";
-import { clampConversationPaneWidth, conversationPaneBounds, formatUsageReset, normalizePublicAssets, usageRingStyleFromCapacity } from "./layout";
+import { bindingWindowFields, clampConversationPaneWidth, conversationPaneBounds, formatUsageReset, normalizePublicAssets, resetDayLabel, usageRingStyleFromCapacity } from "./layout";
 import { mapAccount, mapAutopilot, mapConversation, mapIssue, mapIssueTimeline, mapMessage, mapRun, mapWorkflowSteps, type PeopleIndex } from "./map";
 import { parseWorkspaceRoute, workspacePath, type WorkspaceRoute } from "./routes";
 import { installPerformanceGuards } from "./perf";
@@ -16,16 +16,36 @@ declare global { interface Window { __BOTINC__?: { apiURL?: string } } }
 export function apiBaseURL(): string { return typeof window === "undefined" ? "" : (window.__BOTINC__?.apiURL ?? "").trim(); }
 const titleCase = (s: string) => s ? s[0]!.toUpperCase() + s.slice(1) : "";
 const pluginKey = (s: unknown) => String(s??"").toLowerCase().replace(/^mcp:/,"").replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
-const catalogPluginKeys = new Set(["github","slack","gmail","google-drive","notion","claude-design","figma","sentry","google-calendar","jira","confluence","gitlab","bitbucket","discord","microsoft-teams","dropbox","onedrive","airtable","posthog"]);
+/* The design keys its brand marks (brands12) and plugin catalog (pluginCatalogV10) by canonical
+   product names - "GitHub", "PostHog", "Google Drive" - while connector kinds arrive as slugs
+   ("mcp:github"). A plain title-case of the slug ("Github") misses the brand mark and the
+   catalog entry, so resolve the canonical name first, then the name the member gave the
+   server, and only then a readable form of the slug. */
+const connectorCatalogNames = ["GitHub","Linear","Slack","Gmail","Google Drive","Notion","Claude Design","Figma","Sentry","Google Calendar","Jira","Confluence","GitLab","Bitbucket","Discord","Microsoft Teams","Dropbox","OneDrive","Airtable","PostHog"];
+const connectorNameByKey = new Map(connectorCatalogNames.map(name=>[pluginKey(name),name] as const));
+// Linear is the one catalog entry the design hides (pluginCatalog10 filters it out), so a
+// Linear connector still lists as a custom plugin.
+const catalogPluginKeys = new Set([...connectorNameByKey.keys()].filter(key=>key!=="linear"));
+export function connectorDisplayName(plugin: { kind?: unknown; account?: unknown }): string {
+ const key=pluginKey(plugin.kind);
+ const catalog=connectorNameByKey.get(key);if(catalog)return catalog;
+ const account=String((plugin.account as Vals|undefined)?.name??"").trim();if(account)return account;
+ return key.split("-").filter(Boolean).map(titleCase).join(" ");
+}
 const uuid = (s: unknown): s is string => typeof s === "string" && /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(s);
 const phaseFor = (s?: string) => s && ["queued", "provisioning", "running"].includes(s) ? "working" : s === "waiting" ? "paused" : "done";
 export function liveConnectedConnectorNames(plugins: Vals[] = []): string[] {
- return plugins.filter(plugin=>plugin.status==="connected"&&String(plugin.kind||"").startsWith("mcp:"))
-  .map(plugin=>titleCase(pluginKey(plugin.kind).replaceAll("-"," ")));
+ return plugins.filter(plugin=>plugin.status==="connected"&&String(plugin.kind||"").startsWith("mcp:")).map(connectorDisplayName);
+}
+/* The welcome strip has room for four marks; lead with the connectors the design has a brand
+   mark for so a workspace with many custom servers still shows GitHub, Slack and Gmail there. */
+export function liveFeaturedConnectorNames(plugins: Vals[] = [], limit = 4): string[] {
+ const names=liveConnectedConnectorNames(plugins);
+ return [...names.filter(name=>connectorNameByKey.has(pluginKey(name))),...names.filter(name=>!connectorNameByKey.has(pluginKey(name)))].slice(0,limit);
 }
 export function liveRoutineConnectorNames(autopilot: Vals | undefined, plugins: Vals[] = []): string[] {
  const selected=new Set(Array.isArray(autopilot?.pluginIds)?autopilot.pluginIds:[]);
- return plugins.filter(plugin=>selected.has(plugin.id)).map(plugin=>String((plugin.account as Vals)?.name||titleCase(pluginKey(plugin.kind).replaceAll("-"," "))));
+ return plugins.filter(plugin=>selected.has(plugin.id)&&plugin.status==="connected").map(connectorDisplayName);
 }
 export function runFailurePatch(run?: { status?: string; error?: string }): Vals {
  const error=run?.status==="failed"?String(run.error||"").trim():"";
@@ -55,7 +75,8 @@ export function lastReportedProviderRing(group: Vals, accounts: Vals[]): Vals {
   ...group,
   index14:`${left}%`,
   indexTone14:"muted14 reported14",
-  ringStyle14:`--remaining:${left*3.6}deg`,
+  ringStyle14:usageRingStyleFromCapacity(left),
+  usedLabel19:`${100-left}% used`,
   aria14:`${group.name} - last reported average capacity left ${left}% across ${capacity.length} account${capacity.length===1?"":"s"}`,
  };
 }
@@ -140,11 +161,24 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
    let bootAutopilotDetail:Awaited<ReturnType<WorkspaceClient["autopilot"]>>|null=null;
    let bootPlugins:Awaited<ReturnType<WorkspaceClient["plugins"]>>|null=null;
    let refreshing=false,again=false;
-   const hydrate=async()=>{
-    if(!alive)return;if(refreshing){again=true;return;}refreshing=true;
+   /* Opening a conversation, an issue or a routine must not re-download the whole workspace
+      inventory (the issue pages alone are 1.7 MB on a workspace with 3,566 issues) before the
+      subject can render. Navigation reuses the inventory fetched in the last 60 s; realtime
+      events, reconnects and writes still refresh all of it. */
+   const INVENTORY_FRESH_MS=60_000;const inventory=new Map<string,{at:number;value:Promise<unknown>}>();let reuseInventory=false;
+   const inv=<T>(key:string,load:()=>Promise<T>):Promise<T>=>{const hit=inventory.get(key);if(reuseInventory&&hit&&Date.now()-hit.at<INVENTORY_FRESH_MS)return hit.value as Promise<T>;const value=load();inventory.set(key,{at:Date.now(),value});value.catch(()=>{inventory.delete(key)});return value};
+   let againFull=false;
+   const hydrate=async(options:{reuseInventory?:boolean}={})=>{
+    if(!alive)return;if(refreshing){again=true;if(!options.reuseInventory)againFull=true;return;}refreshing=true;reuseInventory=!!options.reuseInventory;
+    /* The optimised boot paths below fetch the visible subject before the workspace inventory
+       and hand those responses to the first hydration. Only that hydration may reuse them: a
+       snapshot that survived into later refreshes would hide the plugin a member just connected
+       or the reply that just arrived in a deep-linked conversation. Consume them here, once. */
+    const boot={issues:bootIssues,autopilots:bootAutopilots,accounts:bootConversationAccounts,plugins:bootPlugins,issueDetail:bootIssueDetail,conversationDetail:bootConversationDetail,autopilotDetail:bootAutopilotDetail};
+    bootIssues=bootAutopilots=bootConversationAccounts=bootPlugins=bootIssueDetail=bootConversationDetail=bootAutopilotDetail=null;
     try{
      const [issues,chats,autos,accounts,routing,overview,members,skills,memories,credits,usage,plugins,repos,projects,workflows,invites,sessions,keys]=await Promise.all([
-      bootIssues??ws.issues(undefined,abort.signal),ws.conversations(abort.signal),bootAutopilots??ws.autopilots(abort.signal),bootConversationAccounts??ws.accounts(abort.signal),ws.routing(abort.signal),ws.overview(abort.signal),ws.members(abort.signal),ws.skills(abort.signal),ws.memories(abort.signal),ws.credits(abort.signal),ws.usage(abort.signal),bootPlugins??ws.plugins(abort.signal),ws.repositories(abort.signal),ws.projects(abort.signal),ws.workflows(abort.signal),ws.invitations(abort.signal),api.request<{sessions:Vals[]}>("GET","/api/me/sessions",undefined,abort.signal),api.request<{keys:Vals[]}>("GET","/api/me/keys",undefined,abort.signal),
+      inv("issues",()=>boot.issues?Promise.resolve(boot.issues):ws.issues(undefined,abort.signal)),ws.conversations(abort.signal),inv("autopilots",()=>boot.autopilots?Promise.resolve(boot.autopilots):ws.autopilots(abort.signal)),boot.accounts??ws.accounts(abort.signal),ws.routing(abort.signal),ws.overview(abort.signal),inv("members",()=>ws.members(abort.signal)),inv("skills",()=>ws.skills(abort.signal)),inv("memories",()=>ws.memories(abort.signal)),ws.credits(abort.signal),ws.usage(abort.signal),boot.plugins??ws.plugins(abort.signal),inv("repositories",()=>ws.repositories(abort.signal)),inv("projects",()=>ws.projects(abort.signal)),inv("workflows",()=>ws.workflows(abort.signal)),inv("invitations",()=>ws.invitations(abort.signal)),api.request<{sessions:Vals[]}>("GET","/api/me/sessions",undefined,abort.signal),api.request<{keys:Vals[]}>("GET","/api/me/keys",undefined,abort.signal),
      ]);
      if(!alive)return;
      for(const p of members.members)people.set(p.user_id,{name:p.name,email:p.email});
@@ -159,14 +193,14 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
      // fallback until the user navigates away and back.
      const requestedIssue=hydrationIssueKey(logic.state.activeIssue,initialRoute.issue,hydrated);
      const selectedIssue=issues.issues.find(i=>i.identifier===requestedIssue||i.id===requestedIssue);
-     if(selectedIssue){const detail=bootIssueDetail?.issue.id===selectedIssue.id?bootIssueDetail:await ws.issue(selectedIssue.id,abort.signal);const files=await api.request<{attachments:Vals[]}>("GET",`/api/w/${ws.slug}/attachments?issue=${selectedIssue.id}`,undefined,abort.signal);patch.liveIssueDetail=detail;patch.liveIssueFiles=files.attachments;patch.liveIssueWorkflow=detail.issue.workflow_id?await ws.workflow(detail.issue.workflow_id,abort.signal):null;patch.issues=patch.issues.map((i:Vals)=>i.uuid===selectedIssue.id?{...mergeIssueDetail(i,detail.issue),events:detail.comments.map(c=>({who:people.get(c.author_user_id||"")?.name||"Previous agent",role:c.author_kind,when:new Date(c.created_at).toLocaleString(),text:c.body})),cost:detail.runs.reduce((sum,r)=>sum+r.cost_cents,0)/100}:i)}
+     if(selectedIssue){const detail=boot.issueDetail?.issue.id===selectedIssue.id?boot.issueDetail:await ws.issue(selectedIssue.id,abort.signal);const files=await api.request<{attachments:Vals[]}>("GET",`/api/w/${ws.slug}/attachments?issue=${selectedIssue.id}`,undefined,abort.signal);patch.liveIssueDetail=detail;patch.liveIssueFiles=files.attachments;patch.liveIssueWorkflow=detail.issue.workflow_id?await ws.workflow(detail.issue.workflow_id,abort.signal):null;patch.issues=patch.issues.map((i:Vals)=>i.uuid===selectedIssue.id?{...mergeIssueDetail(i,detail.issue),events:detail.comments.map(c=>({who:people.get(c.author_user_id||"")?.name||"Previous agent",role:c.author_kind,when:new Date(c.created_at).toLocaleString(),text:c.body})),cost:detail.runs.reduce((sum,r)=>sum+r.cost_cents,0)/100}:i)}
      const oldChats=logic.state.chats?.[previous]||[];
      patch.chats={[member]:chats.conversations.map(c=>{
       const old=oldChats.find((x:Vals)=>x.id===c.id);return {...mapConversation(c,[],me,people),messages:old?.messages||[],phase:old?.phase||"done"};
      })};
      const active=String(logic.state.activeChat||"");
      if(active&&chats.conversations.some(c=>c.id===active)){
-      const detail=bootConversationDetail?.conversation.id===active?bootConversationDetail:await ws.conversation(active,abort.signal);if(!alive)return;
+      const detail=boot.conversationDetail?.conversation.id===active?boot.conversationDetail:await ws.conversation(active,abort.signal);if(!alive)return;
       const run=detail.runs.at(-1);const phase=phaseFor(run?.status);
       const apiOrigin=new URL(api.baseURL||"/",window.location.origin);
       const attachments=detail.attachments.map(a=>({...a,url:new URL(a.url,apiOrigin).toString()}));
@@ -190,10 +224,10 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
      }else if(dockConversation){saveLocal(dockConversationKey(ws.slug),"");patch.dockConversationID="";patch.dockLiveMessages=[];patch.dockLiveRun=null;patch.dockLivePhase="done";}
      patch.autopilots9=autos.autopilots.map(a=>({...mapAutopilot(a),owner:member,kind:a.trigger.kind,status:a.enabled?"active":"paused",history:[],limit:2,daily:20}));
      const activeAutopilot=String(logic.state.activeAuto9||initialRoute.autopilot||"");
-     if(uuid(activeAutopilot)&&autos.autopilots.some(a=>a.id===activeAutopilot)){const detail=bootAutopilotDetail?.autopilot.id===activeAutopilot?bootAutopilotDetail:await ws.autopilot(activeAutopilot,abort.signal);patch.autopilots9=patch.autopilots9.map((autopilot:Vals)=>autopilot.id===activeAutopilot?{...autopilot,history:detail.runs.map(run=>({title:titleCase(run.status),detail:run.summary||run.run_id||"Run recorded",when:new Date(run.created_at).toLocaleString(),status:run.status}))}:autopilot)}
+     if(uuid(activeAutopilot)&&autos.autopilots.some(a=>a.id===activeAutopilot)){const detail=boot.autopilotDetail?.autopilot.id===activeAutopilot?boot.autopilotDetail:await ws.autopilot(activeAutopilot,abort.signal);patch.autopilots9=patch.autopilots9.map((autopilot:Vals)=>autopilot.id===activeAutopilot?{...autopilot,history:detail.runs.map(run=>({title:titleCase(run.status),detail:run.summary||run.run_id||"Run recorded",when:new Date(run.created_at).toLocaleString(),status:run.status}))}:autopilot)}
      Object.assign(patch,accountHydrationPatch(member,accounts.accounts));
-     patch.connections={[member]:Object.fromEntries(plugins.plugins.map(p=>[titleCase(p.kind.replace(/^mcp:/,"")),p.status==="connected"]))};
-     patch.customPlugins10=plugins.plugins.filter(p=>p.kind.startsWith("mcp:")&&!catalogPluginKeys.has(pluginKey(p.kind))).map(p=>({name:String((p.account as Vals)?.name||titleCase(p.kind.slice(4).replace(/-/g," "))),owner:member,category:"Custom",copy:"Workspace MCP server",icon:"code-xml"}));
+     patch.connections={[member]:Object.fromEntries(plugins.plugins.map(p=>[connectorDisplayName(p),p.status==="connected"]))};
+     patch.customPlugins10=plugins.plugins.filter(p=>p.kind.startsWith("mcp:")&&!catalogPluginKeys.has(pluginKey(p.kind))).map(p=>({name:connectorDisplayName(p),owner:member,category:"Custom",copy:"Workspace MCP server",icon:"code-xml"}));
      patch.plan=titleCase(overview.workspace.plan);patch.monthly=0;patch.purchased=credits.balance_cents/100;patch.runningRuns=overview.running_runs;
      patch.paymentsEnabled=credits.payments_enabled;patch.paymentsTestMode=credits.payments_test_mode;patch.workspaceRole=overview.workspace.role||first.role;
      patch.ledger=credits.entries.map((e,i)=>({id:String(i),kind:e.kind,label:e.note,title:e.note,amount:e.amount_cents/100,date:e.created_at,when:e.created_at}));
@@ -208,7 +242,7 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
      patch.profileByMember15={[member]:{...(logic.state.profileByMember15?.[previous]||{}),name:me.name||member,email:me.email}};
      patch.sec19={...(logic.state.sec19||{}),twoStep:false,sms:false,codes:[],codesLeft:0,codesWhen:"Never",sessions:sessions.sessions.map(d=>({id:d.id,name:d.current?"Current browser":"Browser session",short:"browser",icon:"monitor",meta:d.user_agent,where:d.location||"",ip:d.ip,when:new Date(d.last_seen_at).toLocaleString(),current:d.current})),keys:keys.keys.map(k=>({id:k.id,name:k.name,prefix:k.prefix,scope:k.scopes.includes("write")?"Full access":"Read only",created:new Date(k.created_at).toLocaleDateString(),used:k.last_used_at?new Date(k.last_used_at).toLocaleString():"Never"}))};
      logic.setState(patch);if(!hydrated){if(previous!==member)logic.newChat();const conversation=initialRoute.conversation;const issue=initialRoute.issue;const requestedView=initialRoute.view;if(conversation&&chats.conversations.some(c=>c.id===conversation)){logic.setState({activeChat:conversation,view:"chat",draft:readDraft(ws.slug,conversation),inspector10:false,mobileInspector10:false});again=true}else if(issue&&issues.issues.some(i=>i.id===issue||i.identifier===issue)){const thread=requestedView==="thread9";const issueID=issues.issues.find(i=>i.id===issue||i.identifier===issue)!.id;logic.setState({activeIssue:issue,view:thread?"thread9":"issue",threadDraft9:readDraft(ws.slug,issueID),...threadInspectorPatch(thread&&window.matchMedia("(min-width: 901px)").matches)});again=true}else{logic.setState({view:requestedView,...initialRoute.autopilot?{activeAuto9:initialRoute.autopilot}:{},...initialRoute.section?{section:initialRoute.section}:{},draft:readDraft(ws.slug,null)})}const canonicalIssue=issue?issues.issues.find(i=>i.id===issue||i.identifier===issue)?.id:undefined;window.history.replaceState({},"",workspacePath({...initialRoute,workspace:ws.slug,...canonicalIssue?{issue:canonicalIssue}:{}}))}hydrated=true;report("live");
-    }finally{refreshing=false;if(again&&alive){again=false;void hydrate().catch(fail)}}
+    }finally{refreshing=false;if(again&&alive){const reuse=!againFull;again=false;againFull=false;void hydrate({reuseInventory:reuse}).catch(fail)}}
    };
    let liveRefreshing=false,liveAgain=false;
    const refreshActiveWork=async()=>{
@@ -235,7 +269,7 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
    // state behind every issue, routine, member, billing and settings request.
    if(initialRoute.view==="chat"&&!initialRoute.conversation){
     [bootConversationAccounts,bootPlugins]=await Promise.all([ws.accounts(abort.signal),ws.plugins(abort.signal)]);if(!alive)return;
-    const connections=Object.fromEntries(bootPlugins.plugins.map(plugin=>[titleCase(plugin.kind.replace(/^mcp:/,"")),plugin.status==="connected"]));
+    const connections=Object.fromEntries(bootPlugins.plugins.map(plugin=>[connectorDisplayName(plugin),plugin.status==="connected"]));
     logic.setState({
      ...livePersonaDefaults(member),liveWorkspaces:workspaces,workspace16:first.name,workspaceName:first.name,
      member,signed:true,view:"chat",activeChat:null,draft:readDraft(ws.slug,null),inspector10:false,mobileInspector10:false,
@@ -327,7 +361,7 @@ export function useLiveWorkspace(logic: Logic | null, onStatus?: (s: LiveStatus,
 }
 
 // Kept outside React so adapter behavior can be tested against real API calls.
-export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User,people:PeopleIndex,hydrate:()=>Promise<void>,fail:(err:unknown)=>void){
+export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User,people:PeopleIndex,hydrate:(options?:{reuseInventory?:boolean})=>Promise<void>,fail:(err:unknown)=>void){
  const originals=new Map<string,unknown>();let disposed=false;
  const pendingFiles=new Map<string,File>();
  let paneFrame:number|undefined;let finishPaneDrag:(()=>void)|undefined;
@@ -428,11 +462,11 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
    if(!disposed){logic.setState({dockLiveDraft:"",dockAttachmentsLive:[]});await hydrate()}
   }catch(err){if(!disposed)fail(err)}finally{dockSending=false}
  };
- bind("openIssue",(id:string)=>{const issue=logic.state.issues.find((row:Vals)=>row.id===id||row.uuid===id);logic.go("thread9",{activeIssue:id,issueComment:"",threadDraft9:readDraft(ws.slug,issue?.uuid||id),liveIssueDetail:null,liveIssueFiles:[],...threadInspectorPatch(window.matchMedia("(min-width: 901px)").matches)});void hydrate().catch(fail)});
+ bind("openIssue",(id:string)=>{const issue=logic.state.issues.find((row:Vals)=>row.id===id||row.uuid===id);logic.go("thread9",{activeIssue:id,issueComment:"",threadDraft9:readDraft(ws.slug,issue?.uuid||id),liveIssueDetail:null,liveIssueFiles:[],...threadInspectorPatch(window.matchMedia("(min-width: 901px)").matches)});void hydrate({reuseInventory:true}).catch(fail)});
  bind("issue",()=>logic.state.issues.find((i:Vals)=>i.id===logic.state.activeIssue||i.uuid===logic.state.activeIssue)||{id:"",title:"Select an issue",description:"",status:"Incoming",owner:"",events:[]});
  // The prototype has several generations of composer handlers. All route here.
  for(const name of ["sendComposer10","sendComposer11","sendThreadMessage9"])bind(name,send);
- bind("openAuto9",(id:string)=>{logic.go("auto9",{activeAuto9:id,panel:null});void hydrate().catch(fail)});
+ bind("openAuto9",(id:string)=>{logic.go("auto9",{activeAuto9:id,panel:null});void hydrate({reuseInventory:true}).catch(fail)});
  bind("toggleAuto9",(id:string,enabled:boolean)=>{void write(async()=>{await ws.setAutopilotEnabled(id,enabled)})()});
  bind("saveAuto9",()=>{const s=logic.state,draft=s.autoDraft9||{};const error=!String(draft.title||"").trim()?"Give this routine a name.":String(draft.prompt||"").trim().length<12?"Give this routine a clear instruction.":"";if(error){logic.setState({autoFormError9:error});return}if(s.autoFormStep9!=="review"){logic.setState({autoFormStep9:"review",autoFormError9:""});return}void write(async()=>{const trigger=routineTrigger(draft);const existing=uuid(s.autoEditing9)?s.autoEditing9:undefined;const out=await ws.saveAutopilot({name:String(draft.title).trim(),description:String(draft.description||""),prompt:String(draft.prompt).trim(),model:String(draft.model||"auto").toLowerCase()==="auto"?"auto":String(draft.model),trigger,workflow_id:draft.workflowId||null,plugin_ids:Array.isArray(draft.pluginIds)?draft.pluginIds:[],enabled:draft.enabled!==false},existing);logic.setState({dialog:null,autoEditing9:null,activeAuto9:out.autopilot.id});routeURL("auto9",{activeAuto9:out.autopilot.id})})()});
  bind("runAuto9",()=>{const autopilot=logic.state.autopilots9?.find((row:Vals)=>row.id===logic.state.activeAuto9);if(!autopilot?.enabled){logic.toast("Enable this routine before running it.");return}void write(async()=>{await ws.triggerAutopilot(autopilot.id)})()});
@@ -457,7 +491,7 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
  bind("finishChat",()=>{});bind("skillFixture16",()=>[]);
  const repo=logic.repo14;
  bind("repo14",()=>repo.call(logic)||{id:"",name:"No repository connected",connected:false,meta:"Add a repository to start coding work",branch:"",state:"Not connected",tone:""});
- const openChat=async(id:string)=>{logic.setState({activeChat:id,view:"chat",dialog:null,draft:readDraft(ws.slug,id),inspector10:false,mobileInspector10:false});routeURL("chat",{activeChat:id});try{await hydrate()}catch(e){fail(e)}};
+ const openChat=async(id:string)=>{logic.setState({activeChat:id,view:"chat",dialog:null,draft:readDraft(ws.slug,id),inspector10:false,mobileInspector10:false});routeURL("chat",{activeChat:id});try{await hydrate({reuseInventory:true})}catch(e){fail(e)}};
  for(const name of ["loadChat","loadChat9","loadChat10"])bind(name,openChat);
  const start=write(async()=>{const i=logic.issue();await ws.work(i.uuid||i.id)});bind("startIssue",start);bind("beginRun",start);
  bind("saveSkill",write(async()=>{const s=logic.state;const out=await ws.saveSkill({name:s.skillNameInput,body:s.skillBodyInput},uuid(s.editingSkill)?s.editingSkill:undefined);await hydrate();logic.openSkill(out.skill.id)}));
@@ -476,26 +510,34 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
  bind("renderVals",()=>{
   const v=render.call(logic);const s=logic.state;
   v.workspaceName= s.workspace16||"BotInc";v.previewCard15=false;
+  /* The welcome strip says "Connected tools": show the workspace's connected connectors, not the
+     design's featured catalog. */
+  v.featuredPlugins10=liveFeaturedConnectorNames(s.livePlugins||[]).map((name)=>{const brand=typeof logic.brand12==="function"?logic.brand12(name):{};return {name,brand12:brand.brand12||"",brandClass12:brand.brandClass12||"",open:()=>logic.showPlugin10(name)}});
   v.providerGroups13=(v.providerGroups13||[]).map((provider:Vals)=>({
    ...provider,
    ringStyle14:usageRingStyleFromCapacity(provider.index14),
-   rows:(provider.rows||[]).map((account:Vals)=>({
-    ...account,
-    windows:(account.windows||[]).map((window:Vals)=>({
-     ...window,
-     resetShort14:formatUsageReset(window.resetShort14||window.reset),
-    })),
-   })),
+   rows:(provider.rows||[]).map((account:Vals)=>{
+    const windows=(account.windows||[]).map((window:Vals)=>{
+     const resetShort14=formatUsageReset(window.resetShort14||window.reset);
+     return {...window,resetShort14,resetDay19:resetDayLabel(window.reset||window.resetShort14)};
+    });
+    return {...account,windows,...bindingWindowFields(windows)};
+   }),
   }));
   if(v.autopilotForm10){
    const available=(s.livePlugins||[]).filter((plugin:Vals)=>plugin.kind?.startsWith("mcp:"));
    const selectedIDs:string[]=Array.isArray(s.autoDraft9?.pluginIds)?s.autoDraft9.pluginIds:[];
    const selectedSet=new Set(selectedIDs);
-   const label=(plugin:Vals)=>titleCase(pluginKey(plugin.kind).replaceAll("-"," "));
+   const label=(plugin:Vals)=>connectorDisplayName(plugin);
    const selectedNames=available.filter((plugin:Vals)=>selectedSet.has(plugin.id)).map(label);
    let connectorTrigger:EventTarget|null=null;
    const openConnectorMenu=()=>{
-    const rows=available.map((plugin:Vals)=>{const name=label(plugin);const brand=typeof logic.brand12==="function"?logic.brand12(name):{};return{label:name,logo:brand.brand12||"",logoClass:brand.brandClass12||"",on:selectedSet.has(plugin.id),disabled:plugin.status!=="connected",hint:plugin.status==="connected"?"":plugin.status==="needs_reauth"?"Reconnect":"Unavailable",run:()=>{const ids=selectedSet.has(plugin.id)?selectedIDs.filter((id)=>id!==plugin.id):[...selectedIDs,plugin.id];logic.setState({autoDraft9:{...logic.state.autoDraft9,pluginIds:ids}});setTimeout(openConnectorMenu,0)}}});
+    // Read the draft each time the menu is (re)built: the menu reopens after a pick, and the
+    // closure's snapshot from render time would otherwise discard the previous choice.
+    const currentIDs:string[]=Array.isArray(logic.state.autoDraft9?.pluginIds)?logic.state.autoDraft9.pluginIds:[];
+    const currentSet=new Set(currentIDs);
+    // A connector that became unavailable while selected stays removable; only unselected unavailable rows are inert.
+    const rows=available.map((plugin:Vals)=>{const name=label(plugin);const brand=typeof logic.brand12==="function"?logic.brand12(name):{};const on=currentSet.has(plugin.id);return{label:name,logo:brand.brand12||"",logoClass:brand.brandClass12||"",on,disabled:plugin.status!=="connected"&&!on,hint:plugin.status==="connected"?"":plugin.status==="needs_reauth"?"Reconnect":"Unavailable",run:()=>{const ids=on?currentIDs.filter((id)=>id!==plugin.id):[...currentIDs,plugin.id];logic.setState({autoDraft9:{...logic.state.autoDraft9,pluginIds:ids}});setTimeout(openConnectorMenu,0)}}});
     if(!rows.length)rows.push({label:"No connectors in this workspace",disabled:true});
     logic.openMenu14(null,{currentTarget:connectorTrigger},rows,"Connectors",{kind:"routine-connectors",cls:"menu-rich15 menu-plugins16",search:rows.length>6?"Search connectors":"",cta:{label:"Add a connector",icon:logic.icon14?.("plus"),run:()=>{logic.setState({dialog:null});logic.openPlugins10("all")}}});
    };
@@ -526,10 +568,10 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
   }
   const detail=s.liveIssueDetail;const currentIssue=logic.issue();
   /* The issue page carries its own execution rail (Execution / Source and output / People). The
-     conversation inspector has no live bindings on this view, so a preference left open by a
-     thread rendered as an empty third column that squeezed the page. Hide it here the way the
-     design hides it on top-level pages. */
-  if(s.view==="issue"&&v.inspectorShown16){v.inspectorOpen10=false;v.inspectorShown16=false;v.panelOpenClass="";v.rootClass=String(v.rootClass||"").replace(/\s*\binspector-open10\b/g,"").replace(/\s*\bmobile-inspector10\b/g,"")}
+     conversation inspector reads the issue's run, so an issue without one (every imported v1
+     issue before its first run) rendered it as an empty third column that squeezed the page.
+     Hide it for those the way the design hides it on top-level pages. */
+  if(s.view==="issue"&&v.inspectorShown16&&!(Array.isArray(detail?.runs)&&detail.runs.length)){v.inspectorOpen10=false;v.inspectorShown16=false;v.panelOpenClass="";v.rootClass=String(v.rootClass||"").replace(/\s*\binspector-open10\b/g,"").replace(/\s*\bmobile-inspector10\b/g,"")}
   /* Unassigned and not-yet-selected issues have no owner; the design's placeholder then read "Message undefined's agents". */
   {const owner=String(currentIssue.owner||"");const whose=!owner||owner===String(s.member||"")?"your":owner+"\u2019s";v.i8CommentPlaceholder=`Message ${whose} agents${currentIssue.id?` about ${currentIssue.id}`:""}\u2026`}
   v.i8Computer="Remote";v.i8Agent="Operator";
@@ -682,7 +724,7 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
   if(Array.isArray(v.conversationGroups12))v.conversationGroups12=v.conversationGroups12.map((group:Vals)=>({...group,rows:(group.rows||[]).map((row:Vals)=>{
    const id=String(row.id||"");
    if(id.startsWith("chat:")&&uuid(id.slice(5)))return{...row,open:()=>{void openChat(id.slice(5))}};
-   if(id.startsWith("issue:")){const issue=id.slice(6);const issueRow=(logic.state.issues||[]).find((item:Vals)=>item.id===issue||item.uuid===issue);return{...row,open:()=>{logic.setState({activeIssue:issue,view:"thread9",issueComment:"",threadDraft9:readDraft(ws.slug,issueRow?.uuid||issue),liveIssueDetail:null,liveIssueFiles:[],...threadInspectorPatch(window.matchMedia("(min-width: 901px)").matches)});routeURL("thread9",{activeIssue:issue});void hydrate().catch(fail)}}}
+   if(id.startsWith("issue:")){const issue=id.slice(6);const issueRow=(logic.state.issues||[]).find((item:Vals)=>item.id===issue||item.uuid===issue);return{...row,open:()=>{logic.setState({activeIssue:issue,view:"thread9",issueComment:"",threadDraft9:readDraft(ws.slug,issueRow?.uuid||issue),liveIssueDetail:null,liveIssueFiles:[],...threadInspectorPatch(window.matchMedia("(min-width: 901px)").matches)});routeURL("thread9",{activeIssue:issue});void hydrate({reuseInventory:true}).catch(fail)}}}
    return row;
   })}));
   for(const key of ["sendMessage","sendComposer10","sendComposer11","sendThreadMessage9"])v[key]=send;
@@ -727,7 +769,7 @@ export function installActions(logic:Logic,ws:WorkspaceClient,api:Client,me:User
   return normalizePublicAssets(v) as Vals;
  });
  logic.forceUpdate?.();
-  const popRoute=()=>{const route=parseWorkspaceRoute(new URL(window.location.href));if(route.workspace!==ws.slug){window.location.reload();return}if(route.conversation){logic.setState({view:"chat",activeChat:route.conversation,draft:readDraft(ws.slug,route.conversation)});void hydrate().catch(fail)}else if(route.issue){const thread=route.view==="thread9";logic.setState({view:thread?"thread9":"issue",activeIssue:route.issue,threadDraft9:readDraft(ws.slug,route.issue),...threadInspectorPatch(thread&&window.matchMedia("(min-width: 901px)").matches)});void hydrate().catch(fail)}else{logic.setState({view:route.view,...route.view==="chat"?{activeChat:null,draft:readDraft(ws.slug,null)}:{},...route.autopilot?{activeAuto9:route.autopilot}:{},...route.section?{section:route.section}:{}});if(route.workflow&&typeof logic.openGraph14==="function")void logic.openGraph14(route.workflow)}};
+  const popRoute=()=>{const route=parseWorkspaceRoute(new URL(window.location.href));if(route.workspace!==ws.slug){window.location.reload();return}if(route.conversation){logic.setState({view:"chat",activeChat:route.conversation,draft:readDraft(ws.slug,route.conversation)});void hydrate({reuseInventory:true}).catch(fail)}else if(route.issue){const thread=route.view==="thread9";logic.setState({view:thread?"thread9":"issue",activeIssue:route.issue,threadDraft9:readDraft(ws.slug,route.issue),...threadInspectorPatch(thread&&window.matchMedia("(min-width: 901px)").matches)});void hydrate({reuseInventory:true}).catch(fail)}else{logic.setState({view:route.view,...route.view==="chat"?{activeChat:null,draft:readDraft(ws.slug,null)}:{},...route.autopilot?{activeAuto9:route.autopilot}:{},...route.section?{section:route.section}:{}});if(route.workflow&&typeof logic.openGraph14==="function")void logic.openGraph14(route.workflow)}};
  window.addEventListener("popstate",popRoute);
  return()=>{disposed=true;finishPaneDrag?.();if(paneFrame!==undefined)cancelAnimationFrame(paneFrame);window.removeEventListener("popstate",popRoute);for(const[k,v]of originals){if(v===undefined)delete logic[k];else logic[k]=v}};
 }

@@ -66,7 +66,7 @@ export function PageWorkDetails({ v }: { v: Vals }) {
                   <dd>BotInc workspace</dd>
                 </dl>
                 <h3 className="subheading">Original request</h3>
-              <MessageText text={String(v.issue?.description ?? "")} />
+                <MessageText text={String(v.issue?.description ?? "")} />
                 <div className="info-box">
                   <h3>One issue, one history.</h3>
                   <p>{interp(v.origin?.mapping)}</p>

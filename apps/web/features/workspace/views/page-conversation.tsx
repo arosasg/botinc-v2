@@ -1474,11 +1474,11 @@ export function PageConversation({ v }: { v: Vals }) {
                   Research an idea
                 </button>
               </div>
-              <div className="welcome-plugins10">
-                <span>Bring your tools along</span>
+              <div className="welcome-plugins10" style={(v.featuredPlugins10 ?? []).length ? undefined : { display: "none" }}>
+                <span>Connected tools</span>
                 {(v.featuredPlugins10 ?? []).map((p: any, i: number) => (
                   <Fragment key={i}>
-                    <button aria-label={p.name} title={p.name} onClick={p.open}>
+                    <span className="welcome-plugin-tile16" aria-label={p.name} title={p.name}>
                       {p.brand12 ? (
                         <>
                           <img className={`brand12 ${p.brandClass12}`} src={p.brand12} alt="" />
@@ -1500,7 +1500,7 @@ export function PageConversation({ v }: { v: Vals }) {
                           </svg>
                         </>
                       ) : null}
-                    </button>
+                    </span>
                   </Fragment>
                 ))}
                 <button className="text-button" onClick={v.plugins10}>

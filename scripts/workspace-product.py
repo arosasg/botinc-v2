@@ -19,6 +19,11 @@ if 'v.liveGitHub' not in s:
           </> : null}
           <button className="button primary" onClick={v.pluginConnect10}>''')
 s=s.replace('Connection preview only. No account authorization is sent.','Connections are verified with the provider before they are saved.')
+# The design hides the primary button once a plugin is connected; the product keeps it, because for a
+# connected plugin it reads "Use in a conversation" and opens a chat with the plugin draft. Only the
+# credential fields stay limited to disconnected plugins.
+s=re.sub(r'\{!v\.pluginConnected10 \? \(\s*<>\s*\{v\.liveGitHub \? <>', '{!v.pluginConnected10 && v.liveGitHub ? <>', s, count=1)
+s=re.sub(r'(<button className="button primary" onClick=\{v\.pluginConnect10\}>\s*\{interp\(v\.pluginButton10\)\}\s*</button>)\s*</>\s*\) : null\}', r'\1', s, count=1)
 p.write_text(s)
 
 p=Path("apps/web/features/workspace/views/shell-sidebar.tsx")
@@ -74,7 +79,6 @@ replacements={
  "apps/web/features/workspace/views/dialog-connectdialog.tsx":{
   "Simulated authorization. No real account is connected.":"The connection is verified before it is saved to this workspace.",
  },
- "apps/web/features/workspace/views/dialog-calldecisiondialog9.tsx":{"Start sample call":"Start call"},
  "apps/web/features/workspace/views/dialog-authdialog.tsx":{
   "Prototype sign-in. No account is created.":"Sign in securely to keep this conversation in your workspace.",
  },
@@ -87,7 +91,9 @@ replacements={
   "Preview as":"View as",
   "Switching members is a design test control. It changes private chats and connections while keeping shared issues.":"Private chats and personal connections remain scoped to the signed-in member.",
  },
+ # One entry per file: a repeated key silently drops the earlier replacements.
  "apps/web/features/workspace/views/dialog-calldecisiondialog9.tsx":{
+  "Start sample call":"Start call",
   "OPERATOR CALL · SIMULATION":"OPERATOR CALL",
   "Tap an answer to simulate speaking. Your microphone is not used.":"Choose an answer to continue. Microphone input is not available in this browser yet.",
  },
@@ -117,6 +123,14 @@ s=s.replace("{v.repoConnected14 ? (\n                      <>\n                 
 marker='''                      {!v.repoConnected14 ? ('''
 notice='''                      {v.repoConnected14 && !v.repoConfigAvailable14 ? (\n                        <p className="fine">Repository access and the default branch are live. Sandbox startup settings are not stored by this deployment.</p>\n                      ) : null}\n'''
 if notice not in s:s=s.replace(marker,notice+marker)
+p.write_text(s)
+
+# The welcome strip is labelled "Connected tools" and the live layer feeds it the workspace's connected
+# connectors; with none connected it has nothing to show, so it stays out of the layout.
+p=Path("apps/web/features/workspace/views/page-conversation.tsx")
+s=p.read_text()
+if 'className="welcome-plugins10" style=' not in s:
+    s=s.replace('<div className="welcome-plugins10">','<div className="welcome-plugins10" style={(v.featuredPlugins10 ?? []).length ? undefined : { display: "none" }}>',1)
 p.write_text(s)
 
 # Composers keep keystrokes local instead of re-rendering the workspace per character
