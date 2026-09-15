@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { conversationRoutingPatch, hydrationIssueKey, issueThinkingLabel, liveConnectedConnectorNames, livePersonaDefaults, openNewChatWithDraft, readDraft, routineTrigger, runFailurePatch, saveDraft, threadInspectorPatch } from "./use-live-workspace";
+import { accountHydrationPatch, conversationRoutingPatch, hydrationIssueKey, issueThinkingLabel, liveConnectedConnectorNames, livePersonaDefaults, openNewChatWithDraft, readDraft, routineTrigger, runFailurePatch, saveDraft, threadInspectorPatch } from "./use-live-workspace";
 
 describe("new conversation drafts", () => {
   const values = new Map<string, string>();
@@ -146,6 +146,16 @@ describe("failed conversation runs", () => {
 });
 
 describe("conversation routing hydration", () => {
+  it("hydrates provider accounts with a cold conversation so its subscription route is immediately resolvable", () => {
+    const patch = accountHydrationPatch("Alejandro", [{
+      id: "a1", provider: "codex", label: "", email: "alejandro@example.test", plan: "team",
+      kind: "subscription", status: "connected", quota: [{ window: "week", used: 0, limit: 100 }], has_secret: true,
+    }]);
+    expect(patch.modelAccounts.Alejandro).toHaveLength(1);
+    expect(patch.modelAccounts.Alejandro[0]).toMatchObject({ provider: "codex", kind: "subscription", enabled: true });
+    expect(patch.accounts10).toEqual(patch.modelAccounts.Alejandro);
+  });
+
   it("restores the exact model, effort, and subscription funding from the latest run", () => {
     expect(conversationRoutingPatch("Alejandro", { model: "auto" }, {
       model: "GPT-5.6 Sol", effort: "Extra High", funding: "subscription",
