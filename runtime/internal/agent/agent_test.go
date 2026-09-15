@@ -360,8 +360,9 @@ echo '{"jsonrpc":"2.0","id":3,"result":{}}'
 		t.Fatal(err)
 	}
 	result, err := Run(context.Background(), adapter, Options{
-		Dir: t.TempDir(), Prompt: "Return DSH_OK", Model: "DeepSeek V4.1 Flash", Effort: "High", Secret: "fixture-key",
-		Emit: func(event Event) { events = append(events, event) },
+		Dir: t.TempDir(), Prompt: "Return DSH_OK", Model: "DeepSeek V4.1 Flash", Effort: "High",
+		CredentialEnv: map[string]string{"OPENROUTER_API_KEY": "fixture-key"},
+		Emit:          func(event Event) { events = append(events, event) },
 	})
 	if err != nil {
 		t.Fatal(err)

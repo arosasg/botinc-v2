@@ -239,7 +239,11 @@ func dshText(blocks []dshBlock) string {
 }
 
 func runDSH(ctx context.Context, adapter Adapter, options Options) (map[string]any, error) {
-	if options.Secret == "" {
+	openRouterKey := strings.TrimSpace(options.Secret)
+	if openRouterKey == "" {
+		openRouterKey = strings.TrimSpace(options.CredentialEnv["OPENROUTER_API_KEY"])
+	}
+	if openRouterKey == "" {
 		return nil, errors.New("DeepSeek Harness needs an OpenRouter API key")
 	}
 	model, err := dshModel(options.Model)
@@ -274,7 +278,7 @@ func runDSH(ctx context.Context, adapter Adapter, options Options) (map[string]a
 	}
 	cmd := exec.CommandContext(ctx, adapter.Binary, "--profile", "sdk-minimal", "--patch", profile)
 	cmd.Dir = options.Dir
-	cmd.Env = append(os.Environ(), adapter.Env(options.Secret)...)
+	cmd.Env = append(os.Environ(), adapter.Env(openRouterKey)...)
 	cmd.Env = append(cmd.Env, "DSH_HOME="+filepath.Join(dir, "home"))
 	cmd.Env = append(cmd.Env, credentialEnv...)
 	isolate(cmd)
